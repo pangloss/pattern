@@ -1,0 +1,805 @@
+(ns matches.matchers
+  "This file contains the definitions of the nearly 20 built-in pattern matcher
+  combinators.
+
+  Matchers are registered with a handler function and a matcher-type symbol or
+  keyword together with some meta information about the matcher such as whether
+  it produces a named binding, has any aliases, etc.
+
+  Each registered matcher is a function that compiles the raw pattern to a
+  matcher combinator function. Each matcher combinator accepts data to be match,
+  the current binding dictionary, and an environment that includes the success
+  function which is called if the matcher successfully makes a match. If the
+  matcher does not match it returns false.
+
+  Some matchers can backtrack and try different combinations of input data. They
+  do that by making an initial match and calling the success continuation with
+  the match and associated bindings. If the match is not successful, the matcher
+  can try a different combination of input data and call the success
+  continuation again. This can happen as many times as necessary and results in
+  effective backtracking behavior.
+
+  Matcher combinators also have a set of metadata attached to them that
+  describes the minimum match length, whether the match length is variable,
+  captured variable names and any optional variable modes attached to the
+  variable names. For recursive matchers such as list or sequence matchers, the
+  metadata is a combination of the matcher's own metadata and that of its child
+  matchers."
+  (:refer-clojure :exclude [trampoline])
+  (:use matches.match.core)
+  (:require [genera :refer [trampoline trampolining bouncing]]
+            [uncomplicate.fluokitten.core :as f]
+            [matches.match.core :as m])
+  (:import (matches.types Env)))
+
+
+(defn- match-value
+  "Match a value using [[clojure.core/=]] semantics."
+  [pattern-const comp-env]
+  (with-meta
+    (fn const-matcher [data dictionary ^Env env]
+      (if (seq data)
+        (if (= (first data) pattern-const)
+          ((.succeed env) dictionary 1)
+          (on-failure :mismatch pattern-const dictionary env 1 data (first data)))
+        (on-failure :missing pattern-const dictionary env 0 data (first data))))
+    {:length (len 1)}))
+
+
+(defn- match-literal
+  "This is a way to match an escaped value, so for instance something
+  that looks like a matcher can be matched this way."
+  [[_ pattern] comp-env]
+  (match-value pattern comp-env))
+
+
+(defn- match-compiled
+  "This simple matcher enables splicing in existing compiled matchers into a pattern.
+
+  The only (?) exception is that splicing into a sequence matcher will not behave as
+  expected because matchers within repeating patterns are configured with
+  additional compile-time information not available to the pattern being spliced
+  in."
+  [m comp-env]
+  @(::m/matcher (meta m)))
+
+
+(defn- match-compiled*
+  "This simple matcher enables the compiler to insert compiled matchers into a pattern."
+  [m comp-env]
+  m)
+
+
+(defn- match-list
+  "Match a list or vector. If the first symbol with in the list is ?:seq, allows
+  the matcher to match any type of list. Otherwise if the pattern is a vector,
+  must match a vector, or if a list, must be a type of list. The matcher doesn't
+  make distinctions on the various list types, though.
+
+  If the pattern is variable but the minimum length is longer than the list
+  length, no matches will be attempted. Otherwise the pattern length must match
+  before attempting to match its contents."
+  [pattern comp-env]
+  (let [[list-pred pattern] (let [token (first pattern)]
+                              ;; If list starts with ?:seq symbol, match any seqable type.
+                              (if (and (symbol? token) (= "?:seq" (name token)))
+                                [seqable? (rest pattern)]
+                                [(if (vector? pattern) vector? seqable?) pattern]))
+        matchers (first
+                  (reduce (fn [[matchers comp-env] p]
+                            (let [m (compile-pattern* p comp-env)]
+                              [(cons m matchers)
+                               (update comp-env
+                                       :reserve-min-tail f/op (:length (meta m)))]))
+                          [() (assoc comp-env :reserve-min-tail (len 0))]
+                          (reverse pattern)))
+        {match-length :n variable-length? :v} (apply f/op (map (comp :length meta) matchers))]
+    (with-meta
+      (fn list-matcher [data dictionary ^Env env]
+        (if (seq data)
+          (letfn [(lp [datum data-list matchers dictionary]
+                    (if (seq matchers)
+                      (if-let [result
+                               ((first matchers)
+                                data-list
+                                dictionary
+                                ;; This construct would have to be carefully redesigned for trampoline
+                                ;; (at least on sequence matches).
+                                (assoc env :succeed
+                                       (fn match-list-success [new-dictionary n]
+                                         (if (> n (count data-list))
+                                           (throw (ex-info "Matcher ate too much" {:n n}))
+                                           (lp datum (drop n data-list) (next matchers) new-dictionary)))))]
+                        result
+                        (on-failure :mismatch pattern dictionary env 1 data datum
+                                    :retry retry))
+                      (if (empty? data-list)
+                        ((.succeed env) dictionary 1)
+                        (on-failure :too-long pattern dictionary env 1 data datum
+                                    :retry retry))))
+                  (retry [data-list]
+                    (if (list-pred data-list)
+                      (bouncing (lp data-list data-list matchers dictionary))
+                      (on-failure :type pattern dictionary env 1 data data-list
+                                  :retry retry)))]
+            (let [datum (first data)
+                  c (when (sequential? datum) (count datum))]
+              (when (if (and c variable-length?)
+                      (<= match-length c)
+                      (= match-length c))
+                (trampoline retry datum))))
+          (on-failure :missing pattern dictionary env 0 data nil)))
+      {:var-names (distinct (mapcat (comp :var-names meta) matchers))
+       :var-modes (apply merge-with f/op (map (comp :var-modes meta) matchers))
+       :var-prefixes (apply merge-with f/op (map (comp :var-prefixes meta) matchers))
+       :length (len 1)})))
+
+
+(defn- match-element
+  "Match a single element.
+
+  This matcher works in 2 forms: ?x or (? x). The short form is for convenience,
+  while the list form enables matchers to have additional options specified.
+
+  When using the list form, the matcher name is taken from the second position
+  without transformation, but must be either a symbol or keyword. If using a
+  keyword, it will be transformed to a symbol. Namespaces in matcher names are
+  ignored.
+  If using the matcher in a context
+
+  and you can provide a restriction on the var in the
+  third position.
+  "
+  [variable comp-env]
+  (let [sat? (var-restriction variable comp-env)
+        name (var-name variable)]
+    (with-meta
+      (fn element-matcher [data dictionary ^Env env]
+        (if (seq data)
+          (let [datum (first data)]
+            (if (sat? dictionary datum)
+              (if-let [{v :value} ((.lookup env) name dictionary env)]
+                (if (= v datum)
+                  ((.succeed env) dictionary 1)
+                  (on-failure :mismatch variable dictionary env 1 data datum))
+                ((.succeed env) ((.store env) name datum '? dictionary env) 1))
+              (on-failure :unsat variable dictionary env 1 data datum)))
+          (on-failure :missing variable dictionary env 0 data nil)))
+      (if (or (nil? name) (= '_ name))
+        {:length (len 1)}
+        {:var-names [name]
+         :var-modes {name (matcher-mode variable)}
+         :var-prefixes {name [(matcher-prefix variable)]}
+         :length (len 1)}))))
+
+
+(defn- segment-equal? [orig-data value ok pattern dictionary env]
+  (if (seqable? value)
+    (loop [data orig-data
+           value value
+           n 0]
+      (if (seq value)
+        (if (= (first data) (first value))
+          (recur (rest data) (rest value) (inc n))
+          (on-failure :mismatch pattern dictionary env (inc n) orig-data (take (inc n) orig-data)))
+        (if (empty? data)
+          (ok n))))
+    (on-failure :not-seqable pattern dictionary env 0 orig-data [])))
+
+(defn- match-segment
+  "Match 0-n elements. Comes in 2 flavors: ??x and (?? x). The list version
+  allows restrictions similar to [[match-element]].
+
+  Use the ! mode to make the matcher greedy: ??!x is greedy. Normally segment
+  matchers are lazy (unlike the ?:* sequence matchers which are always greedy).
+
+  If multiple segments match the same variable, the segments must be the same length.
+
+  Mark restrictions with ^:per-element if you want them to match each element.
+  Otherwise they match the aggregate collection."
+  [variable {:keys [reserve-min-tail] :as comp-env}]
+  (let [sat? (var-restriction variable
+                              (update comp-env :restrictions
+                                      (fnil conj []) (fn [i] (when (int? i)
+                                                              #(= i (count %))))))
+        sat? (if (:per-element (meta sat?))
+               (fn [dict s] (every? #(sat? dict %) s))
+               sat?)
+        force-greedy (not (:v reserve-min-tail)) ;; no later list matchers are variable-sized.
+        reserved-tail (or (:n reserve-min-tail) 0)
+        name (var-name variable)
+        [loop-start loop-continue? loop-next update-datum]
+        (if (or force-greedy (matcher-mode? variable "!"))
+          [identity (fn [i n] (<= 0 i)) dec
+           (fn [datum data len]
+             (if (empty? datum) datum (pop datum)))]
+          [(constantly 0) <= inc
+           (fn [datum data len]
+             (if (> len (count datum))
+               (conj datum (nth data (count datum)))
+               datum))])]
+    (with-meta
+      (fn segment-matcher [data dictionary ^Env env]
+        (if-let [binding ((.lookup env) name dictionary env)]
+          (segment-equal? data (:value binding)
+                          (fn segment-match [n] ((.succeed env) dictionary n))
+                          variable dictionary env)
+          (let [n (- (count data) reserved-tail)]
+            (loop [i (loop-start n) datum (vec (take i data))]
+              (when (loop-continue? i n)
+                (or (and (sat? dictionary datum)
+                         ((.succeed env) ((.store env) name datum '?? dictionary env) i))
+                    (recur (loop-next i) (update-datum datum data n))))))))
+      (if (or (nil? name) (= '_ name))
+        {:length (var-len 0)}
+        {:var-names [name]
+         :var-modes {name (matcher-mode variable)}
+         :var-prefixes {name [(matcher-prefix variable)]}
+         :length (var-len 0)}))))
+
+
+(defn- match-as
+  "This matcher allows you to capture the overarching pattern matched by some
+  arbitrary matcher.
+
+      (?:as name [?some ?pattern]) or (?:as name ??seq)
+
+  May result in being either a sequence or a single element matcher, depending
+  on the behavior of the child matcher.  If the capture length is 1, it assumes
+  that it is not a sequence matcher in that case.
+
+  Strictly, (?:as x ?y) could be replaced by (& ?x ?y)...
+
+  Allows a restriction to be added, similar to [[match-element]]."
+  [[_ name pattern :as as-pattern] comp-env]
+  (let [m (compile-pattern* pattern comp-env)
+        sat? (var-restriction as-pattern comp-env)
+        name (if (namespace name) (symbol (clojure.core/name name)) name)]
+    (with-meta
+      (fn as-matcher [data dictionary ^Env env]
+        (if (seq data)
+          (m data dictionary (assoc env :succeed
+                                    (fn [dict n]
+                                      (let [datum (if (= 1 n)
+                                                    (first data)
+                                                    (vec (take n data)))]
+                                        (if (sat? dict datum)
+                                          (if-let [{v :value} ((.lookup env) name dict env)]
+                                            (if (= v datum)
+                                              ((.succeed env) dict n)
+                                              (on-failure :mismatch as-pattern dictionary env n data datum))
+                                            ((.succeed env) ((.store env) name datum '?:as dict env) n))
+                                          (on-failure :unsat as-pattern dictionary env n data datum))))))))
+      (merge-with f/op
+                  {:var-names [name]
+                   :var-modes {name (matcher-mode as-pattern)}}
+                  (meta m)))))
+
+
+(defn- match-map
+  "Match map datastructures. For instance to match {:from 1 :to 10}:
+
+      (?:map :from ?f :to ?t)
+
+  Map keys can only be matched as literal values.
+
+  These matchers do not fail if there are extra keys. To rule out specific keys,
+  you can use ?:not matchers or predicates. For exact map matches, just use a
+  literal map directly in the matcher. To do matching against keys, use ?:chain.
+
+  This does not use {:a ?x :b ?y} syntax for the matcher because key order may
+  not be stable and it is important for the rule engine which uses matcher keys
+  to generate function signatures."
+  [[_ & kv-pairs :as pattern] comp-env]
+  (assert (even? (count kv-pairs))
+          "Map matcher must have an even number of key-matcher pair arguments.")
+  (let [keys (vec (take-nth 2 kv-pairs))
+        vals (mapv #(compile-pattern* % comp-env)
+                   (take-nth 2 (rest kv-pairs)))]
+    (with-meta
+      (fn map-matcher [data dictionary ^Env env]
+        (let [m (first data)]
+          (if (map? m)
+            (let [inner-env (assoc env :succeed (fn [dict n] dict))]
+              (loop [dict dictionary
+                     [k :as keys] keys
+                     [v :as vals] vals]
+                (if (seq keys)
+                  (if-let [kv (find m k)]
+                    (if-let [dict (v (list (val kv)) dict inner-env)]
+                      (recur dict (rest keys) (rest vals))
+                      (on-failure ':value pattern dict env 1 data m))
+                    (on-failure ':key pattern dict env 1 data m))
+                  ((.succeed env) dict 1))))
+            (on-failure ':not-map pattern dictionary env 1 data m))))
+      (assoc (apply merge-with f/op (map meta vals))
+             :length (len 1)))))
+
+
+(defn- match-optional
+  "Match the given form 0 or 1 times. There may be any number of separate
+  matcher patterns within this form, which all must match sequentially to make a
+  single successful match. If any of the contained matchers fail, all of them
+  will fail.
+
+  This matcher is used as the repeating element for [[match-sequence]]."
+  [[_ & pattern] comp-env]
+  (let [[optional? force] (case (:optional/mode comp-env)
+                            ;; causes no-match to return false
+                            :one [false (constantly false)]
+                            :many [false nil]
+                            [true nil])
+        comp-env (dissoc comp-env :optional/mode)
+        matchers (mapv (fn [p] (compile-pattern* p comp-env)) pattern)]
+    (with-meta
+      (fn optional-matcher [data orig-dictionary ^Env env]
+        (letfn [(lp [matchers dict n data]
+                  (if (seq matchers)
+                    (or ((first matchers) data dict
+                         (-> env
+                             (dissoc :optional/no-match)
+                             (assoc :succeed
+                                    (fn [dict' n']
+                                      (lp (next matchers) dict' (+ n n') (drop n' data))))))
+                        ((or force (:optional/no-match env) (.succeed env)) orig-dictionary 0))
+                    ((.succeed env) dict n)))]
+          (lp matchers orig-dictionary 0 data)))
+      (cond-> (reduce (fn [r m] (merge-with f/op r m))
+                      {} (map meta matchers))
+        (not force) (assoc-in [:length :v] true)
+        optional? (assoc-in [:length :n] 0)))))
+
+
+(defn- match-one
+  "Match the given set of patterns once."
+  [[t & pattern] comp-env]
+  (if (< 1 (count pattern))
+    (match-optional (list* t pattern) (assoc comp-env :optional/mode :one))
+    (compile-pattern* (first pattern) comp-env)))
+
+
+(defn- has-n?
+  "Try to be fast at checking whether a list or vector has at least n elements."
+  [n data]
+  (or (zero? n)
+      (not= ::no (nth data (dec n) ::no))))
+
+(defn- match-sequence
+  "Match the given pattern repeatedly. A minimum and maximum number of matches
+  may be specified.
+
+      (?:* ?a ?b) ;; min 0 pairs
+
+      (?:+ ?a)    ;; min 1 match
+
+      (?:+ 1 2 3) ;; min 1 group of 3
+
+      (?:* ^{:min 2 :max 10} ?x ?y) ;; between 2 and 10 (inclusive) pairs.
+
+      (?:* ?x (?:* ?y ?z) ?w) ;; sequence matcher within sequence matcher.
+
+  Like [[match-optional]] (which this builds upon), the repeating pattern may be
+  a sequence of multiple matchers.
+
+  This matcher is greedy, and first gathers up all matches that it can, up to
+  the `at-most` value, collecting the intermediate matches along the way. Once
+  it's gathered all matches, it attempts to succeed with the longest match set,
+  working backwards until either no downstream matchers fail or it runs below
+  the `at-least` minimum valid match count. If at-least is not specified, the
+  minimum is 0, in which case the matcher will always succeed."
+  [at-least at-most [_ p0 :as pattern] comp-env]
+  (let [at-least (max at-least (:min (meta p0) 0))
+        at-most (or at-most (:max (meta p0) Long/MAX_VALUE))
+        match-part (match-optional pattern (assoc comp-env :optional/mode :sequence))
+        matcher-vars (:var-names (meta match-part))
+        reserve-min-tail (or (:reserve-min-tail comp-env) (len 0))
+        reserve-min-tail (let [l (:length (meta match-part))]
+                           (if (pos? (:n l))
+                             ;; need to fit whole repetitions
+                             (f/op reserve-min-tail (len (mod (:n reserve-min-tail)
+                                                              (:n l))))
+                             reserve-min-tail))]
+    (letfn [(test-match [reps dict]
+              (let [evars (:sequence/existing dict)]
+                (and (<= at-least reps)
+                     (every? #(if-let [existing (evars %)]
+                                (when (contains? dict %)
+                                  (= (take reps (:value (evars %)))
+                                     (let [val (:value (dict %))]
+                                       (if (seqable? val)
+                                         (take reps val)
+                                         val))))
+                                true)
+                             matcher-vars))))
+            (gather [dict n data env matches]
+              (if (and (< (.repetition env) at-most)
+                       (has-n? (:n reserve-min-tail) data))
+                (bouncing
+                 (or (match-part
+                      data dict
+                      (assoc env
+                             :succeed
+                             (fn [dict n']
+                               (let [reps (inc (.repetition env))]
+                                 (gather dict (+ n n') (drop n' data)
+                                         (assoc env :repetition reps)
+                                         (if (test-match reps dict)
+                                           (conj matches [dict (+ n n')])
+                                           matches))))))
+                     matches))
+                matches))]
+      (with-meta
+        (fn many-matcher [data dictionary ^Env env]
+          (let [dict (reduce (fn [d var] ;; Populate the dictionary with a set of empty matches if none exist
+                               (update d var #(or % {:name var :value [] :type '?:*})))
+                             (assoc dictionary
+                                    :sequence/existing (select-keys dictionary matcher-vars)
+                                    :sequence/id (gensym))
+                             matcher-vars)
+                matches
+                (trampolining
+                 (gather dict 0 data
+                         ;; Alter lookup behavior and make no-match in match-optional fail
+                         (assoc env
+                                :lookup sequence-lookup
+                                :store sequence-extend-dict
+                                :repetition 0
+                                :optional/no-match (constantly false))
+                         (if (test-match 0 dict)
+                           [[dict 0]]
+                           [])))]
+            (loop [matches matches]
+              (when-let [[dict n] (peek matches)]
+                (or ((.succeed env) dict n)
+                    (recur (pop matches)))))))
+        (update (meta match-part)
+                :length (fn [l]
+                          (if (and at-least (= at-least at-most))
+                            (len (* (:n l) at-least))
+                            (var-len (* (:n l) (or at-least 0))))))))))
+
+
+(defn- match-many
+  "See [[match-sequence]]"
+  [pattern comp-env]
+  (match-sequence 0 nil pattern comp-env))
+
+(defn- match-at-least-one
+  "See [[match-sequence]]"
+  [pattern comp-env]
+  (match-sequence 1 nil pattern comp-env))
+
+
+(defn- match-chain
+  "This is the power tool matcher. It alternates, working left to right between
+  matcher and arbitrary function call.  The matched value may have a function
+  applied to it, which can then be matched against and also have a function
+  called against it, etc in a chain.
+
+      (?:chain ?data
+               meta ?metadata
+               keys ?_
+               count ?num-keys)
+
+  The above example matches ?data normally but then also calls `meta` on that
+  value, then keys to get the map keys of the metadata, ignores that value in
+  the matcher, but then calls count and matches against the resulting key count."
+  [[chain-type pattern & fn-pattern-pairs] comp-env]
+  (let [matchers (mapv #(compile-pattern* % comp-env)
+                       (cons pattern (take-nth 2 (rest fn-pattern-pairs))))
+        fns (mapv (fn [edge]
+                    (or (resolve-fn edge
+                                    #(throw (ex-info "Chain link did not resolve to a function" {:edge edge})))
+                        (constantly true)))
+                  (take-nth 2 fn-pattern-pairs))
+        extract (if (= '??:chain chain-type)
+                  identity
+                  first)]
+    (with-meta
+      (fn chain-matcher [data dict ^Env env]
+        (letfn [(do-fn [matchers [f :as fns] data dict taken]
+                  (if (seq fns)
+                    (do-match matchers (rest fns) [(f (extract data))] dict taken)
+                    (bouncing ((.succeed env) dict taken))))
+                (do-match [[m :as matchers] fns data dict taken]
+                  (if (seq matchers)
+                    (m data dict
+                       (assoc env :succeed
+                              (fn [dict n]
+                                (do-fn (rest matchers) fns (take n data) dict (or taken n)))))
+                    (when taken
+                      (bouncing ((.succeed env) dict taken)))))]
+          (trampoline do-match matchers fns data dict nil)))
+      (-> (assoc (apply merge-with f/op (map meta matchers))
+                 :length (:length (meta (first matchers))))
+          (update :var-names distinct)))))
+
+
+(defn- match-or
+  "This matcher works much like a regular or statement. It will only match at most one of its
+  patterns.
+
+  A successful match must both match the input data an unify any of the element
+  or sequence variables it contains if they appear multiple times in the
+  pattern.
+
+      [?a (?:or ?a ?b) ?b] ;; matches [1 1 3] or [1 3 3] but not [1 2 3]
+
+  "
+  [pattern comp-env]
+  (let [matchers (mapv #(compile-pattern* % comp-env) (rest pattern))]
+    (with-meta
+      (fn or-matcher [data dictionary ^Env env]
+        (if-let [result
+                 (loop [matchers matchers]
+                   (if (seq matchers)
+                     (or ((first matchers) data dictionary env)
+                         (recur (rest matchers)))))]
+          result
+          (on-failure :mismatch pattern dictionary env 1 data nil)))
+      {:var-names (distinct (mapcat (comp :var-names meta) matchers))
+       :var-modes (apply merge-with f/op (map (comp :var-modes meta) matchers))
+       :var-prefixes (apply merge-with f/op (map (comp :var-prefixes meta) matchers))
+       :length (let [lens (map (comp :length meta) matchers)]
+                 (if (apply = lens)
+                   (first lens)
+                   (var-len (apply min (map :n lens)))))})))
+
+
+(defn- match-and
+  "In regular patterns, this will be useful for unifying variables.
+
+      (& ?x ?y) ;; says that x and y have to be equal.
+
+  It also allows applying multiple predicates.
+
+      (& (? x this?) (? _ that?)) ;; binds x if both `(this? x)` and `(that? x)`
+
+  This should also be useful for the graph matcher where multiple paths could
+  originate from a single element."
+  [pattern comp-env]
+  (let [matchers (mapv #(compile-pattern* % comp-env) (rest pattern))]
+    (with-meta
+      (fn and-matcher [data dictionary ^Env env]
+        (letfn [(lp [matchers dictionary n]
+                  (if (seq matchers)
+                    (if-let [r ((first matchers) data dictionary
+                                (assoc env :succeed
+                                       (fn [dict n']
+                                         (if (or (= n n') (nil? n))
+                                           (lp (rest matchers) dict n')
+                                           (on-failure :length-mismatch pattern
+                                                       dictionary env n' data nil)))))]
+                      r
+                      (on-failure :mismatch pattern dictionary env n data nil))
+                    ((.succeed env) dictionary (or n 0))))]
+          (lp matchers dictionary nil)))
+      {:var-names (distinct (mapcat (comp :var-names meta) matchers))
+       :var-modes (apply merge-with f/op (map (comp :var-modes meta) matchers))
+       :var-prefixes (apply merge-with f/op (map (comp :var-prefixes meta) matchers))
+       :length (let [lens (map (comp :length meta) matchers)]
+                 (if (apply = lens)
+                   (first lens)
+                   (var-len (apply min (map :n lens)))))})))
+
+
+(defn- match-not
+  "The not matcher is useful both for preventing unification two matched
+  variables from being equal, and for ensuring that a match does not satisfy a
+  given predicate.
+
+      [?x (& (?:not x) (?:not _ even?) ?y)]
+
+  Combining the not matcher with the and matcher as above is a useful pattern."
+  [[_ pattern :as whole-pattern] comp-env]
+  (let [matcher (compile-pattern* pattern comp-env)
+        ;; Not sure about this... What is the match length of a not-matcher?
+        match-len (:n (:length (meta matcher)))]
+    (with-meta
+      (fn not-matcher [data dict ^Env env]
+        (let [result (volatile! true)]
+          (matcher data dict (assoc env :succeed
+                                    (fn [_ n]
+                                      (vreset! result false)
+                                      (on-failure :mismatch whole-pattern dict env n data nil
+                                                  :ignore (fn [] (vreset! result true))))))
+          (if @result
+            ((.succeed env) dict match-len))))
+
+      (meta matcher))))
+
+
+(defn- match-if
+  "For chosing which match to perform purely based on a predicate, you can use
+  this matcher or [[match-when]]. This matcher functions much like a regular if
+  statement, but in the context of pattern matching is somewhat limited because
+  it does not allow the predicate to match a sequence. However if it fits the
+  purpose, it is a nice, simple and fast matcher.
+
+      (?:if number? ?x ?y)
+
+  For match-based or conditional matching, combine the & (and) and | (or)
+  boolean logic matchers, which also allows sequence matching:
+
+      (| (& pred-pattern conseq) alt)"
+  [[_ pred conseq alt] comp-env]
+  (let [pred (resolve-fn
+              pred #(throw (ex-info "Predicate did not resolve to a function" {:pred pred})))
+        conseq (compile-pattern* conseq comp-env)
+        alt (when alt (compile-pattern* alt comp-env))]
+    (with-meta
+      (fn if-matcher [data dict ^Env env]
+        (if (and (seq data) (pred (first data)))
+          (conseq data dict env)
+          (when alt (alt data dict env))))
+      (if alt
+        (assoc-in (merge-with f/op (meta conseq) (meta alt))
+                  [:length :n] (min (:n (:length (meta conseq)))
+                                    (:n (:length (meta alt)) 0)))
+        (meta conseq)))))
+
+
+(defn- match-when
+  "This matcher works like [[match-if]] but since it does not have an else
+  branch, it accepts multiple pattern statements to match if the predicate
+  succeeds.
+
+      [(?:when number? ?x ?y ?z)]
+
+  Would match `[1 x y]` but not `[x y z]`.
+
+  For match-based or conditional matching, use the & (and) matcher, which also
+  allows sequence matching in the predicate:
+
+      (& pred-pattern conseq)"
+
+  [[t pred & conseq] comp-env]
+  (match-if [t pred (match-one (list* t conseq) comp-env) nil] comp-env))
+
+
+(defn- match-letrec
+  "This construct purely defines named matchers that may be used within the
+  pattern, and does not itself affect matching in any way.
+
+  It is called letrec to make clear that the definition behavior is unordered,
+  so within the letrec block, definitions can refer to each other regardless of
+  the order that they are defined in.
+
+  In this example, the pattern named B is referred to by A (using $B), then both
+  A and B are used in the body pattern:
+
+      (?:letrec [A [?a 2 $B]
+                 B ?b]
+        [$B $A ?a])
+
+  Because this is a simple example it can be easily expanded out to an
+  equivalent matcher. You can see that the named matchers defined within the
+  letrec are considered to be in the same scope as the expression they are
+  substituted into:
+
+      [?b [?a 2 ?b] ?a]
+
+  Paterns defined with `?:letrec` are inserted using `$pattern-name` via the
+  [[match-ref]] matcher."
+  [[_ bindings form] comp-env]
+  (reset! (:named-patterns comp-env)
+          (->> bindings
+               (partition 2)
+               (reduce (fn compile-bindings [np [name pattern]]
+                         ;; NOTE: this uses mutability (kind of hacky). I want the pattern
+                         ;; to resolve statically if possible and then fall back
+                         ;; to dynamic resolution for circular refs. This enables
+                         ;; that by aggressively adding data to the atom even while the
+                         ;; data is being accumulated. In the end the total
+                         ;; collection of named patterns is set at the top. Static resolution
+                         ;; is done based on the information in :named-patterns at the time of compile.
+                         ;;
+                         ;; This just adds what we know so far for the benefit of the next compile:
+                         (reset! (:named-patterns comp-env) np)
+                         (assoc np name
+                                (next-scope (compile-pattern* pattern comp-env)
+                                            (fn [scope path] scope))))
+                       @(:named-patterns comp-env))))
+  (compile-pattern* form comp-env))
+
+
+(defn- match-ref
+  "This construct inserts named patterns created by [[match-letrec]] into the
+  pattern via `$pattern-name`. The match length may be whatever the named
+  pattern defines."
+  [pattern comp-env]
+  (let [name (var-name pattern)]
+    (or (get @(:named-patterns comp-env) name)
+        (with-meta
+          (fn ref-matcher [data dictionary env]
+            ((get @(:named-patterns comp-env) name)
+             data dictionary env))
+          {:length (var-len 0)}))))
+
+
+(defn- match-fresh
+  "Create a new scoped variable that is not related to any other variables of
+  the same name. This is especially useful within named matchers or other
+  matchers designed to be spliced into a pattern.
+
+  Fresh variables may be used the same way as other variables, meaning that they
+  can be used to unify multiple values in the pattern. An interesting example of
+  this is the palindrome matcher, which recursively matches a palindromic
+  pattern of arbitrary length.
+
+      (?:letrec [palindrome
+                 (| [(? x symbol?)
+                     (?:fresh [x] $palindrome)
+                     ?x]
+                    [])]
+        $palindrome)
+
+  Which matches patterns like:
+
+      '[a [b [c [] c] b] a]
+
+  In this pattern, palindrome uses x at the parent scope, but before recurring
+  creates a new scope for x, meaning that the next level is free to unify with
+  anything again. The above would not match with `'[a [b [] XYZ] a]`, because
+  the x at the first level of scoping can not unify b with XYZ.."
+  [pattern comp-env]
+  (let [[_ fresh form] pattern
+        matcher (compile-pattern* form comp-env)]
+    (assert (every? symbol? fresh))
+    (assert (every? #(= :value (matcher-type %)) fresh))
+    (next-scope matcher (fn [scope path]
+                          (reduce (fn [scope name]
+                                    (assoc scope name path))
+                                  scope
+                                  fresh)))))
+
+
+(defn- match-restartable
+  "This construct does not define a matcher, but marks the pattern that it
+  directly wraps as restartable, meaning that if it fails to match it will use
+  the condition system to signal a restartable condition to enable it to recover
+  from a failed match and resume. This is an experimental feature and not
+  currently supported by all matchers.
+
+      (?:restartable ?x)
+
+  Makes the ?x pattern restartable. The restart could potentially force x to
+  bind to an arbitrary value or force the match to continue even with x not
+  bound to the value at that point.
+
+  Even if a pattern is restartable, if a handler is not provided for a failure,
+  the matcher will fail normally, meaning that conditions will not bubble up as
+  exceptions unless the failure in question would normally raise an exception."
+  [[_ pattern] comp-env]
+  ;; TODO: Add a feature that allows matchers to advertise the restarts they make available. Right now because the
+  (let [matcher (compile-pattern* pattern comp-env)]
+    (with-meta
+      (fn restartable-matcher [data dict env]
+        (binding [enable-restart-pattern? (conj enable-restart-pattern? pattern)]
+          (matcher data dict env)))
+      (meta matcher))))
+
+
+(register-matcher :value match-value)
+(register-matcher :list #'match-list)
+(register-matcher '?:literal match-literal)
+(register-matcher :compiled-matcher match-compiled)
+(register-matcher :compiled*-matcher match-compiled*)
+(register-matcher '? match-element {:named? true})
+(register-matcher '?? match-segment {:named? true})
+(register-matcher '?:map match-map)
+(register-matcher '?:as match-as {:named? true :restriction-position 3})
+(register-matcher '?:? #'match-optional {:aliases ['?:optional]})
+(register-matcher '?:1 #'match-one {:aliases ['?:one]})
+(register-matcher '?:* match-many {:aliases ['?:many]})
+(register-matcher '?:+ match-at-least-one {:aliases ['?:at-least-one]})
+(register-matcher '?:chain match-chain {:aliases ['??:chain]})
+(register-matcher '| match-or {:aliases ['?:or]})
+(register-matcher '& match-and {:aliases ['?:and]})
+(register-matcher '?:not match-not)
+(register-matcher '?:if #'match-if)
+(register-matcher '?:when #'match-when)
+(register-matcher '?:letrec match-letrec)
+(register-matcher '?:ref match-ref {:named? true})
+(register-matcher '?:fresh match-fresh)
+(register-matcher '?:restartable match-restartable)
