@@ -60,24 +60,25 @@
         (from-dialect '~from
                       (define-pass ~=>dialects ~form-rules))))))
 
-(def ->expr
-  (rule-list [(from-dialect 'D3
-                            (rule '(if ?->l:c ?->e:then)
-                                  (sub (if ?c ?then nil))))
-              (from-dialect 'NS
-                            (rule '?nsn
-                                  (sub (namespace! ?nsn))))]))
-(def ->lambda (rule '(+ 0 ??x) (sub (+ ??x))))
+(comment
+  (def ->expr
+    (rule-list [(from-dialect 'D3
+                              (rule '(if ?->l:c ?->e:then)
+                                    (sub (if ?c ?then nil))))
+                (from-dialect 'NS
+                              (rule '?nsn
+                                    (sub (namespace! ?nsn))))]))
+  (def ->lambda (rule '(+ 0 ??x) (sub (+ ??x))))
 
-(defpass p (=> NS D2)
-  [(=> Namespace Expr) (rule '(ns ?nsn:name ?->nsform) (sub (ns ?name ?nsform)))
-   (==> NsForm Expr) ->lambda])
+  (defpass p (=> NS D2)
+    [(=> Namespace Expr) (rule '(ns ?nsn:name ?->nsform) (sub (ns ?name ?nsform)))
+     (==> NsForm Expr) ->lambda])
 
-(p '(+ 0 2))
-(p (d/tag '[NS NsForm] '(+ 0 2)))
-(get-form 'NS 'NsForm)
+  (p '(+ 0 2))
+  (p (d/tag '[NS NsForm] '(+ 0 2)))
+  (get-form 'NS 'NsForm)
 
-(meta p)
+  (meta p))
 
 (comment
   (defn quoted? [x]

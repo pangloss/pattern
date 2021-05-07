@@ -1,13 +1,10 @@
 {:paths ["src" "resources"]
  :deps {org.clojure/clojure {:mvn/version "1.10.3"}
-        com.xn--lgc/pure-conditioning {#_#_#_#_
-                                       :git/url "https://github.com/pangloss/pure-conditioning"
-                                       :sha "..."
+        com.xn--lgc/pure-conditioning {:git/url "https://github.com/pangloss/pure-conditioning"
+                                       :sha "f605800bcbdf80a408c60d8e60bb6cd8222f17c6"
+                                       #_#_
                                        :local/root "../pure-conditioning"}
-        com.xn--lgc/genera {#_#_#_#_
-                            :git/url "git@github.com:pangloss/genera"
-                            :sha "..."
-                            :local/root "../genera"}
+        org.clojure/core.memoize {:mvn/version "1.0.236"}
         uncomplicate/fluokitten {:mvn/version "0.9.1"}
         potemkin/potemkin {:mvn/version "0.4.5"}}
  :aliases
