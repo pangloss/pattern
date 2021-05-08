@@ -46,6 +46,26 @@
     {:length (len 1)}))
 
 
+(defn- match-regex [[op regex capture-pattern] comp-env]
+  (let [m (compile-pattern* capture-pattern comp-env)
+        f (condp = op
+            '?:re-matches re-matches
+            '?:re-seq re-seq)]
+    (with-meta
+      (fn regex-matcher [data dictionary ^Env env]
+        (if-let [str (first data)]
+          (if-let [matches (when (string? str)
+                             (f regex str))]
+            (m (list (vec matches)) dictionary
+               (assoc env :succeed
+                      (fn [dict n]
+                        ((.succeed env) dict 1))))
+            (on-failure :mismatch regex dictionary env 1 data str))
+          (on-failure :missing regex dictionary env 0 data nil)))
+      (merge (meta m)
+             {:length (len 1)}))))
+
+
 (defn- match-literal
   "This is a way to match an escaped value, so for instance something
   that looks like a matcher can be matched this way."
@@ -803,3 +823,5 @@
 (register-matcher '?:ref match-ref {:named? true})
 (register-matcher '?:fresh match-fresh)
 (register-matcher '?:restartable match-restartable)
+(register-matcher '?:re-matches #'match-regex)
+(register-matcher '?:re-seq #'match-regex)

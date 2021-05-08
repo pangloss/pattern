@@ -439,3 +439,11 @@
          (var-name '(?-> abc:def))))
   (is (= "abc"
          (matcher-prefix '(?-> abc:def)))))
+
+(deftest test-regex-matchers
+  (is (= {'p "abcdef" 'a "cd" 'b "f"}
+         ((compile-pattern '[(?:re-matches #"ab(cd)e(f)" [?p ?a ?b])])
+          ["abcdef"])))
+  (is (= {'x "cd" 'y [["abcdef" "cd" "f"] ["abcdef" "cd" "f"]]}
+         ((compile-pattern '[(?:re-seq #"ab(cd)e(f)" [[?_ ?x ??_] ??y])])
+          ["abcdef aou abcdef abcdef"]))))
