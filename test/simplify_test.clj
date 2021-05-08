@@ -1,13 +1,13 @@
 (ns simplify-test
   (:require [clojure.test :refer [deftest is testing]]
             [clojure.walk :as walk]
-            [matches.rule-combinators :refer [*debug-rules*
-                                              rule-list rule-simplifier
-                                              iterated]]
-            [matches.rules :refer [rule rule-fn
-                                   rule-name]]
-            [matches.nanopass.predicator :refer [*pattern-replace* make-abbr-predicator]]
-            [matches.rewrite :refer [sub quo pure-pattern]]))
+            [matches.r2.combinators :refer [*debug-rules*
+                                            rule-list rule-simplifier
+                                            iterated]]
+            [matches.r2.core :refer [rule
+                                     rule-name]]
+            [matches.match.predicator :refer [*pattern-replace* make-abbr-predicator]]
+            [matches.r2.rewrite :refer [sub quo pure-pattern]]))
 ;;; Helper functions for an algebraic simplifier
 
 (defn symbol<? [x y]
@@ -496,23 +496,23 @@
 
 (deftest basic-rules
   (is (= '(* 5 0 4)
-         (rule-fn (constant-elimination '* 1) '(* 1 5 0 1 4 1))))
+         ((constant-elimination '* 1) '(* 1 5 0 1 4 1))))
   (is (= '(* 0)
-         (rule-fn (constant-promotion '* 0) '(* 1 5 0 1 4 1))))
+         ((constant-promotion '* 0) '(* 1 5 0 1 4 1))))
   (is (= '(* 0 1 1 1 4 5)
-         (rule-fn (commutative '*) '(* 1 5 0 1 4 1))))
+         ((commutative '*) '(* 1 5 0 1 4 1))))
   (is (= '(= 1 5 0 4)
-         (rule-fn (idempotent '=) '(= 1 5 0 1 4 1))))
+         ((idempotent '=) '(= 1 5 0 1 4 1))))
 
   (is (= '(* a b (sqrt d) c d (sqrt (* 2 3)))
-         (rule-fn (sqrt-contract) '(* a b (sqrt 2) (sqrt d) c (sqrt 3) d))))
+         ((sqrt-contract) '(* a b (sqrt 2) (sqrt d) c (sqrt 3) d))))
 
   (is (= '(sqrt (/ 2 3))
-         (rule-fn (sqrt-contract) '(/ (sqrt 2) (sqrt 3)))))
+         ((sqrt-contract) '(/ (sqrt 2) (sqrt 3)))))
 
   (is (= '(* 2 3 (sqrt d) (sqrt e) (sqrt (/ 2 3)))
-         (rule-fn (sqrt-contract) '(/ (* 2 3 (sqrt d) (sqrt 2) (sqrt e)) (sqrt 3)))))
+         ((sqrt-contract) '(/ (* 2 3 (sqrt d) (sqrt 2) (sqrt e)) (sqrt 3)))))
 
   (is (= '(/ (* 2 3 (sqrt d) (sqrt e) (sqrt (/ 2 7))) (* 5))
-         (rule-fn (sqrt-contract) '(/ (* 2 3 (sqrt d) (sqrt 2) (sqrt e))
-                                      (* 5 (sqrt 7)))))))
+         ((sqrt-contract) '(/ (* 2 3 (sqrt d) (sqrt 2) (sqrt e))
+                              (* 5 (sqrt 7)))))))

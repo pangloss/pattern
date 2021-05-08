@@ -29,7 +29,8 @@
   (:use matches.match.core)
   (:require [genera :refer [trampoline trampolining bouncing]]
             [uncomplicate.fluokitten.core :as f]
-            [matches.match.core :as m])
+            [matches.match.core :as m]
+            [matches.match.predicator :refer [var-abbr]])
   (:import (matches.types Env)))
 
 
@@ -131,6 +132,7 @@
           (on-failure :missing pattern dictionary env 0 data nil)))
       {:var-names (distinct (mapcat (comp :var-names meta) matchers))
        :var-modes (apply merge-with f/op (map (comp :var-modes meta) matchers))
+       :var-abbrs (apply merge-with f/op (map (comp :var-abbrs meta) matchers))
        :var-prefixes (apply merge-with f/op (map (comp :var-prefixes meta) matchers))
        :length (len 1)})))
 
@@ -167,10 +169,13 @@
           (on-failure :missing variable dictionary env 0 data nil)))
       (if (or (nil? name) (= '_ name))
         {:length (len 1)}
-        {:var-names [name]
-         :var-modes {name (matcher-mode variable)}
-         :var-prefixes {name [(matcher-prefix variable)]}
-         :length (len 1)}))))
+        (let [prefix (matcher-prefix variable)
+              abbr (var-abbr prefix name)]
+          {:var-names [name]
+           :var-modes {name (matcher-mode variable)}
+           :var-prefixes {name (if prefix [prefix] [])}
+           :var-abbrs {name (if abbr [abbr] [])}
+           :length (len 1)})))))
 
 
 (defn- segment-equal? [orig-data value ok pattern dictionary env]
@@ -195,14 +200,14 @@
 
   If multiple segments match the same variable, the segments must be the same length.
 
-  Mark restrictions with ^:per-element if you want them to match each element.
+  Mark restrictions with ^:each if you want them to match each element.
   Otherwise they match the aggregate collection."
   [variable {:keys [reserve-min-tail] :as comp-env}]
   (let [sat? (var-restriction variable
                               (update comp-env :restrictions
                                       (fnil conj []) (fn [i] (when (int? i)
                                                               #(= i (count %))))))
-        sat? (if (:per-element (meta sat?))
+        sat? (if (:each (meta sat?))
                (fn [dict s] (every? #(sat? dict %) s))
                sat?)
         force-greedy (not (:v reserve-min-tail)) ;; no later list matchers are variable-sized.
@@ -232,10 +237,13 @@
                     (recur (loop-next i) (update-datum datum data n))))))))
       (if (or (nil? name) (= '_ name))
         {:length (var-len 0)}
-        {:var-names [name]
-         :var-modes {name (matcher-mode variable)}
-         :var-prefixes {name [(matcher-prefix variable)]}
-         :length (var-len 0)}))))
+        (let [prefix (matcher-prefix variable)
+              abbr (var-abbr prefix name)]
+          {:var-names [name]
+           :var-modes {name (matcher-mode variable)}
+           :var-prefixes {name (if prefix [prefix] [])}
+           :var-abbrs {name (if abbr [abbr] [])}
+           :length (var-len 0)})))))
 
 
 (defn- match-as
@@ -404,13 +412,26 @@
                 (and (<= at-least reps)
                      (every? #(if-let [existing (evars %)]
                                 (when (contains? dict %)
-                                  (= (take reps (:value (evars %)))
-                                     (let [val (:value (dict %))]
-                                       (if (seqable? val)
-                                         (take reps val)
-                                         val))))
+                                  (let [evalue (:value existing)]
+                                    (if (sequential? evalue)
+                                      (= (take reps evalue)
+                                         (let [val (:value (dict %))]
+                                           (if (sequential? val)
+                                             (take reps val)
+                                             val)))
+                                      (= evalue (:value (dict %))))))
                                 true)
                              matcher-vars))))
+            (level-sequences [reps dict]
+              ;; Ensure that all sequences are the same length, even if some matchers are optional.
+              (reduce (fn [dict var-name]
+                        (let [entry (dict var-name)
+                              val (:value entry)]
+                          (if (and (sequential? val)
+                                   (< (count val) reps))
+                            (update-in dict [var-name :value] conj nil)
+                            dict)))
+                      dict matcher-vars))
             (gather [dict n data env matches]
               (if (and (< (.repetition env) at-most)
                        (has-n? (:n reserve-min-tail) data))
@@ -420,7 +441,8 @@
                       (assoc env
                              :succeed
                              (fn [dict n']
-                               (let [reps (inc (.repetition env))]
+                               (let [reps (inc (.repetition env))
+                                     dict (level-sequences reps dict)]
                                  (gather dict (+ n n') (drop n' data)
                                          (assoc env :repetition reps)
                                          (if (test-match reps dict)
@@ -583,8 +605,9 @@
           result
           (on-failure :mismatch pattern dictionary env 1 data nil)))
       {:var-names (distinct (mapcat (comp :var-names meta) matchers))
-       :var-modes (apply merge-with f/op (map (comp :var-modes meta) matchers))
+       :var-modes    (apply merge-with f/op (map (comp :var-modes meta) matchers))
        :var-prefixes (apply merge-with f/op (map (comp :var-prefixes meta) matchers))
+       :var-abbrs    (apply merge-with f/op (map (comp :var-abbrs meta) matchers))
        :length (let [lens (map (comp :length meta) matchers)]
                  (if (apply = lens)
                    (first lens)
@@ -620,8 +643,9 @@
                     ((.succeed env) dictionary (or n 0))))]
           (lp matchers dictionary nil)))
       {:var-names (distinct (mapcat (comp :var-names meta) matchers))
-       :var-modes (apply merge-with f/op (map (comp :var-modes meta) matchers))
+       :var-modes    (apply merge-with f/op (map (comp :var-modes meta) matchers))
        :var-prefixes (apply merge-with f/op (map (comp :var-prefixes meta) matchers))
+       :var-abbrs    (apply merge-with f/op (map (comp :var-abbrs meta) matchers))
        :length (let [lens (map (comp :length meta) matchers)]
                  (if (apply = lens)
                    (first lens)
@@ -830,16 +854,16 @@
 (register-matcher '?:literal match-literal)
 (register-matcher :compiled-matcher match-compiled)
 (register-matcher :compiled*-matcher match-compiled*)
-(register-matcher '? match-element {:named? true})
-(register-matcher '?? match-segment {:named? true})
+(register-matcher '? #'match-element {:named? true})
+(register-matcher '?? #'match-segment {:named? true})
 (register-matcher '?:map match-map)
 (register-matcher '?:as match-as {:named? true :restriction-position 3})
 (register-matcher '?:? #'match-optional {:aliases ['?:optional]})
 (register-matcher '?:1 #'match-one {:aliases ['?:one]})
-(register-matcher '?:* match-many {:aliases ['?:many]})
-(register-matcher '?:+ match-at-least-one {:aliases ['?:at-least-one]})
+(register-matcher '?:* #'match-many {:aliases ['?:many]})
+(register-matcher '?:+ #'match-at-least-one {:aliases ['?:at-least-one]})
 (register-matcher '?:chain match-chain {:aliases ['??:chain]})
-(register-matcher '| match-or {:aliases ['?:or]})
+(register-matcher '| #'match-or {:aliases ['?:or]})
 (register-matcher '& match-and {:aliases ['?:and]})
 (register-matcher '?:not match-not)
 (register-matcher '?:if #'match-if)

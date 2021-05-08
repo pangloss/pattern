@@ -1,20 +1,20 @@
 (ns nanopass-test
   (:require  [clojure.test :refer :all]
              [matches.nanopass :refer [scope tag type-rules]]
-             [matches.nanopass.predicator :refer [with-predicates per-element]]
+             [matches.match.predicator :refer [with-predicates on-each]]
              [matches.nanopass.dialect :refer [define-dialect derive-dialect => ==>]]
              [matches.nanopass.pass :refer [defpass]]
-             [matches.rule-combinators :refer [rule-simplifier directed rule-list]]
-             [matches.rules :refer [rule-fn rule success]]
-             [matches.rewrite :refer [sub]]
+             [matches.r2.combinators :refer [rule-simplifier directed rule-list]]
+             [matches.r2.core :refer [rule success]]
+             [matches.r2.rewrite :refer [sub]]
              [matches.match.core :refer [compile-pattern* matcher]]
              [uncomplicate.fluokitten.core :as f]))
 
 (define-dialect Lssa
-  (terminals (symbol l)
-             (symbol x)
-             (int i)
-             (symbol tr))
+  (terminals [l symbol]
+             [x symbol]
+             [i int]
+             [tr symbol])
   (Triv [triv]
         ?x
         ?i
@@ -59,7 +59,8 @@
                       (return ?tr)
                       (if (relop ?tr0 ?tr1) (?l0) (?l1))))
 
-(defpass eliminate-simple-moves (=> Lflat-funcs Lflat-funcs)
+#_
+(defpass eliminate-simple-moves (=> Lflat-funcs Lflat-funcs) [x]
   (let [var-slot-set! (fn [a b])
         identify-move
         ;; using ?:as to grab the whole form works only if there is no recursion, since it
@@ -103,30 +104,29 @@
 (def make-explicit
   (letfn [(f [x] false)
           (expr? [x] (= :expr (:tag (meta x))))]
-    (with-predicates {'x (per-element symbol?)
+    (with-predicates {'x (on-each symbol?)
                       'pr f 'c f 'd f}
-      (rule-fn
-       (directed
-        ;; There are several rules that seem only exist in order to descend
-        ;; into marked subexpressions. I'm not 100% clear on the behaviour of
-        ;; the auto-generated nanopass clauses.
-        (rule-list [(rule '?x x)
-                    (rule '?pr pr)
-                    (rule '?c `'~c)
-                    (rule '?d `'~d)
-                    (rule '(begin ??->e*) (sub (begin ??e*)))
-                    (rule '(if ?->e0 ?->e1) (sub (if ?e0 ?e1 (void))))
-                    (rule '(if ?->e0 ?->e1 ?->e2) (sub (if ?e0 ?e1 ?e2)))
+      (directed
+       ;; There are several rules that seem only exist in order to descend
+       ;; into marked subexpressions. I'm not 100% clear on the behaviour of
+       ;; the auto-generated nanopass clauses.
+       (rule-list [(rule '?x x)
+                   (rule '?pr pr)
+                   (rule '?c `'~c)
+                   (rule '?d `'~d)
+                   (rule '(begin ??->e*) (sub (begin ??e*)))
+                   (rule '(if ?->e0 ?->e1) (sub (if ?e0 ?e1 (void))))
+                   (rule '(if ?->e0 ?->e1 ?->e2) (sub (if ?e0 ?e1 ?e2)))
 
-                    (rule '(lambda (??x*) ??->body*)
-                          (sub (lambda (??x*) (begin ??body*))))
+                   (rule '(lambda (??x*) ??->body*)
+                         (sub (lambda (??x*) (begin ??body*))))
 
-                    (rule '(let ((?:* [?x* ?->b*])) ??->body*)
-                          (sub (let ((?:* [?x* ?b*])) (begin ??body*))))
+                   (rule '(let ((?:* [?x* ?->b*])) ??->body*)
+                         (sub (let ((?:* [?x* ?b*])) (begin ??body*))))
 
-                    (rule '(letrec ((?:* [?x* ?->e*])) ??->body*)
-                          (sub (letrec ((?:* [?x* ?e*])) (begin ??body*))))
-                    (rule '((?:+ ?->e)) (sub (??e)))]))))))
+                   (rule '(letrec ((?:* [?x* ?->e*])) ??->body*)
+                         (sub (letrec ((?:* [?x* ?e*])) (begin ??body*))))
+                   (rule '((?:+ ?->e)) (sub (??e)))])))))
 
 #_
 (group-by #(apply = %)

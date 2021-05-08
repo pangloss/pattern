@@ -1,13 +1,14 @@
 (ns matches.nanopass.dialect
-  (:require [matches.rules :refer [rule rule-fn]]
-            [matches.rule-combinators :refer [run-rule iterated rule-list]]
+  (:require [matches.r2.core :refer [rule]]
+            [matches.r2.combinators :refer [run-rule iterated rule-list]]
             [matches.match.core :refer [compile-pattern matcher compile-pattern match?]]
-            [matches.rewrite :refer [sub quo]]
-            [matches.nanopass.predicator :refer [with-predicates
-                                                 *pattern-replace*
-                                                 apply-replacements
-                                                 match-abbr
-                                                 make-abbr-predicator]]
+            [matches.r2.rewrite :refer [sub quo]]
+            [matches.match.predicator :refer [with-predicates
+                                              *pattern-replace*
+                                              apply-replacements
+                                              match-abbr
+                                              make-abbr-predicator]]
+            [matches.nanopass.khan :refer [kahn-sort]]
             [matches.types :refer [->MetaBox]]
             [genera :refer [defgenera defgen]]
             matches.matchers
@@ -22,9 +23,9 @@
   (set (map :abbr (vals (:terminals dialect)))))
 
 (defn- make-terminal [terminal abbr]
-  (let [pred-name (symbol (str (name terminal) "?"))]
-    (if-let [pred (resolve pred-name)]
-      {:name terminal
+  (let [pred-name (symbol (name terminal))]
+    (if-let [pred (resolve terminal)]
+      {:name pred-name
        :abbr abbr
        :predicate pred
        :symbol? (match-abbr abbr)
@@ -55,12 +56,14 @@
 
 (defn form-tag
   ([form-name]
+   ;; Note that if form-name is [dialect form] it will override *to-dialect*
    (form-tag *to-dialect* form-name))
   ([to-dialect form-name]
    (or (:name (get-form to-dialect form-name))
        (throw (ex-info "Unable to resolve form" {:name form-name :to-dialect (:name to-dialect)})))))
 
 (defn tag [form-name x]
+  ;; works with [dialect form-name] style form names
   (if (instance? clojure.lang.IObj x)
     (let [form-name (form-tag form-name)]
       (vary-meta x assoc ::form form-name))
@@ -98,19 +101,6 @@
   (if (:=> =>)
     (:=>/type => default)
     default))
-
-;; a problem is that patterns are compiled with the predicators and that happens when they
-;; are defined so that is pushing me to a very macro-heavy solution downstream from it.
-;;
-;; That's got me agonizing over syntax but perhaps the real problem is tehre. Maybe
-;; I could store the original pattern and allow recompilation with new predicator context?
-
-(comment
-  (def NS=>D2 (=>dialect (=> NS D2)
-                         (=> Namespace Expr) ->Expr
-                         (=>)))
-
-  ((dialect=> NS D2) Expr))
 
 (defn tag-result
   "This is a rule combinator that attaches form metadata to the result if the
@@ -152,15 +142,15 @@
   (form-expr form expr))
 
 (defgen add-form-expr [some? some? symbol?] [dialect form expr]
-  (if-let [term (some (fn [term]
-                        (when ((:symbol? term) expr)
-                          term))
-                      (vals (:terminals dialect)))]
-    (assoc (form-expr form expr)
-           :terminal term)
-    (throw (ex-info "Simple form expression must be a terminal."
-                    {:form (:name form)
-                     :expr expr}))))
+  (let [fe (form-expr form expr)]
+    (if-let [term (some (fn [term]
+                          (when ((:symbol? term) expr)
+                            term))
+                        (vals (:terminals dialect)))]
+      (assoc fe :is-terminal term)
+      ;; If it's not a terminal, it may be an expr, but we must wait until
+      ;; dialect finalization to incorporate it.
+      (assoc fe :maybe-is-form expr))))
 
 (defn finalize-expr [{:keys [->make-form] :as expr} predicators]
   (reduce (fn [expr [k f]]
@@ -175,11 +165,16 @@
 
 (defn finalize-form [dialect form predicators]
   (let [form-name (:name form)
-        terminals (keep (comp :predicate :terminal)
-                        (:exprs form))
+        ;; if the expr _is_ a terminal, then the terminal _is_ the expr, too.
+        eq-terminals (keep (comp :predicate :is-terminal)
+                           (:exprs form))
         form? (fn [x]
                 (or (= form-name (::form (meta x)))
-                    (some #(% x) terminals)))]
+                    (some #(% x) eq-terminals)))
+        ;; same rule (as with terminals above) about other forms that are pulled
+        ;; in to be part of this form, but we must do a dependency sort on
+        ;; those, so that's deferred to finalize dialect.
+        maybe-contains-forms (keep :maybe-is-form (:exprs form))]
     (-> form
         (update :exprs
                 (fn [exprs]
@@ -188,6 +183,7 @@
                           []
                           exprs)))
         (assoc :form? form?)
+        (assoc :maybe-contains-forms maybe-contains-forms)
         (assoc :predicator
                ;; Predicator will add $ to the matcher-mode of these matchers to
                ;; indicate the name has attached metadata
@@ -196,9 +192,57 @@
                                      form?)))))
 
 (defn dialect-predicators [dialect]
-  (concat (keep :predicator
-                (vals (:terminals dialect)))
-          (keep :predicator (vals (:forms dialect)))))
+  (vec
+   (concat (keep :predicator
+                 (vals (:terminals dialect)))
+           (keep :predicator (vals (:forms dialect))))))
+
+(defn- add-is-form-predicates
+  "Some forms may contain a simple matcher, ie ?expr which represents another expression. That
+  is captured in :maybe-contains-form but the predicate can only be generated in topo order after
+  any possible referred form has been created. This function does the topo sort and then amends the
+  form predicate to also match the contained form.
+
+  I'm not 100% sure that this behaviour will match the original nanopass framework..."
+  [dialect]
+  (let [expr-graph
+        (map (fn [{form-name :name syms :maybe-contains-forms}]
+               (let [forms (map (fn [sym]
+                                  (some (fn [{:keys [symbol? name]}]
+                                          (when (symbol? sym)
+                                            (second name)))
+                                        (vals (:forms dialect))))
+                                syms)]
+                 (if (not-any? nil? forms)
+                   (if ((set forms) (second form-name))
+                     (throw (ex-info "A simple expression in a form cannot refer to the form itself"
+                                     {:dialect (:name dialect)
+                                      :form form-name}))
+                     [(second form-name) (set forms)])
+                   (throw (ex-info "Unable to resolve simple expression to either a terminal or a form"
+                                   {:dialect (:name dialect)
+                                    :form form-name
+                                    :unresolved (vec (keep (fn [[s f]]
+                                                             (when-not f s))
+                                                           (map vector syms forms)))})))))
+             (vals (:forms dialect)))
+        expr-graph (into {} expr-graph)
+        sorted (reverse (kahn-sort expr-graph))
+        exprs-with-form-predicates (keep (fn [containing]
+                                           (when-let [contained (seq (expr-graph containing))]
+                                             [containing contained]))
+                                         sorted)]
+    (reduce (fn [dialect [containing contained*]]
+              (let [->form? #(get-in dialect [:forms % :form?])
+                    form? (->form? containing)
+                    contained-form? (apply some-fn (map ->form? contained*))]
+                (assoc-in dialect [:forms containing :form?]
+                          (fn form-or-contained-form? [x]
+                            (or (form? x)
+                                (contained-form? x))))))
+            dialect
+            exprs-with-form-predicates)))
+
 
 (defn finalize-dialect [dialect]
   ;; Predicators are required for top-level forms and for terminals, not for expressions.
@@ -211,7 +255,8 @@
                                   {}
                                   forms)))
         dialect (assoc dialect :predicators (dialect-predicators dialect))
-        tas (terminal-abbrs dialect)]
+        tas (terminal-abbrs dialect)
+        dialect (add-is-form-predicates dialect)]
     (when-let [abbr (some tas (map :abbr (vals (:forms dialect))))]
       (throw (ex-info "The same abbr is used for both a terminal and a form" {:abbr abbr})))
     (swap! all-dialects assoc (:name dialect) dialect)
@@ -233,9 +278,14 @@
         form (merge (get-in dialect [:forms form-name]
                             {:exprs []})
                     {:name full-name
+                     ;; NOTE: The form? predicate must be rebuilt for every
+                     ;; dialect both to capture the updated [dialect form] name,
+                     ;; and because form containment rules may change between
+                     ;; dialects.
                      :form? (fn form? [x]
                               (= full-name (get (meta x) ::form)))
-                     :abbr abbr})]
+                     :abbr abbr
+                     :symbol? (match-abbr abbr)})]
     (-> dialect
         (assoc-in [:forms form-name]
                   (update form :exprs
@@ -252,6 +302,11 @@
 (defn- remove-form [dialect name]
   (update dialect :forms dissoc name))
 
+(defn- set-entry [dialect name]
+  (if (:entry dialect)
+    (throw (ex-info "Only one program entry point is allowed" {:entry name}))
+    (assoc dialect :entry name)))
+
 (def ^:private derive-dialect*
   (with-predicates {'dialect map?
                     'op #{'+ '-}
@@ -263,12 +318,22 @@
                 (list* dialect more)
                 dialect))]
       (iterated
-       (rule-list [(rule '(?dialect (terminals (?:* ?op* (?name* ?abbr*))) ??more)
+       (rule-list [(rule '(?dialect (terminals (?:* ?op* [?abbr*
+                                                          (| ?name*
+                                                             (quote ?name*))]))
+                                    ??more)
                          (continue (add-remove-terminals dialect op* name* abbr*)
                                    more))
 
-                   (rule '(?dialect (terminals (?:* (?name* ?abbr*))) ??more)
+                   (rule '(?dialect (terminals (?:* [?abbr*
+                                                     (| ?name*
+                                                        (quote ?name*))]))
+                                    ??more)
                          (continue (add-remove-terminals dialect (repeat '+) name* abbr*)
+                                   more))
+
+                   (rule '(?dialect (entry ?name) ??more)
+                         (continue (set-entry dialect name)
                                    more))
 
                    (rule '(?dialect - ?name ??more)
@@ -289,6 +354,19 @@
 (defn- deref* [x]
   (if (var? x) @x x))
 
+(defn unparse-dialect [dialect]
+  `(~'define-dialect ~(:name dialect)
+    (~'terminals ~@(map (fn [{:keys [abbr predicate]}]
+                          [abbr predicate])
+                        (vals (:terminals dialect))))
+    ~@(when (:enter dialect)
+        [`(~'enter ~(:enter dialect))])
+    ~@(map (fn [{:keys [name abbr exprs]}]
+             `(~name [~abbr]
+               ~@(map :orig-expr exprs)))
+           (vals (:forms dialect)))))
+
+
 (defn ^:no-doc run-derive-dialect [name parent-dialect decls]
   (let [parent-dialect (resolve* parent-dialect)
         dialect (assoc (deref* parent-dialect)
@@ -297,7 +375,9 @@
         dialect (derive-dialect* (list* dialect (quo decls)))]
     (if (map? dialect)
       (finalize-dialect dialect)
-      (throw (ex-info "failed to parse dialect" {:partial-result dialect})))))
+      (throw (ex-info "failed to parse dialect" {:remaining-forms (vec (rest dialect))
+                                                 :partial-dialect (unparse-dialect (first dialect))
+                                                 :details (first dialect)})))))
 
 (defmacro define-dialect
   "Create a new dialect.
@@ -357,26 +437,35 @@
      '~(run-derive-dialect name parent-dialect decls)))
 
 (defn from-dialect* [dialect f]
-  (let [dialect (if (symbol? dialect)
-                  (@all-dialects dialect)
-                  dialect)]
-    (with-bindings* {#'*from-dialect* dialect
-                     #'*pattern-replace* (into (or *pattern-replace* [])
-                                               (:predicators dialect))}
-      f)))
+  (if dialect
+    (let [dialect (if (symbol? dialect)
+                    (@all-dialects dialect)
+                    dialect)]
+      (with-bindings* {#'*from-dialect* dialect
+                       #'*pattern-replace* (into (or *pattern-replace* [])
+                                                 (:predicators dialect))}
+        f))
+    (f)))
 
 (defmacro from-dialect [dialect & body]
   `(from-dialect* ~dialect (fn [] ~@body)))
 
 (defn to-dialect* [dialect f]
-  (let [dialect (if (symbol? dialect)
-                  (@all-dialects dialect)
-                  dialect)]
-    (with-bindings* {#'*to-dialect* dialect}
-      f)))
+  (if dialect
+    (let [dialect (if (symbol? dialect)
+                    (@all-dialects dialect)
+                    dialect)]
+      (with-bindings* {#'*to-dialect* dialect}
+        f))
+    (f)))
 
 (defmacro to-dialect [dialect & body]
   `(to-dialect* ~dialect (fn [] ~@body)))
+
+(defmacro dialects [=>dialects & body]
+  `(from-dialect (=>:from ~=>dialects nil)
+                 (to-dialect (=>:to ~=>dialects nil)
+                             ~@body)))
 
 (comment
   (do

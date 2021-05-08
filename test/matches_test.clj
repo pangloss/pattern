@@ -1,11 +1,11 @@
 (ns matches-test
   (:require [clojure.test :refer :all]
-            matches.rules
+            matches.r2.core
             [matches.match.core :as m :refer [matcher pattern-names var-name *disable-modes*
                                               compile-pattern matcher-prefix]]
             matches.matchers
             [pure-conditioning :as c :refer [manage restart-with handler-cond]])
-  (:use matches.rules))
+  (:use matches.r2.core))
 
 (deftest extensibility
   (let [<- (juxt m/matcher-type m/matcher-type-for-dispatch m/matcher-mode m/var-name)]
@@ -430,7 +430,7 @@
   (is (= {'x ["t" "u"] 'y ["blog"]}
          (:var-prefixes (meta (compile-pattern '[?->t:x ?<-u:x [[?blog:y]]])))))
 
-  (is (= {'x 1 'y 3}
+  (is (= {:x 1 :y 3}
          ((compile-pattern '[?->t:x ?<-u:x [[?blog:y]]])
           [1 1 [[3]]])))
 
@@ -441,10 +441,10 @@
          (matcher-prefix '(?-> abc:def)))))
 
 (deftest test-regex-matchers
-  (is (= {'p "abcdef" 'a "cd" 'b "f"}
+  (is (= {:p "abcdef" :a "cd" :b "f"}
          ((compile-pattern '[(?:re-matches #"ab(cd)e(f)" [?p ?a ?b])])
           ["abcdef"])))
-  (is (= {'x "cd" 'y [["abcdef" "cd" "f"] ["abcdef" "cd" "f"]]}
+  (is (= {:x "cd" :y [["abcdef" "cd" "f"] ["abcdef" "cd" "f"]]}
          ((compile-pattern '[(?:re-seq #"ab(cd)e(f)" [[?_ ?x ??_] ??y])])
           ["abcdef aou abcdef abcdef"])))
 
@@ -464,3 +464,29 @@
                   '[abc/def
                     {:name def
                      :ns cba}]))))
+
+(deftest test-sequence-with-optional-matches
+  (is (= '{:x 1 ;; this also tests sequences with non-sequential matches
+           :group-type* [nil (=> A B) nil (=> E F)]
+           :name* [nil test nil test2]
+           :args* [nil [a b] nil [e f]]
+           :rule* [nil rule nil rule3]
+           :group-type2* [(=> C D) nil (=> G H) nil]
+           :rule2* [rule2 nil rule4 nil]}
+         ((compile-pattern '[?x (?:* (| (?:1 ?group-type* ?x (?name* [??args*] ?rule*))
+                                        (?:1 ?group-type2* ?x ?rule2*)))])
+          '[1
+            (=> C D) 1 rule2
+            (=> A B) 1 (test [a b] rule)
+            (=> G H) 1 rule4
+            (=> E F) 1 (test2 [e f] rule3)])))
+
+  (testing (str "alternate branches share the same var name, while "
+                "optional matches are indexed correctly")
+    (is (= '{:group-type* [(=> A B) (=> D E)]
+             :name* [nil f]
+             :args* [nil [g h]]
+             :rule* [c i]}
+           ((compile-pattern '[(?:* (? group-type*) (| (?name* [??args*] ?rule*)
+                                                       ?rule*))])
+            '[(=> A B) c (=> D E) (f [g h] i)])))))

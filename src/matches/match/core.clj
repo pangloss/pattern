@@ -4,6 +4,7 @@
                             trampoline trampolining bouncing]]
             [uncomplicate.fluokitten.core :as f]
             [matches.types :refer [->Length map->Env]]
+            [matches.match.predicator :refer [*pattern-replace*]]
             [pure-conditioning :as c :refer [condition restarts default manage restart-with handler-cond]]
             [clojure.string :as str]
             [clojure.walk :as walk])
@@ -325,13 +326,14 @@
                                      (= (count (:value m))
                                         (.repetition env)))
                               (conj v value)
-                              ;; TODO: assert anything here?
                               v)))
                   {:name name :value [value] :type type}))]
         (update dict name add-to-var)))))
 
 (defn all-names [match-procedure]
-  (:var-names (meta match-procedure)))
+  (with-meta
+    (vec (:var-names (meta match-procedure)))
+    (meta match-procedure)))
 
 (defn all-values
   "A success continuation that returns a list of values in the order the vars
@@ -342,13 +344,15 @@
       (map (comp :value dict) names))))
 
 (defn value-dict
-  "A success continuation that creates a simple dictionary of name -> value from
-  the full match dictionary."
+  "A success continuation that creates a simple dictionary of :name -> value from
+  the full match dictionary.
+
+  Converts symbol names to keywords."
   [match-procedure]
   (let [names (all-names match-procedure)]
     (fn [dict]
       (reduce (fn [result name]
-                (assoc result name (get-in dict [name :value])))
+                (assoc result (keyword name) (get-in dict [name :value])))
               {} names))))
 
 (defn restartable? [pattern]
@@ -449,8 +453,7 @@
   ([pattern]
    (compile-pattern pattern {}))
   ([pattern comp-env]
-   ;; TODO: move *pattern-replace* to a better namespace
-   (let [comp-env (assoc comp-env ::pattern-replace [] #_matches.nanopass.predicator/*pattern-replace*)
+   (let [comp-env (assoc comp-env ::pattern-replace *pattern-replace*)
          compile (fn [pattern comp-env]
                    (compile-pattern* pattern
                                      (merge {:named-patterns (atom {})}

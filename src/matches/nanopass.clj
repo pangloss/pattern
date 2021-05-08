@@ -1,7 +1,7 @@
 (ns matches.nanopass
-  (:require [matches.rewrite :refer [sub]]
-            [matches.rule-combinators :refer :all]
-            [matches.rules :refer [rule]]
+  (:require [matches.r2.rewrite :refer [sub]]
+            [matches.r2.combinators :refer :all]
+            [matches.r2.core :refer [rule]]
             [matches.types :refer [->MetaBox ->ValuesBox]])
   (:import [clojure.lang IMeta IObj]
            matches.types.ValuesBox))

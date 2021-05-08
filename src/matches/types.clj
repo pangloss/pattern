@@ -1,6 +1,7 @@
 (ns matches.types)
 
 (defrecord Success [x])
+(defrecord SuccessEnv [x env])
 (defrecord SuccessUnmodified [])
 (defrecord ValuesBox [value])
 (defrecord MetaBox [value])

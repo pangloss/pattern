@@ -1,4 +1,4 @@
-(ns matches.rewrite
+(ns matches.r2.rewrite
   "This namespace defines several rulesets and related macros that enhance the expressive
   power of the rules engine.
 
@@ -20,14 +20,15 @@
   Note that `sequence` is included in the rules because when booting, Clojure's
   syntax quote expands slightly differently than at runtime. It also uses lists rather
   than Cons objects at boot."
-  (:require [matches.match.core :refer [matcher-type-for-dispatch var-name]]
-            [matches.rules :as r :refer [rule success rule-name pattern-args]]
+  (:require [matches.match.core :refer [matcher-type-for-dispatch var-name matcher-mode]]
+            [matches.r2.core :as r :refer [rule success rule-name pattern-args]]
             [clojure.walk :as walk]
-            [matches.rule-combinators :refer [descend
-                                              rule-list in-order rule-simplifier
-                                              iterated-on-subexpressions
-                                              on-subexpressions
-                                              directed]]))
+            [matches.r2.combinators :refer [descend
+                                            rule-list in-order rule-simplifier
+                                            simplifier
+                                            on-subexpressions
+                                            directed]]
+            [clojure.string :as str]))
 
 (def remove-expressions
   "Replace all unquoted expressions with 'identity but leave the structure of the
@@ -44,7 +45,7 @@
                                 `(concat ~@lists))
                           (rule `(apply hash-set ?->v)
                                 `(apply hash-set ~v))
-                          (rule `(apply hash-map ?->v)
+                          (rule `(apply (| hash-map array-map) ?->v)
                                 ;; Don't return a map because keys won't stay unique in
                                 ;; the next stage, which would cause values to be lost.
                                 `(apply vector ~v))
@@ -60,8 +61,8 @@
   ;; `success` to wrap the result, it should not get any substitutions done:
   (rule-name :evaluate-structure
              (directed
-              (rule-list [(rule `(seq ?->s) (success s))
-                          (rule `(sequence ?->s) (success s))
+              (rule-list [(rule `(seq ?->s) s)
+                          (rule `(sequence ?->s) s)
                           (rule `(list ?->item) (list item))
                           (rule `(concat ??->lists) (apply concat lists))
                           (rule `(apply hash-set ?->v) (set v))
@@ -93,6 +94,23 @@
   pure-pattern*)
 (reset! r/pure-pattern #'pure-pattern)
 
+(defn array-or-hash-map [& items]
+  (let [hm (apply hash-map items)]
+    (if (< (count items) 16)
+      (apply array-map items)
+      ;; TODO: are these assumptions sound? That if the items are not in the
+      ;; hash-map's order already then they never were in a hash map and so they
+      ;; are in their original order and can be safely put into an array map?
+      ;;
+      ;; The idea is that if items come out in an array map, their order may be
+      ;; considered significant. I want to use this in a simple {...} matcher that
+      ;; will include metadata indicating whether the arg order is stable.
+      ;;
+      ;; Maybe a better solution to this is to revisit the pure-pattern idea instead,
+      ;; which is what this needs to cater to.
+      (if (= (keys hm) (take-nth 2 items))
+        hm
+        (apply array-map items)))))
 
 (def remove-symbol-namespaces
   (rule-name :remove-symbol-namespaces
@@ -105,8 +123,10 @@
                                 `(seq (concat ~@lists)))
                           (rule `(apply hash-set ?->item)
                                 `(apply hash-set ~item))
-                          (rule `(apply hash-map ?->item)
-                                `(apply hash-map ~item))
+                          (rule `(apply (| hash-map array-map) ?->item)
+                                (if (::ordered (meta item))
+                                  `(apply array-map ~(with-meta item {::ordered true}))
+                                  `(apply array-or-hash-map ~item)))
                           (rule `(apply vector ?->item)
                                 `(apply vector ~item))
                           (rule '(quote ?quoted)
@@ -164,7 +184,7 @@
 
 
 (def unquote-all*
-  (iterated-on-subexpressions do-unquote*))
+  (simplifier do-unquote*))
 
 (def to-syntax-quote*
   (rule-name :to-syntax-quote
@@ -175,7 +195,8 @@
                          ;; map
                          (rule '(?:chain (? _ map?) seq (?) (apply concat) ?items)
                                (let [items (second (descend items))]
-                                 `(list (apply hash-map ~(seq items)))))
+                                 `(list (apply array-map
+                                               ~(with-meta items {::ordered true})))))
 
                          ;; set
                          (rule '(?:chain (? _ set?) seq ?items)
@@ -194,6 +215,8 @@
                          ;; else
                          (rule '?x `(list '~x))])))
 
+(def ^:dynamic *on-marked-insertion* identity)
+
 (def expand-pattern
   (rule-name :expand-pattern
              (directed
@@ -201,16 +224,26 @@
 
                           ;; var
                           (rule '(?:chain ?var matcher-type-for-dispatch ?)
-                                `(list ~(var-name var)))
+                                (if (str/includes? (or (matcher-mode var) "") "<-")
+                                  `(list (~*on-marked-insertion* ~(var-name var)))
+                                  `(list ~(var-name var))))
 
                           ;; segment
                           (rule '(?:chain ?var matcher-type-for-dispatch ??)
-                                (var-name var))
+                                (if (str/includes? (or (matcher-mode var) "") "<-")
+                                  `(map ~*on-marked-insertion* ~(var-name var))
+                                  (var-name var)))
+
+                          (rule '((?:literal ?:<-) ?->x)
+                                `(map ~*on-marked-insertion* ~x))
 
                           ;; sequence
                           (rule '(?:as expr ((? op #{?:* ?:+}) ??pattern))
-                                (let [names (distinct (mapcat pattern-args pattern))
-                                      seqs (doall (map (fn [n] `(if (seqable? ~n) ~n (repeat ~n)))
+                                (let [names (pattern-args pattern)
+                                      seqs (doall (map (fn [n]
+                                                         `(if (seqable? ~n)
+                                                            ~n
+                                                            (repeat ~n)))
                                                        names))
                                       expanded (descend pattern)]
                                   `(if (some seqable? ~(vec names))
@@ -218,7 +251,7 @@
                                              ~@seqs)
                                      (throw (ex-info (str "At least one sequence variable must be bounded.\n\n"
                                                           "If a variable `x` is not seqable it wrapped with "
-                                                          "(repeat x), so the cause of this probem could be "
+                                                          "(repeat x), so the cause of this problem could be "
                                                           "that no expansion variables are sequential for the "
                                                           "repeat pattern.")
                                                      {:expression '~expr})))))
@@ -257,7 +290,9 @@
 
                           ;; map
                           (rule '((?:literal ?:map) (?:* ?->k ?->v))
-                                `(list (apply hash-map (seq (concat ~@(interleave k v))))))
+                                `(list (apply array-map
+                                              ~(with-meta `(seq (concat ~@(interleave k v)))
+                                                 {::ordered true}))))
 
                           ;; if
                           (rule '((?:literal ?:if) ?pred ?->then (?:? ?->else))
@@ -325,9 +360,15 @@
 
   This produces what I expect shoud be optimally fast substitutions, but differs
   from [[matches.substitute/substitute]] in that it requires that all substitution patterns
-  must be bound, and will produce a compilation error if not."
-  [form]
-  (qsub* form))
+  must be bound, and will produce a compilation error if not.
+
+  The arity 2 version allows substitutions to be transformed by the supplied
+  function before being inserted if they are marked with <- or wrapped with (?:<- ...)"
+  ([form]
+   (qsub* form))
+  ([f form]
+   (binding [*on-marked-insertion* f]
+     (qsub* form))))
 
 (defn eval-spliced
   "Experimental. Uses [[spliced]] to transform regular lists, then uses eval to
