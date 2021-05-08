@@ -446,4 +446,21 @@
           ["abcdef"])))
   (is (= {'x "cd" 'y [["abcdef" "cd" "f"] ["abcdef" "cd" "f"]]}
          ((compile-pattern '[(?:re-seq #"ab(cd)e(f)" [[?_ ?x ??_] ??y])])
-          ["abcdef aou abcdef abcdef"]))))
+          ["abcdef aou abcdef abcdef"])))
+
+  (is (= ["y" "z"]
+         (matcher '[(?:re-matches #"x:(.)" [?_ ?x])
+                    1
+                    (?:re-matches #"(.):(.)" [?_ ?x ?y])
+                    2]
+                  ["x:y" 1 "y:z" 2])))
+
+  (is (= '[abc/def
+           "abc" def
+           \c]
+         (matcher '[(?:chain ?s str (?:re-matches #"(.*)/(.*)" [?_ ?ns (?:chain ?_ symbol ?name)]))
+                    (?:map :name ?name
+                           :ns (?:chain ?_ str ?_ reverse (\a \b ?c) (apply str) ?ns))]
+                  '[abc/def
+                    {:name def
+                     :ns cba}]))))

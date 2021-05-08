@@ -46,26 +46,6 @@
     {:length (len 1)}))
 
 
-(defn- match-regex [[op regex capture-pattern] comp-env]
-  (let [m (compile-pattern* capture-pattern comp-env)
-        f (condp = op
-            '?:re-matches re-matches
-            '?:re-seq re-seq)]
-    (with-meta
-      (fn regex-matcher [data dictionary ^Env env]
-        (if-let [str (first data)]
-          (if-let [matches (when (string? str)
-                             (f regex str))]
-            (m (list (vec matches)) dictionary
-               (assoc env :succeed
-                      (fn [dict n]
-                        ((.succeed env) dict 1))))
-            (on-failure :mismatch regex dictionary env 1 data str))
-          (on-failure :missing regex dictionary env 0 data nil)))
-      (merge (meta m)
-             {:length (len 1)}))))
-
-
 (defn- match-literal
   "This is a way to match an escaped value, so for instance something
   that looks like a matcher can be matched this way."
@@ -533,6 +513,51 @@
       (-> (assoc (apply merge-with f/op (map meta matchers))
                  :length (:length (meta (first matchers))))
           (update :var-names distinct)))))
+
+
+(defn- match-regex
+  "Match a string with the given regular expression. To succeed, the regex must
+  match against the string and the pattern must also match against the regex
+  captures and unify correctly just like any other pattern. This matcher
+  supports use in two ways.
+
+  Full string matching requires that the regex consumes the entire string. The
+  pattern provided as the second argument matches the vector of captures that is
+  returned when calling [[re-matches]].
+
+      (?:re-matches regex pattern)
+
+  Partial or multiple matching via [[re-seq]] does not require the regex to
+  consume the entire string. Instead of one vector of matches, this mode returns
+  a vector of match vectors, each of which are structured the same as above.
+
+      (?:re-seq regex pattern)
+
+  Example of a naive email matcher:
+
+      (?:re-matches #\"(.*)@(.*)\\.(com|org)\" [?full-email ?name ?domain ?tld])
+
+  or you may just capture the entire result:
+
+      (?:re-matches #\"(.*)@(.*)\\.(com|org)\" ?matches)"
+  [[op regex capture-pattern] comp-env]
+  (let [m (compile-pattern* capture-pattern comp-env)
+        f (condp = op
+            '?:re-matches re-matches
+            '?:re-seq re-seq)]
+    (with-meta
+      (fn regex-matcher [data dictionary ^Env env]
+        (if-let [str (first data)]
+          (if-let [matches (when (string? str)
+                             (f regex str))]
+            (m (list (vec matches)) dictionary
+               (assoc env :succeed
+                      (fn [dict n]
+                        ((.succeed env) dict 1))))
+            (on-failure :mismatch regex dictionary env 1 data str))
+          (on-failure :missing regex dictionary env 0 data nil)))
+      (merge (meta m)
+             {:length (len 1)}))))
 
 
 (defn- match-or
