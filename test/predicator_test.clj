@@ -1,7 +1,7 @@
 (ns predicator-test
   (:require  [clojure.test :refer :all]
              [matches :refer [compile-pattern]]
-             [matches.match.predicator :refer [match-abbr make-abbr-predicator]]))
+             [matches.match.predicator :refer [match-abbr apply-predicator make-abbr-predicator]]))
 
 (deftest symbol-matcher
   (is (= ["?e" "?" "" "" "e"]
@@ -32,10 +32,12 @@
 
 (deftest test-abbr-predicator
   (is (= `(~'? ~'x:foo*1 ~symbol?)
-         ((make-abbr-predicator 'x symbol?)
+         (apply-predicator
+          (make-abbr-predicator 'x symbol?)
           '?x:foo*1)))
   (let [[matcher name pred]
-        ((make-abbr-predicator 'x symbol?)
+        (apply-predicator
+         (make-abbr-predicator 'x symbol?)
          '??x:foo*1)]
     (is (= '?? matcher))
     (is (= 'x:foo*1 name))

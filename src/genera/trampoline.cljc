@@ -7,6 +7,10 @@
   [f]
   (with-meta f {::bounce true}))
 
+(defn bounce? [x]
+  (when (fn? x)
+    (::bounce (meta x))))
+
 (defn trampoline
   "Trampoline can be used to convert algorithms requiring mutual recursion, or
   that recur from within a callback so that they don't consume the stack.

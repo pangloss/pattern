@@ -1,13 +1,13 @@
 (ns simplify-test
   (:require [clojure.test :refer [deftest is testing]]
             [clojure.walk :as walk]
-            [matches.r2.combinators :refer [*debug-rules*
+            [matches.r3.combinators :refer [*debug-rules*
                                             rule-list rule-simplifier
                                             iterated]]
-            [matches.r2.core :refer [rule
+            [matches.r3.core :refer [rule
                                      rule-name]]
             [matches.match.predicator :refer [*pattern-replace* make-abbr-predicator]]
-            [matches.r2.rewrite :refer [sub quo pure-pattern]]))
+            [matches.r3.rewrite :refer [sub quo pure-pattern]]))
 ;;; Helper functions for an algebraic simplifier
 
 (defn symbol<? [x y]

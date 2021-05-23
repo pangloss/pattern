@@ -1,11 +1,11 @@
-(ns r2-test
+(ns r3-test
   (:require [clojure.test :refer :all]
             [pure-conditioning :as c :refer [manage restart-with handler-cond]]
             [simplify-test :refer [expr<?]]
-            [matches.r2.core :refer [rule success success:env]]
+            [matches.r3.core :refer [rule success success:env]]
             [matches.match.predicator :refer [*pattern-replace* make-abbr-predicator]]
-            [matches.r2.rewrite :refer [sub quo pure-pattern]])
-  (:use matches.r2.combinators))
+            [matches.r3.rewrite :refer [sub quo pure-pattern]])
+  (:use matches.r3.combinators))
 
 
 (deftest rules-etc
@@ -87,7 +87,6 @@
 (deftest with-restrictions
   (is (= 0 ((rule '(? x = 3) 4) 0)))
   (is (= 4 ((rule '(? x = 3) 4) 3))))
-
 
 (deftest with-marked-subex
   (is (= '(+ (+ 2 c) 33)
@@ -448,11 +447,11 @@
 
 (deftest simple-syntax-quoted-pattern
   (is (= `(seq [1])
-         ((matches.r2.core/rule `(seq ?->s)
+         ((matches.r3.core/rule `(seq ?->s)
                                 `(seq ~s))
           `(seq [1])))))
 
-(deftest test-qsub
+(deftest test-sub
   (let [a* [99]
         b* []
         c* [1 2]
@@ -791,3 +790,29 @@
            (first ((rule ^{:env-args [x]} '(+ ?a 1) (sub (inc (| ?x ?a))))
                    '(+ 3 1)
                    {:x 99}))))))
+
+(deftest directed-combinator
+  (testing "This is only able to hit the rule that descends because it iterates after unwrapping the outer Int form"
+    (is (= 10
+           ((directed (iterated
+                       (rule-list
+                        [(rule '(Int ?x) x)
+                         (rule '(+ ?->a ?->b)
+                               (+ a b))])))
+            '(Int (+ 1 (Int (Int (+ (Int 2) (+ (Int 3) (Int 4)))))))))))
+
+  (testing "The Int form is unwrapped before the next rule is tried"
+    (is (= 10
+           ((directed (in-order
+                       [(rule '(Int ?x) x)
+                        (rule '(+ ?->a ?->b)
+                              (+ a b))]))
+            '(Int (+ 1 (Int (+ (Int 2) (+ (Int 3) (Int 4))))))))))
+
+  (testing "The matched rule does not descend so stops after unwrapping the Int form"
+    (is (= '(+ 1 (Int (+ (Int 2) (+ (Int 3) (Int 4)))))
+           ((directed (rule-list
+                       [(rule '(Int ?x) x)
+                        (rule '(+ ?->a ?->b)
+                              (+ a b))]))
+            '(Int (+ 1 (Int (+ (Int 2) (+ (Int 3) (Int 4)))))))))))

@@ -1,11 +1,11 @@
 (ns matches-test
   (:require [clojure.test :refer :all]
-            matches.r2.core
+            matches.r3.core
             [matches.match.core :as m :refer [matcher pattern-names var-name *disable-modes*
                                               compile-pattern matcher-prefix]]
             matches.matchers
             [pure-conditioning :as c :refer [manage restart-with handler-cond]])
-  (:use matches.r2.core))
+  (:use matches.r3.core))
 
 (deftest extensibility
   (let [<- (juxt m/matcher-type m/matcher-type-for-dispatch m/matcher-mode m/var-name)]

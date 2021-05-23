@@ -4,9 +4,9 @@
              [matches.match.predicator :refer [with-predicates on-each]]
              [matches.nanopass.dialect :refer [define-dialect derive-dialect => ==>]]
              [matches.nanopass.pass :refer [defpass]]
-             [matches.r2.combinators :refer [rule-simplifier directed rule-list]]
-             [matches.r2.core :refer [rule success]]
-             [matches.r2.rewrite :refer [sub]]
+             [matches.r3.combinators :refer [rule-simplifier directed rule-list]]
+             [matches.r3.core :refer [rule success]]
+             [matches.r3.rewrite :refer [sub]]
              [matches.match.core :refer [compile-pattern* matcher]]
              [uncomplicate.fluokitten.core :as f]))
 

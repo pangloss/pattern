@@ -11,13 +11,13 @@
                      tag-result
                      dialects
                      from-dialect]]
-            [matches.r2.combinators :as c :refer [on-mutual
+            [matches.r3.combinators :as c :refer [on-mutual
                                                   on-subexpressions
                                                   rule-list
                                                   guard
                                                   directed]]
-            [matches.r2.core :refer [rule success]]
-            [matches.r2.rewrite :refer [quo sub]]))
+            [matches.r3.core :refer [rule success]]
+            [matches.r3.rewrite :refer [quo sub]]))
 
 (defn combine-rules
   "Combine a collection of rule combinators which each handle inputs tagged with
@@ -118,7 +118,7 @@
 
   Example usage:
 
-        (defpass naive-cps (=> LamdaCalc CPS)
+        (defpass naive-cps (=> LambdaCalc CPS)
           (let-rulefn [(M (=> Expr MExpr)
                           [(rule '(fn [?var] ?expr)
                                   (let [k (gensym 'k)]

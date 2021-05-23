@@ -1,6 +1,6 @@
 (ns matches.substitute
   "This namespace implements a data-driven substitution system. It's flexible
-  but much slower than the one defined in the [[matches.r2.rewrite]] namespace that fully
+  but much slower than the one defined in the [[matches.r3.rewrite]] namespace that fully
   precompiles the substitution."
   (:require [matches.match.core :refer [var-name matcher-type-for-dispatch pattern-names *disable-modes* resolve-fn]]
             [genera :refer [defmethod* defmethod!]]))
@@ -198,7 +198,7 @@
   and an optional failure continuation (fn [dict name pattern]) which must
   return a *list* of data to be spliced in place of the pattern.
 
-  If using a static pattern, prefer [[matches.r2.rewrite/sub]]."
+  If using a static pattern, prefer [[matches.r3.rewrite/sub]]."
   ([x]
    (comp first (sub* x)))
   ([x dict]

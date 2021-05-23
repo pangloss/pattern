@@ -38,3 +38,14 @@
 (defrecord Length [n v]
   uncomplicate.fluokitten.protocols/Magma
   (op [_] length-op))
+
+(defprotocol RuleCombinator
+  :extend-via-metadata true
+  (child-rules [rc])
+  (recombine [rc rules]))
+
+(defn rule-combinator? [r]
+  (or (satisfies? RuleCombinator r)
+      (let [m (meta r)]
+        (or (`child-rules m)
+            (`recombine m)))))

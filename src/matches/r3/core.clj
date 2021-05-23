@@ -1,14 +1,23 @@
-(ns matches.r2.core
+(ns matches.r3.core
   "This namespace bootstraps the core rule macro and some utility functions."
-  (:require [matches.match.core :refer [matcher compile-pattern all-values
-                                        run-matcher pattern-names value-dict]]
+  (:require [matches.match.core :refer [matcher compile-pattern
+                                        run-matcher pattern-names
+                                        all-values value-dict]]
             matches.matchers
+            [genera.trampoline :refer [bounce?]]
             [matches.substitute :refer [substitute]]
             [matches.match.predicator :refer [*pattern-replace* apply-replacements]]
             [clojure.walk :as walk]
             [matches.types :refer [->SuccessUnmodified ->Success ->SuccessEnv]]
-            [matches.r2.combinators :refer [*debug-rules* run-rule]])
-  (:import (matches.types Success SuccessEnv SuccessUnmodified)))
+            [matches.r3.combinators :refer [*debug-rules* run-rule]])
+  (:import (matches.types Success SuccessEnv SuccessUnmodified)
+           (clojure.lang IFn IObj IMeta)))
+
+(defn raw-matches
+  "A success continuation that just returns the match 'dictionary', which may be
+  either a dictionary or a function that behaves the same way as calling a map."
+  [match-procedure]
+  (comp list identity))
 
 ;;;; rule-implementation
 
@@ -61,6 +70,62 @@
   arguments, or provide your own function."
   (comp list (value-dict match-procedure)))
 
+(declare match-rule invoke-rule)
+
+(deftype Rule [match-procedure handler get-values metadata]
+  IFn
+  (applyTo [rule args]
+    (apply invoke-rule rule args))
+  (invoke [rule data]
+    (first (run-rule rule data nil)))
+  (invoke [rule data env]
+    (run-rule rule data env))
+  (invoke [rule data env succeed fail]
+    (invoke-rule rule data env nil succeed fail))
+  (invoke [rule data env events succeed fail]
+    (invoke-rule rule data env events succeed fail))
+
+  IObj
+  (withMeta [rule metadata]
+    (Rule. match-procedure handler get-values metadata))
+  IMeta
+  (meta [rule] metadata))
+
+(defmethod print-method Rule [r ^java.io.Writer w]
+  (.write w (prn-str
+             (or (:src (:rule (meta r)))
+                 '(rule (:pattern (:rule (meta r))) '...)))))
+
+(defn- match-rule [^Rule rule data env dict succeed]
+  (let [env (assoc env :rule/datum data
+                   #_#_:match/dict dict)]
+    (when-let [result (apply (.handler rule)
+                             env
+                             ((.get-values rule) dict))]
+      (when *debug-rules*
+        (prn '>> data)
+        (prn '=> (unwrap data result)))
+      (succeed (or (unwrap data result) result)
+               (unwrap-env env result)
+               (constantly false)))))
+
+(defn invoke-rule [^Rule rule data env {:keys [on-match on-result]} succeed fail]
+  (if-let [r (run-matcher (.match-procedure rule) data
+                          (fn [dict]
+                            (let [r (if on-match
+                                      (when-let [[data dict env] (on-match rule dict)]
+                                        (match-rule rule data env dict succeed))
+                                      (match-rule rule data env dict succeed))]
+                              (if on-result
+                                (on-result rule r data dict env)
+                                r))))]
+    (if (fn? r)
+      r
+      (let [[result env] r]
+        [(unwrap data result) (unwrap-env env result)]))
+    (fail)))
+
+
 (defn make-rule
   "Compiler for rules. Returns a function that when called with a datum either
   returns the original value or if the pattern matches and the handler returns a
@@ -86,39 +151,14 @@
          match-procedure (compile-pattern pattern)
          handler (bound-fn* orig-handler)
          get-values (->get-values match-procedure)]
-     (letfn [(match-rule [data env succeed]
-               (fn in-match-rule [dict]
-                 (let [env (assoc env :rule/datum data)]
-                   (when-let [result (apply handler
-                                            env
-                                            (get-values dict))]
-                     (when *debug-rules*
-                       (prn '>> data)
-                       (prn '=> (unwrap data result)))
-                     (succeed (or (unwrap data result) result)
-                              (unwrap-env env result)
-                              (constantly false))))))]
-       (with-meta
-         (fn the-rule
-           ([data] (first (run-rule the-rule data nil)))
-           ([data env]
-            (run-rule the-rule data env))
-           ([data env succeed fail]
-            (if-let [r (run-matcher match-procedure data
-                                    (match-rule data env succeed))]
-              (if (fn? r)
-                r
-                (let [[result env] r]
-                  [(unwrap data result) (unwrap-env env result)]))
-              (fail))))
-         {:rule (merge (assoc (meta match-procedure)
-                              :builder #'make-rule
-                              :build-args [orig-pattern
-                                           orig-handler]
-                              :rule-type :matches/rule
-                              :match match-procedure
-                              :match-rule match-rule)
-                       metadata)})))))
+     (->Rule match-procedure handler get-values
+             {:rule
+              (merge (meta match-procedure)
+                     {:rule-type :matches/rule
+                      :match match-procedure
+                      :handler handler}
+                     metadata)}))))
+
 
 (defn rule-name
   "Attach a rule name to the given object's metadata."
@@ -128,9 +168,10 @@
 (defonce pure-pattern (atom identity))
 (defonce spliced (atom identity))
 (defonce qsub* (atom identity))
+(defonce rule-src (atom identity))
 
 (defmacro sub
-  "Use the version in the matches.r2.rewrite namespace."
+  "Use the version in the matches.r3.rewrite namespace."
   [form]
   (@qsub* form))
 
@@ -140,7 +181,15 @@
   on a match result.
 
   This function uses pure-pattern to remove all data from the pattern to prevent
-  arg name generation."
+  arg name generation.
+
+  This is so complex is because this function is designed to be called during
+  macro expansion. It must eliminate any non-pattern expressions because they
+  could look like matchers and be included in the list of matcher names, which
+  would cause an arity error when the matcher is called. The identity function
+  was chosen arbitrarily to replace all expressions because it could appear in the
+  (? x identity) position, so needs to resolve as a function when the var is
+  resolved."
   [pattern]
   (let [tidied (if (and (seqable? pattern) (= 'quote (first pattern)))
                  (second pattern)
@@ -152,13 +201,17 @@
                   unquote-splicing (constantly [identity])]
       (pattern-names tidied))))
 
-(defn- with-env-args [env-args body]
-  (if (seq env-args)
-    `(let [~@(mapcat (fn [arg]
-                       [arg `(~'%env ~(keyword arg))])
-                     env-args)]
-       ~body)
-    body))
+(defn- extract-args [matches args]
+  (when (seq args)
+    (mapcat (fn [arg]
+              [arg `(get (~matches '~arg) :value)])
+            args)))
+
+(defn- env-args [env-args]
+  (when (seq env-args)
+    (mapcat (fn [arg]
+              [(symbol (name arg)) `(~'%env ~(keyword arg))])
+            env-args)))
 
 (defn- may-call-success0? [body]
   (boolean (some #{'(success) 'success:env
@@ -185,7 +238,7 @@
 
   Rules may have unquote and spliced unquote in their definitions even if they are
   defined as normal quoted lists. The functionality is provided by a ruleset in
-  matches.r2.rewrite/spliced. It allows the following, but note that splices in rule
+  matches.r3.rewrite/spliced. It allows the following, but note that splices in rule
   definitions only happen at *compile time*:
 
       (rule '[(? a ~my-pred) ~@my-seq-of-things]
@@ -195,17 +248,26 @@
   This may be useful within rule lists or for other higher level rule
   combinators that make use of the rule metadata in the match expression."
   ([pattern]
-   (let [args (into ['%env] (pattern-args pattern))]
+   (let [args (pattern-args pattern)
+         matches (gensym 'matches)]
      `(let [p# ~(@spliced pattern)]
-        (make-rule p# (fn ~args
-                        (sub ~(if (= 'quote (first pattern))
-                                (second pattern)
-                                pattern)))
-                   all-values {}))))
+        (make-rule p# (fn [env# ~matches]
+                        (let [~@(extract-args matches args)]
+                          (sub ~(if (= 'quote (first pattern))
+                                  (second pattern)
+                                  pattern))))
+                   raw-matches {:src '~(@rule-src &form)}))))
   ([pattern handler-body]
-   (let [args (into ['%env] (pattern-args pattern))]
+   (let [args (pattern-args pattern)
+         matches (gensym 'matches)]
      `(let [p# ~(@spliced pattern)]
-        (make-rule p# (fn ~args
-                        ~(with-env-args (:env-args (meta pattern)) handler-body))
-                   all-values
-                   {:may-call-success0? ~(may-call-success0? handler-body)})))))
+        (make-rule p# (fn [~'%env ~matches]
+                        ;; TODO: should env-args or regular args dominate? or should a conflict be an error?
+                        ;; TODO: is the JVM smart about eliding unused bindings here or should I try
+                        ;;       to introspect the body to determine which args are used?
+                        (let [~@(extract-args matches args)
+                              ~@(env-args (:env-args (meta pattern)))]
+                          ~handler-body))
+                   raw-matches
+                   {:may-call-success0? ~(may-call-success0? handler-body)
+                    :src '~(@rule-src &form)})))))

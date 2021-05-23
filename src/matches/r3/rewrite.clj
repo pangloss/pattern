@@ -1,4 +1,4 @@
-(ns matches.r2.rewrite
+(ns matches.r3.rewrite
   "This namespace defines several rulesets and related macros that enhance the expressive
   power of the rules engine.
 
@@ -20,10 +20,12 @@
   Note that `sequence` is included in the rules because when booting, Clojure's
   syntax quote expands slightly differently than at runtime. It also uses lists rather
   than Cons objects at boot."
-  (:require [matches.match.core :refer [matcher-type-for-dispatch var-name matcher-mode]]
-            [matches.r2.core :as r :refer [rule success rule-name pattern-args]]
+  (:require [matches.match.core :refer [matcher-type-for-dispatch var-name matcher-mode
+                                        named-matcher? simple-named-var?]]
+            matches.matchers ;; just to ensure the ns is loaded
+            [matches.r3.core :as r :refer [rule success rule-name pattern-args]]
             [clojure.walk :as walk]
-            [matches.r2.combinators :refer [descend
+            [matches.r3.combinators :refer [descend
                                             rule-list in-order rule-simplifier
                                             simplifier
                                             on-subexpressions
@@ -69,12 +71,8 @@
                           (rule `(apply vector ?->v) (vec v))
                           (rule '(quote ?quoted) (success quoted))]))))
 
-(def pure-pattern*
-  (rule-name :pure-pattern
-             (in-order [remove-expressions
-                        evaluate-structure])))
-
-(def ^{:doc "Inside a macro, syntax-quoted data is a deeply nested set of
+(def pure-pattern
+  ^{:doc "Inside a macro, syntax-quoted data is a deeply nested set of
           function calls.
 
           This resolves the specific structural calls to normal-looking forms
@@ -89,9 +87,11 @@
 
           If you call this directly outside of a macro, the input needs to be
           _double syntax quoted_ or you will just get `identity` back!"
-       :arglists '([pattern])}
-  pure-pattern
-  pure-pattern*)
+    :arglists '([pattern])}
+  (rule-name :pure-pattern
+             (in-order [remove-expressions
+                        evaluate-structure])))
+
 (reset! r/pure-pattern #'pure-pattern)
 
 (defn array-or-hash-map [& items]
@@ -330,10 +330,12 @@
                (rule `(hash-map (?:* (?:or (~'quote ?x*) (? x* number?))))
                      `(~'quote {~@[] ~@x*}))])))
 
-(def unwrap-list (rule-name :unwrap-list (rule-list [(rule `(list ?x) x)
-                                                     (rule `(?:as expr ((? op #{if let seq}) ??rest))
-                                                           `(first ~expr))
-                                                     (rule `(? x symbol?) `(first ~x))])))
+(def unwrap-list
+  (rule-name :unwrap-list
+             (rule-list [(rule `(list ?x) x)
+                         (rule `(?:as expr ((? op #{if let seq}) ??rest))
+                               `(first ~expr))
+                         (rule `(? x symbol?) `(first ~x))])))
 
 (def unwrap-quote (rule-name :unwrap-quote (rule `(~'quote ?x) x)))
 
@@ -390,3 +392,23 @@
     (splice* (second form))
     form))
 (reset! r/spliced #'spliced)
+
+(def remove-matcher-ns
+  "This makes (some.ns/? some.ns/x) look like (? x), etc when displaying rules."
+  (on-subexpressions
+   (rule-list [(rule '(? v ~simple-named-var?)
+                     (symbol (name v)))
+               (rule '(& (? _ ~named-matcher?)
+                         (?op ?n ??more))
+                     (sub (~(symbol (name op)) ~(symbol (name n)) ??more)))])))
+
+(def cleanup-rule-pattern
+  "Makes syntax-quoted rule patterns presentable"
+  (in-order [evaluate-structure
+             remove-matcher-ns]))
+
+(def rule-src
+  "Makes syntax-quoted rules presentable"
+  (rule '(rule ?pattern ??body)
+        (sub (rule ~(cleanup-rule-pattern pattern) ~@(map evaluate-structure body)))))
+(reset! r/rule-src #'rule-src)

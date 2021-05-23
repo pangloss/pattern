@@ -1,14 +1,15 @@
 (ns matches.nanopass.dialect
-  (:require [matches.r2.core :refer [rule]]
-            [matches.r2.combinators :refer [run-rule iterated rule-list]]
-            [matches.match.core :refer [compile-pattern matcher compile-pattern match?]]
-            [matches.r2.rewrite :refer [sub quo]]
+  (:require [matches.r3.core :refer [rule make-rule success]]
+            [matches.r3.combinators :refer [run-rule iterated rule-list on-subexpressions]]
+            [matches.match.core :refer [compile-pattern matcher compile-pattern match?
+                                        matcher-type]]
+            [matches.r3.rewrite :refer [sub quo]]
             [matches.match.predicator :refer [with-predicates
                                               *pattern-replace*
                                               apply-replacements
                                               match-abbr
                                               make-abbr-predicator]]
-            [matches.nanopass.khan :refer [kahn-sort]]
+            [matches.nanopass.kahn :refer [kahn-sort]]
             [matches.types :refer [->MetaBox]]
             [genera :refer [defgenera defgen]]
             matches.matchers
@@ -111,22 +112,31 @@
    (let [form (form-tag to-dialect form-name)]
      (with-meta
        (fn do-tag-result
-         ([data] (run-rule do-tag-result data))
-         ([datum y n]
+         ([data] (first (run-rule do-tag-result data nil)))
+         ([data env] (run-rule do-tag-result data env))
+         ([datum env om y n]
           (r datum
-             (fn [result n]
+             env
+             (fn [result env n]
                (if (fn? result)
-                 (y result n)
+                 ;; FIXME: 99% sure this condition is not needed
+                 (y result env n)
                  (let [result (if (instance? clojure.lang.IObj result)
                                 (vary-meta result assoc ::form form)
                                 result)]
-                   (y result n))))
+                   (y result env n))))
              n)))
-       (assoc-in (meta r)
-                 [:rule :tag-result] form)))))
+       (-> (meta r)
+           (assoc-in [:rule :tag-result] form)
+           (update-in [:rule :match-rule]
+                      #(comp (fn [f]
+                               (fn [dict]
+                                 (let [[r e] (f dict)]
+                                   [(tag form r) e])))
+                             %)))))))
 
-(defgenera add-form-expr 3 [& args]
-  (throw (ex-info "No add-form-expr matched" {:args args})))
+(defmulti add-form-expr (fn [dialect form expr]
+                          (matcher-type expr)))
 
 ;; remove ->form-pattern
 
@@ -138,10 +148,10 @@
                     (when (match expr)
                       (tag (:name form) expr))))})
 
-(defgen add-form-expr [some? some? list?] [dialect form expr]
+(defmethod add-form-expr :default [dialect form expr]
   (form-expr form expr))
 
-(defgen add-form-expr [some? some? symbol?] [dialect form expr]
+(defmethod add-form-expr '? [dialect form expr]
   (let [fe (form-expr form expr)]
     (if-let [term (some (fn [term]
                           (when ((:symbol? term) expr)
@@ -231,32 +241,36 @@
         exprs-with-form-predicates (keep (fn [containing]
                                            (when-let [contained (seq (expr-graph containing))]
                                              [containing contained]))
-                                         sorted)]
+                                         sorted)
+        dialect (assoc dialect :form-order sorted)]
     (reduce (fn [dialect [containing contained*]]
               (let [->form? #(get-in dialect [:forms % :form?])
                     form? (->form? containing)
-                    contained-form? (apply some-fn (map ->form? contained*))]
-                (assoc-in dialect [:forms containing :form?]
-                          (fn form-or-contained-form? [x]
-                            (or (form? x)
-                                (contained-form? x))))))
+                    contained-form? (apply some-fn (map ->form? contained*))
+                    form?-new (fn form-or-contained-form? [x]
+                                (or (form? x)
+                                    (contained-form? x)))]
+                (-> dialect
+                    (assoc-in [:forms containing :form?]
+                              form?-new)
+                    (assoc-in [:forms containing :predicator :predicate]
+                              form?-new))))
             dialect
             exprs-with-form-predicates)))
 
 
 (defn finalize-dialect [dialect]
   ;; Predicators are required for top-level forms and for terminals, not for expressions.
-  (let [term-predrs (dialect-predicators dialect)
-        dialect (update dialect :forms
+  (let [dialect (update dialect :forms
                         (fn [forms]
                           (reduce (fn [forms [form-name form]]
                                     (assoc forms form-name
-                                           (finalize-form dialect form term-predrs)))
+                                           (finalize-form dialect form (dialect-predicators dialect))))
                                   {}
                                   forms)))
-        dialect (assoc dialect :predicators (dialect-predicators dialect))
         tas (terminal-abbrs dialect)
-        dialect (add-is-form-predicates dialect)]
+        dialect (add-is-form-predicates dialect)
+        dialect (assoc dialect :predicators (dialect-predicators dialect))]
     (when-let [abbr (some tas (map :abbr (vals (:forms dialect))))]
       (throw (ex-info "The same abbr is used for both a terminal and a form" {:abbr abbr})))
     (swap! all-dialects assoc (:name dialect) dialect)
@@ -386,8 +400,8 @@
   language with 2 terminals (nsn and tn) and two forms (nsform and ns):
 
     (define-dialect NS
-      (terminals (nsname nsn)
-                 (typename tn))
+      (terminals [nsn nsname?]
+                 [tn typename?])
       (NsForm [nsform]
               (:require (?:* (| ?nsn:req-symbol
                                 [?nsn:req-symbol ??opts])))
@@ -466,6 +480,31 @@
   `(from-dialect (=>:from ~=>dialects nil)
                  (to-dialect (=>:to ~=>dialects nil)
                              ~@body)))
+
+(defn add-form-tags [{:keys [name exprs]} expr]
+  ;; TODO: we want the terminal predicates but not the form ones here...
+  (let [rules
+        (->> exprs
+             (map :match)
+             (map (fn [match]
+                    (make-rule match
+                               (fn [{:keys [rule/datum] :as env} dict]
+                                 (when-not (symbol? datum)
+                                   (when-not (::form (meta datum))
+                                     (success (tag name datum) (update env name conj datum)))))))))
+        [expr env]
+        ((on-subexpressions (rule-list rules)) expr {name []})]
+    (clojure.pprint/pprint env)
+    expr))
+
+(defn add-tags [dialect expr]
+  (reduce (fn [expr form-key]
+            (add-form-tags (get-in dialect [:forms form-key])
+                           expr))
+          expr
+          (:form-order dialect)))
+
+
 
 (comment
   (do
