@@ -20,14 +20,10 @@
              (update :i concat (map vector (repeat d) (disj (:live %env) d)))))
    (rule '(movq (v ?a) ?_)
          (update %env :live conj a))
-   ;; I think I can ignore negq. It reads and writes but it should never
-   ;; change liveness?
    (rule '(addq (v ?a) (v ?d))
          (update %env :live conj a))
    (rule '(addq (v ?a) ?_)
-         (update %env :live conj a))
-   (rule '(addq ?_ (v ?d))
-         %env)))
+         (update %env :live conj a))))
 
 (def liveness
   (rule '(program ?vars ??i*)
@@ -47,33 +43,43 @@
   (-> (build-graph)
       (add-edges :interference (:i liveness))
       (add-edges :move (:m liveness))
+      (add-vertices (map (fn [v]
+                           [v {:saturation #{}}])
+                         (reduce into (:steps liveness))))
       forked))
-
-(defn interferedness [v]
-  (count (both-e :interference v)))
 
 (defn movedness [v]
   (count (both-e :move v)))
 
 (comment
-  (let [g (to-graph
-           (liveness
-            '(program (...)
-                      (movq (int 1) (v v))
-                      (movq (int 42) (v w))
-                      (movq (v v) (v x))
-                      (addq (int 7) (v x))
-                      (movq (v x) (v y))
-                      (movq (v x) (v z))
-                      (addq (v w) (v z))
-                      (movq (v y) (v t))
-                      (negq (v t))
-                      (movq (v z) (reg rax))
-                      (addq (v t) (reg rax))
-                      (jmp conclusion))))]
+
+  (def ex
+    ;; why can't I just directly def ex????
+    (let [ex
+          (liveness
+           '(program (...)
+                     (movq (int 1) (v v))
+                     (movq (int 42) (v w))
+                     (movq (v v) (v x))
+                     (addq (int 7) (v x))
+                     (movq (v x) (v y))
+                     (movq (v x) (v z))
+                     (addq (v w) (v z))
+                     (movq (v y) (v t))
+                     (negq (v t))
+                     (movq (v z) (reg rax))
+                     (addq (v t) (reg rax))
+                     (movq (int 1) (v c))
+                     (addq (v c) (v c))
+                     (jmp conclusion)))]
+      ex))
+
+  ex
+
+  (let [g (to-graph ex)]
     (->> (f/all-vertices g)
          (sort-by (comp - movedness))
-         (map (juxt identity movedness))))
+         (map (juxt identity f/get-document movedness interferedness))))
 
   (liveness
    '(program
@@ -83,4 +89,6 @@
      (movq (v x.2) (v tmp+.3))
      (addq (v x.1) (v tmp+.3))
      (movq (v tmp+.3) (reg rax))
-     (retq))))
+     (retq)))
+
+  ,)

@@ -216,7 +216,7 @@
 
   (fu '(program (let ([x 32]) (+ 10 x))))
 
-  (sfu '(program (let ([x 32]) (+ (let ([x 10]) x) x))))
+  (sfu '(program (let ([x 32]) (+ (let ([x (- 10)]) x) x))))
 
   (sfu
    '(program
