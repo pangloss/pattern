@@ -167,7 +167,7 @@
         apply-rules (partial apply-rules (inc depth))
         mutual-fn *do-mutual-descent*]
     (binding [*descend* apply-rules] ;; TODO: bind descend in do-mutual-descent, too
-      (reduce (fn [[dict env] k]
+      (reduce (fn [[dict env substitute] k]
                 (if-let [match (dict k)]
                   (let [enter (cond (descending? k) apply-rules
                                     (and mutual-fn (mutual? k))
@@ -185,9 +185,9 @@
                                               (let [[r env] (enter d env)]
                                                 [(conj v r) env]))
                                             [[] env] (:value match))]
-                        [(assoc-in dict [k :value] v) env])
+                        [(assoc-in dict [k :value] v) env substitute])
                       (let [[v env] (enter (:value match) env)]
-                        [(assoc-in dict [k :value] v) env])))
+                        [(assoc-in dict [k :value] v) env substitute])))
                   [dict env substitute]))
               [dict env substitute] active))))
 
