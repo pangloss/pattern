@@ -29,32 +29,19 @@
 
 ;; Exercise 2:
 ;;
-#_ ;; FIXME: this should work but (success) fails.
 (def uniqify
-  (directed (rule-list [(rule '(let ([?x ?e]) ?body)
+  (directed (rule-list [(rule '(program ?p)
+                              (do
+                                (reset! niceid 0)
+                                (sub (program ~(descend p)))))
+                        (rule '(let ([?x ?e]) ?body)
                               (let [x' (gennice x)
                                     env (assoc-in %env [:vars x] x')]
                                 (sub (let ([?x' ~(in e env)])
                                        ~(in body env)))))
                         (rule '(+ ?->a ?->b) (success))
                         (rule '(- ?->a) (success))
-                        (rule '(? x symbol?)
-                              (get-in %env [:vars x]))])))
-
-(def uniqify
-  (directed (rule-list (rule '(program ?->p) (sub (program ?p)))
-                       (rule '(let ([?x ?e]) ?body)
-                             (let [x' (gennice x)
-                                   env (assoc-in %env [:vars x] x')]
-                               (sub (let ([?x' ~(in e env)])
-                                      ~(in body env)))))
-                       (rule '(+ ?->a ?->b) (sub (+ ?a ?b)))
-                       (rule '(- ?->a) (sub (- ?a)))
-                       (rule '(? x symbol?) (get-in %env [:vars x])))))
-
-(comment
-  (uniqify '(program (let ([x 32]) (+ (let ([x 10]) x) x))))
-  (uniqify '(program (let ([x 32]) (+ 10 x)))))
+                        (rule '(? x symbol?) (get-in %env [:vars x]))])))
 
 (def flatten
   (directed (rule-list (rule '(program ?->p)
@@ -86,24 +73,6 @@
                        (rule '?x {:value x}))))
 
 (def fu (comp #'flatten #'uniqify))
-
-(comment
-  (flatten (uniqify '(program (let ([x 32]) (+ (let ([x 10]) x) x)))))
-  (fu
-   '(program
-     (let ([x (+ (- (read)) 11)])
-       (+ x 41))))
-
-  (fu '(program (let ([a 42])
-                  (let ([b a])
-                    b))))
-
-  (fu '(program (let ([a 42])
-                  (let ([b a])
-                    b))))
-
-  (fu '(program (let ([x 32]) (+ 10 x)))))
-
 
 (def select-instructions
   (directed (rule-list (rule '(program ?vars ??->instrs)
@@ -139,22 +108,6 @@
 
 (def sfu (comp #'select-instructions #'flatten #'uniqify))
 
-(comment
-  (sfu '(program (let ([x 32]) (+ (let ([x 10]) x) x))))
-
-  (sfu
-   '(program
-     (let ([x (+ (- (read)) 11)])
-       (+ x 41))))
-
-  (sfu '(program (let ([a 42])
-                  (let ([b a])
-                    b))))
-
-  [(fu '(program (let ([x 32]) (+ (- 10) x))))
-   (sfu '(program (let ([x 32]) (+ (- 10) x))))]
-  ,)
-
 (def assign-homes
   (directed (rule-list (rule '(program ?vars ??->i*)
                              (sub (program ~(* 16 (max 1 (int (Math/ceil (/ (:var-count %env 0) 2)))))
@@ -174,23 +127,6 @@
 
 (def asfu (comp #'assign-homes #'sfu))
 
-(comment
-  (asfu '(program (let ([x 32]) (+ (let ([x 10]) x) x))))
-
-  (asfu
-   '(program
-     (let ([x (+ (- (read)) 11)])
-       (+ x 41))))
-
-  (asfu '(program (let ([a 42])
-                    (let ([b a])
-                      b))))
-
-  [(fu '(program (let ([x 32]) (+ (- 10) x))))
-   (sfu '(program (let ([x 32]) (+ (- 10) x))))
-   (asfu '(program (let ([x 32]) (+ (- 10) x))))]
-  ,)
-
 (def patch-instruction
   (rule-list (rule '(?i (& ?a (deref ??_)) (& ?b (deref ??_)))
                    (sub [(movq ?a (reg rax))
@@ -203,24 +139,6 @@
                       ~@(mapcat patch-instruction i*)))))
 
 (def pasfu (comp #'patch-instructions #'asfu))
-
-(comment
-  (pasfu '(program (let ([x 32]) (+ (let ([x 10]) x) x))))
-
-  (pasfu
-   '(program
-     (let ([x (+ (- (read)) 11)])
-       (+ x 41))))
-
-  (pasfu '(program (let ([a 42])
-                    (let ([b a])
-                      b))))
-
-  [(fu '(program (let ([x 32]) (+ (- 10) x))))
-   (sfu '(program (let ([x 32]) (+ (- 10) x))))
-   (asfu '(program (let ([x 32]) (+ (- 10) x))))
-   (pasfu '(program (let ([x 32]) (+ (- 10) x))))]
-  ,)
 
 (def stringify
   (directed (rule-list (rule '(program ?size ?vars ??->i*)
@@ -254,7 +172,74 @@
 
 (def spasfu (comp println #'stringify #'pasfu))
 
+
 (comment
+  [(uniqify '(program (let ([x 32]) (+ (let ([x 10]) x) x))))]
+
+  [(uniqify '(program (let ([x 32]) (+ 10 x))))]
+
+  ,
+  (flatten (uniqify '(program (let ([x 32]) (+ (let ([x 10]) x) x)))))
+  (fu
+   '(program
+     (let ([x (+ (- (read)) 11)])
+       (+ x 41))))
+
+  (fu '(program (let ([a 42])
+                  (let ([b a])
+                    b))))
+
+  (fu '(program (let ([a 42])
+                  (let ([b a])
+                    b))))
+
+  (fu '(program (let ([x 32]) (+ 10 x))))
+
+  (sfu '(program (let ([x 32]) (+ (let ([x 10]) x) x))))
+
+  (sfu
+   '(program
+     (let ([x (+ (- (read)) 11)])
+       (+ x 41))))
+
+  (sfu '(program (let ([a 42])
+                   (let ([b a])
+                     b))))
+
+  [(fu '(program (let ([x 32]) (+ (- 10) x))))
+   (sfu '(program (let ([x 32]) (+ (- 10) x))))]
+  ,
+  (asfu '(program (let ([x 32]) (+ (let ([x 10]) x) x))))
+
+  (asfu
+   '(program
+     (let ([x (+ (- (read)) 11)])
+       (+ x 41))))
+
+  (asfu '(program (let ([a 42])
+                    (let ([b a])
+                      b))))
+
+  [(fu '(program (let ([x 32]) (+ (- 10) x))))
+   (sfu '(program (let ([x 32]) (+ (- 10) x))))
+   (asfu '(program (let ([x 32]) (+ (- 10) x))))]
+  ,
+  (pasfu '(program (let ([x 32]) (+ (let ([x 10]) x) x))))
+
+  (pasfu
+   '(program
+     (let ([x (+ (- (read)) 11)])
+       (+ x 41))))
+
+  (pasfu '(program (let ([a 42])
+                    (let ([b a])
+                      b))))
+
+  [(fu '(program (let ([x 32]) (+ (- 10) x))))
+   (sfu '(program (let ([x 32]) (+ (- 10) x))))
+   (asfu '(program (let ([x 32]) (+ (- 10) x))))
+   (pasfu '(program (let ([x 32]) (+ (- 10) x))))]
+  ,
   (spasfu '(program (let ([x 32]) (+ (let ([x 10]) x) x))))
 
   (spasfu
