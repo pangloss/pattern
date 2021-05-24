@@ -4,25 +4,6 @@
             [matches :refer [rule rule-list directed descend sub success on-subexpressions]]
             [matches.nanopass.pass :refer [defpass let-rulefn]]))
 
-
-#_ ;; example program
-(program
- (x.1 x.2 tmp+.3)
- (movq (int 32) (v x.1))
- (movq (int 10) (v x.2))
- (movq (v x.2) (v tmp+.3))
- (addq (v x.1) (v tmp+.3))
- (movq (v tmp+.3) (reg rax))
- (retq))
-
-(comment
-  (-> (build-graph)
-      (add-edges :x [['a 'b] ['a 'c]])
-      forked
-      f/all-vertices
-      (->>
-       (sort-by #(- (count (both-e [%])))))))
-
 (def liveness*
   (rule-list
    (rule '(movq (v ?a) (v ?d))
@@ -47,32 +28,6 @@
          (update %env :live conj a))
    (rule '(addq ?_ (v ?d))
          %env)))
-
-#_
-(reduce (fn [env i]
-          (first
-           (liveness* i env
-                      (fn a [a b c]
-                        [(update a :steps conj (:live a))
-                         b])
-                      (fn b []
-                        [(update env :steps conj (:live env))
-                         nil]))))
-        {:i [] :m [] :steps () :live #{}}
-        (reverse
-         '[(movq (int 1) (v v))
-           (movq (int 42) (v w))
-           (movq (v v) (v x))
-           (addq (int 7) (v x))
-           (movq (v x) (v y))
-           (movq (v x) (v z))
-           (addq (v w) (v z))
-           (movq (v y) (v t))
-           (negq (v t))
-           (movq (v z) (reg rax))
-           (addq (v t) (reg rax))
-           (jmp conclusion)]))
-
 
 (def liveness
   (rule '(program ?vars ??i*)
@@ -100,21 +55,32 @@
 (defn movedness [v]
   (count (both-e :move v)))
 
-(let [g (to-graph
-         (liveness
-          '(program (...)
-                    (movq (int 1) (v v))
-                    (movq (int 42) (v w))
-                    (movq (v v) (v x))
-                    (addq (int 7) (v x))
-                    (movq (v x) (v y))
-                    (movq (v x) (v z))
-                    (addq (v w) (v z))
-                    (movq (v y) (v t))
-                    (negq (v t))
-                    (movq (v z) (reg rax))
-                    (addq (v t) (reg rax))
-                    (jmp conclusion))))]
-  (->> (f/all-vertices g)
-       (sort-by (comp - movedness))
-       (map (juxt identity movedness))))
+(comment
+  (let [g (to-graph
+           (liveness
+            '(program (...)
+                      (movq (int 1) (v v))
+                      (movq (int 42) (v w))
+                      (movq (v v) (v x))
+                      (addq (int 7) (v x))
+                      (movq (v x) (v y))
+                      (movq (v x) (v z))
+                      (addq (v w) (v z))
+                      (movq (v y) (v t))
+                      (negq (v t))
+                      (movq (v z) (reg rax))
+                      (addq (v t) (reg rax))
+                      (jmp conclusion))))]
+    (->> (f/all-vertices g)
+         (sort-by (comp - movedness))
+         (map (juxt identity movedness))))
+
+  (liveness
+   '(program
+     (x.1 x.2 tmp+.3)
+     (movq (int 32) (v x.1))
+     (movq (int 10) (v x.2))
+     (movq (v x.2) (v tmp+.3))
+     (addq (v x.1) (v tmp+.3))
+     (movq (v tmp+.3) (reg rax))
+     (retq))))
