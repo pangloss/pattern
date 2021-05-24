@@ -115,7 +115,8 @@
                        (rule '(assign ?x ?->a)
                              (sub [(movq ?a (var ?x))]))
                        (rule '(return ?->x)
-                             (sub [(return ?x)]))
+                             (sub [(movq ?x (reg rax))
+                                   (retq)]))
                        (rule '(? i int?)
                              (sub (int ?i)))
                        (rule '(? v symbol?)
@@ -204,4 +205,43 @@
    (sfu '(program (let ([x 32]) (+ (- 10) x))))
    (asfu '(program (let ([x 32]) (+ (- 10) x))))
    (pasfu '(program (let ([x 32]) (+ (- 10) x))))]
+  ,)
+
+(def stringify
+  (directed (rule-list (rule '(program ?size ?vars ??->i*)
+                             (apply str "\t.globl main\n"
+                                    "main:\n"
+                                    (map #(str "\t" % "\n") i*)))
+                       (rule '(int ?i)
+                             (str "$" i))
+                       (rule '(deref ?v ?o)
+                             (str o "(%" (name v) ")"))
+                       (rule '(reg ?r)
+                             (str "%" r))
+                       (rule '(?x)
+                             (name x))
+                       (rule '(?x ?->a)
+                             (str (name x) " " a))
+                       (rule '(?x ?->a ?->b)
+                             (str (name x) " " a ", " b)))))
+
+(def spasfu (comp println #'stringify #'pasfu))
+
+(comment
+  (spasfu '(program (let ([x 32]) (+ (let ([x 10]) x) x))))
+
+  (spasfu
+   '(program
+     (let ([x (+ (- (read)) 11)])
+       (+ x 41))))
+
+  (spasfu '(program (let ([a 42])
+                      (let ([b a])
+                        b))))
+
+  [(fu '(program (let ([x 32]) (+ (- 10) x))))
+   (sfu '(program (let ([x 32]) (+ (- 10) x))))
+   (asfu '(program (let ([x 32]) (+ (- 10) x))))
+   (pasfu '(program (let ([x 32]) (+ (- 10) x))))
+   (spasfu '(program (let ([x 32]) (+ (- 10) x))))]
   ,)
