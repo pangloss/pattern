@@ -27,6 +27,16 @@
 (defn in [x env]
   (first (descend x env)))
 
+;; Ok... my version seems to have full functionality and it's a LOT more concise
+;; and understandable than the instructor version posted here:
+;; https://iucompilercourse.github.io/IU-P423-P523-E313-E513-Fall-2020/lecture-Sep-8.html.
+;;
+;; On the other hand I think mine is not quite as explicit as his. He seems to
+;; have clearly defined languages step-by-step, anticipating the nanopass style,
+;; while I stayed with a sort of progressively simplified version of "racket" as
+;; the syntax. He quickly moves from (let ([x y]) e) to (Let x y e), for
+;; instance.
+
 ;; Exercise 2:
 ;;
 (def uniqify
@@ -43,6 +53,14 @@
                         (rule '(- ?->a) (success))
                         (rule '(? x symbol?) (get-in %env [:vars x]))])))
 
+;; In his version this was 2 passes: remove-complex-opera* and
+;; explicate-control, but this pass was not complex anyway... so that seems not
+;; too valuable. Perhaps in a more complete language the pain would become
+;; apparent?
+;;
+;; The racket version uses multiple returns, but returning a dictionary
+;; accomplishes the same thing and I think this is a lot more comprehensible.
+;;
 (def flatten
   (directed (rule-list (rule '(program ?->p)
                              (sub (program (~@(distinct (:v p)))
@@ -108,6 +126,9 @@
 
 (def sfu (comp #'select-instructions #'flatten #'uniqify))
 
+
+
+;; This is a very basic and extremely suboptimal allocation strategy since it puts everything on the stack.
 (def assign-homes
   (directed (rule-list (rule '(program ?vars ??->i*)
                              (sub (program ~(* 16 (max 1 (int (Math/ceil (/ (:var-count %env 0) 2)))))

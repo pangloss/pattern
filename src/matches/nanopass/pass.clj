@@ -123,18 +123,18 @@
                           [(rule '(fn [?var] ?expr)
                                   (let [k (gensym 'k)]
                                   (sub (fn [?var ?k] ~(T expr k)))))
-                          (rule '(? s symbol?) s)])
+                           (rule '(? s symbol?) s)])
                        (T* (=> Expr TExpr) [cont]
                           [(rule '(?:as expr (fn ??_))
                                   `(~cont ~(M expr)))
-                              (rule '(? s symbol?)
-                                  `(~cont ~(M s)))
-                              (rule '(?f ?e)
+                           (rule '(? s symbol?)
+                                 `(~cont ~(M s)))
+                           (rule '(?f ?e)
                                   (let [fs (gensym 'f)
-                                          es (gensym 'e)]
-                                      (T f (sub (fn [?fs]
-                                                  ~(T e (sub (fn [?es]
-                                                              (?fs ?es ?cont)))))))))])
+                                        es (gensym 'e)]
+                                    (T f (sub (fn [?fs]
+                                                ~(T e (sub (fn [?es]
+                                                             (?fs ?es ?cont)))))))))])
                        (fn T [expr cont]
                           (first (T* expr {:cont cont})))]
             <>)
