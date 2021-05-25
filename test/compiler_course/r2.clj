@@ -2,7 +2,8 @@
   (:require [compiler-course.r1 :as r1]
             [fermor.core :as f :refer [build-graph add-edges add-vertices both-e forked]]
             [matches :refer [rule rule-list directed descend sub success on-subexpressions]]
-            [matches.nanopass.pass :refer [defpass let-rulefn]]))
+            [matches.nanopass.pass :refer [defpass let-rulefn]]
+            [clojure.set :as set]))
 
 (def liveness*
   (rule-list
@@ -54,9 +55,16 @@
 (defn color [v]
   (:color (f/get-document v)))
 
+(defn interference [v]
+  (set (keep color (f/both :interference v))))
+
+(defn biased-reg [v interf]
+  (first
+   (set/difference (set (keep color (f/both :move v)))
+                   interf)))
+
 (defn saturation [v]
-  (let [b (f/both [:interference] v)]
-    (- (count (set (keep color b))))))
+  (- (count (interference v))))
 
 (defn movedness [v]
   (- (count (both-e :move v))))
@@ -64,6 +72,28 @@
 (defn order [v]
   (+ (* 100 (saturation v))
      (movedness v)))
+
+(defn next-color [v]
+  (let [interference (interference v)
+        free (biased-reg v interference)]
+    (or free
+        (first (remove interference (range 100))))))
+
+(defn allocate-registers* [g]
+  (loop [g g]
+    (if-let [v (->> (f/all-vertices g)
+                    (remove color)
+                    (sort-by order)
+                    first)]
+      (recur (set-color g (f/element-id v) (next-color v)))
+      g)))
+
+(def registers '[rbx rcx rdx rsi rdi r8 r9 r10 r11 r12 r13 r14])
+
+(defn get-location [n]
+  (if-let [reg (nth registers n nil)]
+    (sub (reg ?reg))
+    (sub (stack ~(- n (count registers))))))
 
 (comment
 
@@ -90,11 +120,10 @@
 
 
   (let [g (to-graph ex)
-        g (set-color g 'y :red)
-        g (set-color g 'x :blue)]
+        g (allocate-registers* g)]
     (->> (f/all-vertices g)
          (sort-by order)
-         (map (juxt identity saturation movedness color))))
+         (map (juxt identity saturation movedness (comp get-location color)))))
 
   (liveness
    '(program
