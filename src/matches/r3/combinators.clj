@@ -10,6 +10,8 @@
 
 (def ^:dynamic *debug-rules* false)
 
+(defonce make-rule (atom nil))
+
 (defn run-rule
   "Runs a rule and returns either the successfully updated value or the original
   if the rule fails."
@@ -45,6 +47,10 @@
        `child-rules (fn [_] rules)
        `recombine (fn [_ rules]
                     (rule-list rules))})))
+
+(defn rule-list! [& rules]
+  (rule-list (concat rules [(@make-rule '?_ (fn [env dict]
+                                              (throw (ex-info "No matching clause" env))))])))
 
 
 (defn in-order [rules]

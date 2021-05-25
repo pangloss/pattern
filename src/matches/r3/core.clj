@@ -9,7 +9,7 @@
             [matches.match.predicator :refer [*pattern-replace* apply-replacements]]
             [clojure.walk :as walk]
             [matches.types :refer [->SuccessUnmodified ->Success ->SuccessEnv]]
-            [matches.r3.combinators :refer [*debug-rules* run-rule]])
+            [matches.r3.combinators :as rc :refer [*debug-rules* run-rule]])
   (:import (matches.types Success SuccessEnv SuccessUnmodified)
            (clojure.lang IFn IObj IMeta)))
 
@@ -159,6 +159,7 @@
                       :handler handler}
                      metadata)}))))
 
+(reset! rc/make-rule #'make-rule)
 
 (defn rule-name
   "Attach a rule name to the given object's metadata."
