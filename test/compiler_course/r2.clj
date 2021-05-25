@@ -95,7 +95,39 @@
     (sub (reg ?reg))
     (sub (stack ~(- n (count registers))))))
 
+(defn var-locations [g]
+  (into {}
+        (map (fn [v]
+               [(f/element-id v)
+                (get-location (color v))])
+             (f/all-vertices g))))
+
+(def with-allocated-registers
+  (on-subexpressions (rule '(v ?v) (get-in %env [:loc v]))))
+
+(defn allocate-registers [prog]
+  (let [g (to-graph (liveness prog))
+        g (allocate-registers* g)]
+    (first (with-allocated-registers prog {:loc (var-locations g)}))))
+
 (comment
+
+  (allocate-registers
+   '(program (...)
+             (movq (int 1) (v v))
+             (movq (int 42) (v w))
+             (movq (v v) (v x))
+             (addq (int 7) (v x))
+             (movq (v x) (v y))
+             (movq (v x) (v z))
+             (addq (v w) (v z))
+             (movq (v y) (v t))
+             (negq (v t))
+             (movq (v z) (reg rax))
+             (addq (v t) (reg rax))
+             (movq (int 1) (v c))
+             (addq (v c) (v c))
+             (jmp conclusion)))
 
   (def ex
     ;; why can't I just directly def ex????
