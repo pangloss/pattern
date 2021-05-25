@@ -122,19 +122,32 @@
         (with-allocated-registers {:loc (var-locations g)})
         (with-stack-size {:stack-size stack-size}))))
 
+(def patch-instructions
+  (directed (rule-list (rule '(program ?size ?vars ??->i*)
+                             (sub (program ?size ?vars ~@(apply concat i*))))
+                       (rule '(movq ?a ?a) [])
+                       (rule '?x [x]))))
+
 (def asfu (comp #'allocate-registers #'r1/sfu))
-(def sasfu (comp #'r1/stringify #'asfu))
+(def pasfu (comp #'patch-instructions #'asfu))
+(def spasfu (comp #'r1/stringify #'pasfu))
 
 (comment
 
+  (pasfu '(program
+           (let ([v 1])
+             (let ([w 42])
+               (let ([x (+ v 7)])
+                 (let ([y x])
+                   (let ([z (+ x w)])
+                     (+ z (- y)))))))))
+
   (println
-   (sasfu '(program
-            (let ([v 1])
-              (let ([w 42])
-                (let ([x (+ v 7)])
-                  (let ([y x])
-                    (let ([z (+ x w)])
-                      (+ z (- y))))))))))
+   (spasfu '(program
+             (let ([x1 (read)])
+               (let ([x2 (read)])
+                 (+ (+ x1 x2)
+                    42))))))
 
 
   (println
@@ -177,6 +190,7 @@
                      (jmp conclusion)))]
       ex))
 
+  ex
 
   (let [g (to-graph ex)
         g (allocate-registers* g)]
