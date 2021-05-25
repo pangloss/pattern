@@ -127,11 +127,13 @@
 (def sfu (comp #'select-instructions #'flatten #'uniqify))
 
 
+(defn stack-size [var-count]
+  (* 16 (max 1 (int (Math/ceil (/ (or var-count 0) 2))))))
 
 ;; This is a very basic and extremely suboptimal allocation strategy since it puts everything on the stack.
 (def assign-homes
   (directed (rule-list (rule '(program ?vars ??->i*)
-                             (sub (program ~(* 16 (max 1 (int (Math/ceil (/ (:var-count %env 0) 2)))))
+                             (sub (program ~(stack-size (:var-count %env 0))
                                            ?vars ??i*)))
                        (on-subexpressions
                         (rule '(v ?x)
