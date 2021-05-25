@@ -1,4 +1,4 @@
-(ns compiler-course.r2
+(ns compiler-course.r1-allocator
   (:require [compiler-course.r1 :as r1]
             [fermor.core :as f :refer [build-graph add-edges add-vertices both-e forked]]
             [matches :refer [rule rule-list directed descend sub success on-subexpressions]]
@@ -6,37 +6,37 @@
             [clojure.set :as set]))
 
 (def liveness*
-  (rule-list
-   (rule '(movq (v ?a) (v ?d))
-         (let [live (-> (:live %env)
-                        (disj d)
-                        (conj a))]
-           (-> %env
-               (assoc :live live)
-               (update :i concat (map vector (repeat d) (disj live a d)))
-               (update :m conj [a d]))))
-   (rule '(movq ?_ (v ?d))
-         (-> %env
-             (update :live disj d)
-             (update :i concat (map vector (repeat d) (disj (:live %env) d)))))
-   (rule '(movq (v ?a) ?_)
-         (update %env :live conj a))
-   (rule '(addq (v ?a) (v ?d))
-         (update %env :live conj a))
-   (rule '(addq (v ?a) ?_)
-         (update %env :live conj a))))
+  (comp first
+        (rule-list
+         (rule '(movq (v ?a) (v ?d))
+               (let [live (-> (:live %env)
+                              (disj d)
+                              (conj a))]
+                 (-> %env
+                     (assoc :live live)
+                     (update :i concat (map vector (repeat d) (disj live a d)))
+                     (update :m conj [a d]))))
+         (rule '(movq ?_ (v ?d))
+               (-> %env
+                   (update :live disj d)
+                   (update :i concat (map vector (repeat d) (disj (:live %env) d)))))
+         (rule '(movq (v ?a) ?_)
+               (update %env :live conj a))
+         (rule '(addq (v ?a) (v ?d))
+               (update %env :live conj a))
+         (rule '(addq (v ?a) ?_)
+               (update %env :live conj a)))))
 
 (def liveness
   (rule '(program ?vars ??i*)
         (reduce (fn [env i]
-                  (first
-                   (liveness* i env
-                              (fn a [r _ _]
-                                [(update r :steps conj (:live r))
-                                 nil])
-                              (fn b []
-                                [(update env :steps conj (:live env))
-                                 nil]))))
+                  (liveness* i env
+                             (fn a [r _ _]
+                               [(update r :steps conj (:live r))
+                                nil])
+                             (fn b []
+                               [(update env :steps conj (:live env))
+                                nil])))
                 {:i [] :m [] :steps () :live #{}}
                 (reverse i*))))
 
@@ -122,7 +122,20 @@
         (with-allocated-registers {:loc (var-locations g)})
         (with-stack-size {:stack-size stack-size}))))
 
+(def asfu (comp #'allocate-registers #'r1/sfu))
+(def sasfu (comp #'r1/stringify #'asfu))
+
 (comment
+
+  (println
+   (sasfu '(program
+            (let ([v 1])
+              (let ([w 42])
+                (let ([x (+ v 7)])
+                  (let ([y x])
+                    (let ([z (+ x w)])
+                      (+ z (- y))))))))))
+
 
   (println
    (r1/stringify
