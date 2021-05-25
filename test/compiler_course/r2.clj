@@ -44,12 +44,26 @@
       (add-edges :interference (:i liveness))
       (add-edges :move (:m liveness))
       (add-vertices (map (fn [v]
-                           [v {:saturation #{}}])
+                           [v {:color nil}])
                          (reduce into (:steps liveness))))
       forked))
 
+(defn set-color [g v color]
+  (f/set-document g v (assoc (f/get-document (if (f/vertex? v) v(f/get-vertex g v))) :color color)))
+
+(defn color [v]
+  (:color (f/get-document v)))
+
+(defn saturation [v]
+  (let [b (f/both [:interference] v)]
+    (- (count (set (keep color b))))))
+
 (defn movedness [v]
-  (count (both-e :move v)))
+  (- (count (both-e :move v))))
+
+(defn order [v]
+  (+ (* 100 (saturation v))
+     (movedness v)))
 
 (comment
 
@@ -74,12 +88,13 @@
                      (jmp conclusion)))]
       ex))
 
-  ex
 
-  (let [g (to-graph ex)]
+  (let [g (to-graph ex)
+        g (set-color g 'y :red)
+        g (set-color g 'x :blue)]
     (->> (f/all-vertices g)
-         (sort-by (comp - movedness))
-         (map (juxt identity f/get-document movedness interferedness))))
+         (sort-by order)
+         (map (juxt identity saturation movedness color))))
 
   (liveness
    '(program

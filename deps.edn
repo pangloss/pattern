@@ -4,8 +4,9 @@
                                        :sha "f605800bcbdf80a408c60d8e60bb6cd8222f17c6"
                                        #_#_
                                        :local/root "../pure-conditioning"}
-        com.xn--lgc/fermor {:git/url "https://github.com/pangloss/fermor"
-                            :sha "f2164ae4de395ea1853adebb8286118d645531a5"}
+        com.xn--lgc/fermor {:local/root "../fermor"}
+        #_{:git/url "https://github.com/pangloss/fermor"
+           :sha "..."}
         org.clojure/core.memoize {:mvn/version "1.0.236"}
 
         uncomplicate/fluokitten {:mvn/version "0.9.1"}
