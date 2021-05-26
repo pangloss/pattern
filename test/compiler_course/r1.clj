@@ -144,10 +144,9 @@
                                :b (merge (:b a) (:b b))
                                :pred? true
                                :value (sub (?op ~(:value a) ~(:value b)))
-                               :then (:then %env)
-                               :else (:else %env)}))
+                               :then then
+                               :else else}))
                       (mapcat child-rules (child-rules explicate-assign)))))))
-
 
 (def explicate-tail
   (directed (rule-list (rule '(let ([?v ?e]) ?->body)
@@ -162,18 +161,8 @@
                              (explicate-pred exp (pred-env then else)))
                        (mapcat child-rules (child-rules explicate-assign)))))
 
-(defn explicate-block [{:keys [pred? s value label]}]
-  (if pred?
-    (sub [(label ?label)
-          ??s
-          ?value])
-    (sub [(label ?label)
-          ??s
-          (return ?value)])))
-
-(defn explicate-expressions [p]
-  (match p
-         '(program ?p)
+(def explicate-expressions
+  (rule '(program ?p)
          (let [p (explicate-tail p)]
            (sub (program [[~@(:v p) ~@(mapcat :v (:vals (:b p)))]
                           ~(:b p)]
