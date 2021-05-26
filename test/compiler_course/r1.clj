@@ -122,7 +122,6 @@
 (def explicate-pred
   "Must always be called with an env containing {:then {...} :else {...}}"
   (letfn [(finalize-conditional [{:keys [value then else] :as b}]
-            (prn b)
             (let [then (if (:pred? then) (finalize-conditional then) then)
                   else (if (:pred? else) (finalize-conditional else) else)]
               (-> b
@@ -130,6 +129,8 @@
                           (:label then) (dissoc then :b)
                           (:label else) (dissoc else :b))
                   (update :b merge (:b then) (:b else))
+                  (update :v vec)
+                  (update :s vec)
                   (dissoc :pred? :value :then :else)
                   (assoc :value (sub (if ?value (goto ~(:label then)) (goto ~(:label else))))))))]
     (comp first
@@ -138,8 +139,7 @@
                             ;; ?then and ?else can use the existing env since they need the then/else blocks passed into explicate-pred.
                             ;; See https://iucompilercourse.github.io/IU-P423-P523-E313-E513-Fall-2020/lecture-Sep-24.html
                             ;; That means they can just descend normally with -> (!!)
-                            (do(prn exp)
-                               (finalize-conditional (explicate-pred exp (pred-env then else)))))
+                            (finalize-conditional (explicate-pred exp (pred-env then else))))
                       (rule '((? op #{< eq?}) ?a ?b)
                             (let [a (explicate-assign a)
                                   b (explicate-assign b)
@@ -177,14 +177,21 @@
                        ;; NOTE: I think I can just add explicate-assign here instead of any shared rules.
                        explicate-assign)))
 
+(defn explicate-block [{:keys [pred? s value label]}]
+  (if pred?
+    (sub [(label ?label)
+          ??s
+          ?value])
+    (sub [(label ?label)
+          ??s
+          (return ?value)])))
 
 (defn explicate-expressions [p]
   (match p
          '(program ?p)
          (let [p (explicate-tail p)]
-           ;; TODO: compile all blocks
-           (sub (program [~@(:v p)]
-                         ~(:b p)
+           (sub (program [[~@(:v p) ~@(mapcat :v (:vals (:b p)))]
+                          ~(:b p)]
                          ~@(:s p)
                          (return ~(:value p)))))))
 
@@ -194,12 +201,6 @@
    (if (eq? x 2)
      (+ y 2)
      (+ y 10))))
-
-
-(explicate-expressions '(program
-                         (if (eq? x 2)
-                           (+ y 2)
-                           (+ y 10))))
 
 
 (def flatten
