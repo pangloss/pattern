@@ -28,6 +28,7 @@
                (update %env :live conj a)))))
 
 (def liveness
+  "In the book this is both 'uncover-live' and 'build-inter' plus the bonus exercise of building the move graph."
   (rule '(program ?vars ??i*)
         (reduce (fn [env i]
                   (liveness* i env

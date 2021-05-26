@@ -53,10 +53,75 @@
                         (rule '(- ?->a) (success))
                         (rule '(? x symbol?) (get-in %env [:vars x]))])))
 
-;; In his version this was 2 passes: remove-complex-opera* and
+(defn- rco-atom-wrap [name a b exp]
+  (let [t (gennice name)
+        a (:wrap a identity)
+        b (:wrap b identity)]
+    {:wrap (fn [r]
+             (a (b (sub (let ([?t ?exp])
+                          ?r)))))
+     :value t}))
+
+(def rco-atom*
+  (directed
+   (rule-list (rule '(+ ?->a ?->b)
+                    (rco-atom-wrap 'tmp+ a b (sub (+ ~(:value a) ~(:value b)))))
+              (rule '(- ?->a)
+                    (rco-atom-wrap 'tmp- a nil (sub (- ~(:value a)))))
+              (rule '(read)
+                    (rco-atom-wrap 'read nil nil '(read)))
+              #_ ;; this was a thought experiment. let stametments may contain expressions.
+              (rule '(let ([?v ?->e]) ?->body)
+                    (let [t (gennice 'let)]
+                      {:wrap (fn [r]
+                               (let [w (:wrap body)]
+                                 ((:wrap e identity)
+                                  (sub (let ([?v ~(:value e)])
+                                         ~(if w
+                                            (w (sub (let ([?t ~(:value body)])
+                                                      ?r)))
+                                            (:value body)))))))
+                       :value t}))
+              (rule '(? x int?)
+                    {:value x})
+              (rule '?x
+                    {:value x}))))
+
+(defn rco-atom [exp]
+  (let [{:keys [wrap value] :or {wrap identity}} (rco-atom* exp)]
+    (wrap value)))
+
+(def rco-exp
+  (directed
+   (rule-list (rule '(let ([?a ?->b]) ?->body)
+                    (success))
+              (rule '(+ ?a ?b)
+                    (let [a (rco-atom* a)
+                          b (rco-atom* b)]
+                      ((:wrap a identity)
+                       ((:wrap b identity)
+                        (sub (+ ~(:value a) ~(:value b)))))))
+              (rule '(- ?a)
+                    (let [a (rco-atom* a)]
+                      ((:wrap a identity)
+                       (sub (- ~(:value a)))))))))
+
+(def remove-complex-operations
+  (directed (rule-list (rule '(program ?->p) (success))
+                       rco-exp)))
+
+(remove-complex-operations '(program (- (- x))))
+(rco-atom '(let ([x (+ (+ 0 1) (- 2))]) x))
+(rco-atom '(- x))
+
+
+
+;; In the lecture notes this was 2 passes: remove-complex-opera* and
 ;; explicate-control, but this pass was not complex anyway... so that seems not
 ;; too valuable. Perhaps in a more complete language the pain would become
 ;; apparent?
+;;
+;; Yes, in the R2 language, this is extended in a way that I think will make their approach superior so I'm rewriting it.
 ;;
 ;; The racket version uses multiple returns, but returning a dictionary
 ;; accomplishes the same thing and I think this is a lot more comprehensible.
