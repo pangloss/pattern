@@ -851,7 +851,7 @@
 
 (register-matcher :value match-value)
 (register-matcher :list #'match-list)
-(register-matcher '?:literal match-literal)
+(register-matcher '?:= match-literal {:aliases ['?:literal]})
 (register-matcher :compiled-matcher match-compiled)
 (register-matcher :compiled*-matcher match-compiled*)
 (register-matcher '? #'match-element {:named? true})
