@@ -11,21 +11,6 @@
 (defn in [x env]
   (first (descend x env)))
 
-;; Shrink the number of instructions we need to support (by expanding to equivalent expressions)
-
-(def shrink
-  (let [preserve-order (fn [n a b expr]
-                         (let [t (gennice n)]
-                           (sub (let ([?t ?a])
-                                  ~(expr t)))))]
-    (on-subexpressions
-     (rule-list (rule '(- ?a ?b) (sub (+ ?a (- ?b))))
-                ;; < is our canonical choice, so alter <= > >=
-                (rule '(<= ?a ?b) (preserve-order 'le a b #(sub (not (< ?b ~%)))))))))
-                (rule '(> ?a ?b) (preserve-order 'gt a b #(sub (< ?b ~%))))
-                (rule '(>= ?a ?b) (sub (not (< ?a ?b))))
-
-
 ;; Give every var a unique name
 
 
@@ -39,9 +24,23 @@
                                     env (assoc-in %env [:vars x] x')]
                                 (sub (let ([?x' ~(in e env)])
                                        ~(in body env)))))
-                        (rule '(+ ?->a ?->b) (success))
-                        (rule '(- ?->a) (success))
+                        (rule '(+ ?->a ?->b))
+                        (rule '(- ?->a))
                         (rule '(? x symbol?) (get-in %env [:vars x]))])))
+
+;; Shrink the number of instructions we need to support (by expanding to equivalent expressions)
+
+(def shrink
+  (let [preserve-order (fn [n a b expr]
+                         (let [t (gennice n)]
+                           (sub (let ([?t ?a])
+                                  ~(expr t)))))]
+    (on-subexpressions
+     (rule-list (rule '(- ?a ?b) (sub (+ ?a (- ?b))))
+                ;; < is our canonical choice, so alter <= > >=
+                (rule '(<= ?a ?b) (preserve-order 'le a b #(sub (not (< ?b ~%)))))
+                (rule '(> ?a ?b) (preserve-order 'gt a b #(sub (< ?b ~%))))))))
+(rule '(>= ?a ?b) (sub (not (< ?a ?b))))
 
 
 ;; Remove complex operations
@@ -62,10 +61,10 @@
                       (wrap 'let nil nil
                             (sub (let ([?v ~(rco-exp e)])
                                    ~(rco-exp body)))))
-                (rule '(+ ?->a ?->b)
-                      (wrap 'tmp+ a b (sub (+ ~(:value a) ~(:value b)))))
-                (rule '(- ?->a)
-                      (wrap 'tmp- a nil (sub (- ~(:value a)))))
+                (rule '((? op #{+ < eq?}) ?->a ?->b)
+                      (wrap 'tmp+ a b (sub (?op ~(:value a) ~(:value b)))))
+                (rule '((? op #{- not}) ?->a)
+                      (wrap 'tmp- a nil (sub (?op ~(:value a)))))
                 (rule '(read)
                       (wrap 'read nil nil '(read)))
                 (rule '(? x int?)
@@ -73,61 +72,135 @@
                 (rule '?x
                       {:value x})))))
 
-
 (def rco-exp
   (directed
-   (rule-list (rule '(let ([?a ?->b]) ?->body)
-                    (success))
-              (rule '(+ ?a ?b)
+   (rule-list (rule '(let ([?a ?->b]) ?->body))
+              (rule '((? op #{+ < eq?}) ?a ?b)
                     (let [a (rco-atom a)
                           b (rco-atom b)]
                       ((:wrap a identity)
                        ((:wrap b identity)
-                        (sub (+ ~(:value a) ~(:value b)))))))
-              (rule '(- ?a)
+                        (sub (?op ~(:value a) ~(:value b)))))))
+              (rule '((? op #{- not}) ?a)
                     (let [a (rco-atom a)]
                       ((:wrap a identity)
-                       (sub (- ~(:value a)))))))))
+                       (sub (?op ~(:value a))))))
+              (rule '(if ?->exp ?->then ?->else)))))
+
+
 
 (def remove-complex-operations
   (rule '(program ?p) (sub (program ~(rco-exp p)))))
 
-(rco-atom '(let ([x 10]) x))
-
 (remove-complex-operations
- (uniqify
-  '(program (let ([x 32]) (+ (let ([x 10]) x) x)))))
+ (shrink
+  (uniqify
+   '(program (let ([x 32]) (eq? (let ([x 10]) x) x))))))
 
+(explicate-pred (remove-complex-operations (shrink (uniqify '(program (<= (+ 1 2) 2))))))
 
 ;; Explicate expressions: remove nesting (aka flatten)
 
 (def explicate-assign
   (directed (rule-list (rule '(let ([?v ?->e]) ?->body)
-                             {:v (concat (:v e) [v] (:v body))
-                              :s (concat (:s e)
-                                         [(sub (assign ?v ~(:value e)))]
-                                         (:s body))
-                              :value (:value body)})
+                             (-> body
+                                 (merge (:b e))
+                                 (assoc :v (concat (:v e) [v] (:v body))
+                                        :s (concat (:s e)
+                                                   [(sub (assign ?v ~(:value e)))]
+                                                   (:s body)))))
+                       ;; TODO: is this not bit needed?
+                       (rule '(not ?->x)
+                             (assoc x :value (sub (not ~(:value x)))))
                        (rule '?e
                              {:value e}))))
+
+(defn pred-env [then else]
+  {:then (assoc then :label (gennice 'then))
+   :else (assoc else :label (gennice 'else))})
+
+(def explicate-pred
+  "Must always be called with an env containing {:then {...} :else {...}}"
+  (letfn [(finalize-conditional [{:keys [value then else] :as b}]
+            (prn b)
+            (let [then (if (:pred? then) (finalize-conditional then) then)
+                  else (if (:pred? else) (finalize-conditional else) else)]
+              (-> b
+                  (update :b assoc
+                          (:label then) (dissoc then :b)
+                          (:label else) (dissoc else :b))
+                  (update :b merge (:b then) (:b else))
+                  (dissoc :pred? :value :then :else)
+                  (assoc :value (sub (if ?value (goto ~(:label then)) (goto ~(:label else))))))))]
+    (comp first
+          (directed
+           (rule-list (rule '(if ?exp ?->then ?->else)
+                            ;; ?then and ?else can use the existing env since they need the then/else blocks passed into explicate-pred.
+                            ;; See https://iucompilercourse.github.io/IU-P423-P523-E313-E513-Fall-2020/lecture-Sep-24.html
+                            ;; That means they can just descend normally with -> (!!)
+                            (do(prn exp)
+                               (finalize-conditional (explicate-pred exp (pred-env then else)))))
+                      (rule '((? op #{< eq?}) ?a ?b)
+                            (let [a (explicate-assign a)
+                                  b (explicate-assign b)
+                                  {:keys [then else]} %env]
+                              {:v (concat (:v a) (:v b))
+                               :s (concat (:s a) (:s b))
+                               :b (merge (:b a) (:b b))
+                               :pred? true
+                               :value (sub (?op ~(:value a) ~(:value b)))
+                               :then (:then %env)
+                               :else (:else %env)}))
+                      (mapcat matches.types/child-rules (matches.types/child-rules explicate-assign)))))))
+
+
+(explicate-expressions
+ (remove-complex-operations
+  '(program (if (if (< (- x) (+ x (+ y 2)))
+                  (eq? (- x) (+ x (+ y 0)))
+                  (eq? x 2))
+              (+ y 2)
+              (+ y 10)))))
+
 
 (def explicate-tail
   (directed (rule-list (rule '(let ([?v ?e]) ?->body)
                              (let [e (explicate-assign e)]
-                               {:v (concat (:v e) [v] (:v body))
+                               {:b (merge (:b e) (:b body))
+                                :v (concat (:v e) [v] (:v body))
                                 :s (concat (:s e)
                                            [(sub (assign ?v ~(:value e)))]
                                            (:s body))
                                 :value (:value body)}))
-                       (rule '?e {:value e}))))
+                       (rule '(if ?exp ?->then ?->else)
+                             (explicate-pred exp (pred-env then else)))
+                       ;; NOTE: I think I can just add explicate-assign here instead of any shared rules.
+                       explicate-assign)))
+
 
 (defn explicate-expressions [p]
   (match p
          '(program ?p)
          (let [p (explicate-tail p)]
+           ;; TODO: compile all blocks
            (sub (program [~@(:v p)]
+                         ~(:b p)
                          ~@(:s p)
                          (return ~(:value p)))))))
+
+
+(remove-complex-operations
+ '(program
+   (if (eq? x 2)
+     (+ y 2)
+     (+ y 10))))
+
+
+(explicate-expressions '(program
+                         (if (eq? x 2)
+                           (+ y 2)
+                           (+ y 10))))
+
 
 (def flatten
   (comp #'explicate-expressions #'remove-complex-operations))
@@ -237,7 +310,7 @@
                        (rule '(?x ?->a ?->b)
                              (str (name x) " " a ", " b)))))
 
-(def fu (comp #'flatten #'uniqify))
+(def fu (comp #'flatten #'shrink #'uniqify))
 (def sfu (comp #'select-instructions #'fu))
 (def asfu (comp #'assign-homes #'sfu))
 (def pasfu (comp #'patch-instructions #'asfu))
