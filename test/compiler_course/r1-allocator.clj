@@ -143,12 +143,11 @@
                    (let ([z (+ x w)])
                      (+ z (- y)))))))))
 
-  (println
-   (spasfu '(program
-             (let ([x1 (read)])
-               (let ([x2 (read)])
-                 (+ (+ x1 x2)
-                    42))))))
+  (pasfu '(program
+           (let ([x1 (read)])
+             (let ([x2 (read)])
+               (+ (+ x1 x2)
+                  42)))))
 
 
   (println

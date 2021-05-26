@@ -190,6 +190,8 @@
 
 (def fu (comp #'flatten #'uniqify))
 
+(def unv-rax (on-subexpressions (rule '(v (reg rax)) '(reg rax))))
+
 (def select-instructions
   (directed (rule-list (rule '(program ?vars ??->instrs)
                              (sub (program ?vars ~@(apply concat instrs))))
@@ -214,9 +216,10 @@
                                (if (= x a)
                                  []
                                  (sub [(movq ?a ?x)]))))
-                       (rule '(return ?->x)
-                             (sub [(movq ?x (reg rax))
-                                   (retq)]))
+                       (rule '(return ?x)
+                             (concat (unv-rax
+                                      (descend (sub (assign (reg rax) ?x))))
+                                     ['(retq)]))
                        (rule '(? i int?)
                              (sub (int ?i)))
                        (rule '(? v symbol?)
