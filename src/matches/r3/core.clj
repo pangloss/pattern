@@ -252,12 +252,9 @@
    (let [args (pattern-args pattern)
          matches (gensym 'matches)]
      `(let [p# ~(@spliced pattern)]
-        (make-rule p# (fn [env# ~matches]
-                        (let [~@(extract-args matches args)]
-                          (sub ~(if (= 'quote (first pattern))
-                                  (second pattern)
-                                  pattern))))
-                   raw-matches {:src '~(@rule-src &form)}))))
+        (make-rule p# (fn [env# ~matches] (success))
+                   raw-matches {:may-call-success0? true
+                                :src '~(@rule-src &form)}))))
   ([pattern handler-body]
    (let [args (pattern-args pattern)
          matches (gensym 'matches)]
