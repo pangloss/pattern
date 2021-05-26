@@ -8,37 +8,11 @@
 (defn gennice [sym]
   (symbol (str (name sym) \. (swap! niceid inc))))
 
-(defpass interp-exp nil
-  (let-rulefn [(Expr nil
-                     [(rule '(Int ?n)
-                            n)
-                      (rule '(Prim read)
-                            (let [r (read)]
-                              (when (int? r) r)))
-                      (rule '(Prim - ?->e)
-                            (- e))
-                      (rule '(Prim + (?->e1 ?->e2))
-                            (+ e1 e2))])]
-    ;; FIXME: doesn't work without either <> part or a return value... %pass doesn't work
-    Expr))
-
-(interp-exp '(Prim - (Prim + ((Int 2) (Int 99)))))
-
 (defn in [x env]
   (first (descend x env)))
 
-;; Ok... my version seems to have full functionality and it's a LOT more concise
-;; and understandable than the instructor version posted here:
-;; https://iucompilercourse.github.io/IU-P423-P523-E313-E513-Fall-2020/lecture-Sep-8.html.
-;;
-;; On the other hand I think mine is not quite as explicit as his. He seems to
-;; have clearly defined languages step-by-step, anticipating the nanopass style,
-;; while I stayed with a sort of progressively simplified version of "racket" as
-;; the syntax. He quickly moves from (let ([x y]) e) to (Let x y e), for
-;; instance.
+;; Give every var a unique name
 
-;; Exercise 2:
-;;
 (def uniqify
   (directed (rule-list [(rule '(program ?p)
                               (do
@@ -52,6 +26,9 @@
                         (rule '(+ ?->a ?->b) (success))
                         (rule '(- ?->a) (success))
                         (rule '(? x symbol?) (get-in %env [:vars x]))])))
+
+
+;; Remove complex operations
 
 (declare rco-exp)
 
@@ -105,10 +82,8 @@
  (uniqify
   '(program (let ([x 32]) (+ (let ([x 10]) x) x)))))
 
-(program (let ([x.1 32])
-           (let ([let.3 (let ([x.2 10])
-                          x.2)])
-             (+ let.3 x.1))))
+
+;; Explicate expressions: remove nesting (aka flatten)
 
 (def explicate-assign
   (directed (rule-list (rule '(let ([?v ?->e]) ?->body)
@@ -138,59 +113,14 @@
                          ~@(:s p)
                          (return ~(:value p)))))))
 
-(remove-complex-operations '(program (let ([x (+ 2 (- 1))]) (+ x 2))))
-[(explicate-expressions
-  (remove-complex-operations
-   '(program (let ([x (+ 2 (- 1))]) (+ x 2)))))
- (flatten
-  '(program (let ([x (+ 2 (- 1))]) (+ x 2))))]
-
-(def flatten (comp #'explicate-expressions #'remove-complex-operations))
-
-
-;; In the lecture notes this was 2 passes: remove-complex-opera* and
-;; explicate-control, but this pass was not complex anyway... so that seems not
-;; too valuable. Perhaps in a more complete language the pain would become
-;; apparent?
-;;
-;; Yes, in the R2 language, this is extended in a way that I think will make their approach superior so I'm rewriting it.
-;;
-;; The racket version uses multiple returns, but returning a dictionary
-;; accomplishes the same thing and I think this is a lot more comprehensible.
-;;
-#_
 (def flatten
-  (directed (rule-list (rule '(program ?->p)
-                             (sub (program (~@(distinct (:v p)))
-                                           ~@(:s p)
-                                           (return ~(:value p)))))
-                       (rule '(let ([?x ?->e]) ?->body)
-                             {:v (concat (:v e) [x] (:v body))
-                              :s (concat (:s e)
-                                         [(sub (assign ?x ~(:value e)))]
-                                         (:s body))
-                              :value (:value body)})
-                       (rule '(+ ?->a ?->b)
-                             (let [t (gennice 'tmp+)]
-                               {:v (concat (:v a) (:v b) [t])
-                                :s (concat (:s a) (:s b)
-                                           [(sub (assign ?t (+ ~(:value a) ~(:value b))))])
-                                :value t}))
-                       (rule '(- ?->a)
-                             (let [t (gennice 'tmp-)]
-                               {:v (concat (:v a) [t])
-                                :s (concat (:s a) [(sub (assign ?t (- ~(:value a))))])
-                                :value t}))
-                       (rule '(read)
-                             (let [t (gennice 'read)]
-                               {:v [t]
-                                :s [(sub (assign ?t (read)))]
-                                :value t}))
-                       (rule '?x {:value x}))))
+  (comp #'explicate-expressions #'remove-complex-operations))
 
-(def fu (comp #'flatten #'uniqify))
+;; Select instructions: rewrite as data representing X86 assembly
 
-(def unv-rax (on-subexpressions (rule '(v (reg rax)) '(reg rax))))
+(def unv-rax
+  (on-subexpressions (rule '(v (reg rax)) '(reg rax))))
+
 
 (def select-instructions
   (directed (rule-list (rule '(program ?vars ??->instrs)
@@ -225,13 +155,12 @@
                        (rule '(? v symbol?)
                              (sub (v ?v))))))
 
-(def sfu (comp #'select-instructions #'flatten #'uniqify))
-
+;; Assign homes and patch: This is a very basic and extremely suboptimal
+;; allocation strategy since it puts everything on the stack.
 
 (defn stack-size [var-count]
   (* 16 (max 1 (int (Math/ceil (/ (or var-count 0) 2))))))
 
-;; This is a very basic and extremely suboptimal allocation strategy since it puts everything on the stack.
 (def assign-homes
   (directed (rule-list (rule '(program ?vars ??->i*)
                              (sub (program ~(stack-size (:var-count %env 0))
@@ -249,8 +178,6 @@
                                 (success (sub (deref rbp ?offset))
                                          env)))))))
 
-(def asfu (comp #'assign-homes #'sfu))
-
 (def patch-instruction
   (rule-list (rule '(?i (& ?a (deref ??_)) (& ?b (deref ??_)))
                    (sub [(movq ?a (reg rax))
@@ -262,7 +189,7 @@
         (sub (program ?size ?vars
                       ~@(mapcat patch-instruction i*)))))
 
-(def pasfu (comp #'patch-instructions #'asfu))
+;; Stringify: Turn the data representing X86 assembly into actual assembly
 
 (def stringify
   (directed (rule-list (rule '(program ?size ?vars ??->i*)
@@ -294,90 +221,8 @@
                        (rule '(?x ?->a ?->b)
                              (str (name x) " " a ", " b)))))
 
+(def fu (comp #'flatten #'uniqify))
+(def sfu (comp #'select-instructions #'fu))
+(def asfu (comp #'assign-homes #'sfu))
+(def pasfu (comp #'patch-instructions #'asfu))
 (def spasfu (comp println #'stringify #'pasfu))
-
-
-(comment
-  [(uniqify '(program (let ([x 32]) (+ (let ([x 10]) x) x))))]
-
-  [(uniqify '(program (let ([x 32]) (+ 10 x))))]
-
-  ,
-  (flatten (uniqify '(program (let ([x 32]) (+ (let ([x 10]) x) x)))))
-  (fu
-   '(program
-     (let ([x (+ (- (read)) 11)])
-       (+ x 41))))
-
-  (fu '(program (let ([a 42])
-                  (let ([b a])
-                    b))))
-
-  (fu '(program (let ([a 42])
-                  (let ([b a])
-                    b))))
-
-  (fu '(program (let ([x 32]) (+ 10 x))))
-
-  (sfu '(program (let ([x 32]) (+ (let ([x (- 10)]) x) x))))
-
-  (sfu
-   '(program
-     (let ([x (+ (- (read)) 11)])
-       (+ x 41))))
-
-  (sfu '(program (let ([a 42])
-                   (let ([b a])
-                     b))))
-
-  [(fu '(program (let ([x 32]) (+ (- 10) x))))
-   (sfu '(program (let ([x 32]) (+ (- 10) x))))]
-  ,
-  (asfu '(program (let ([x 32]) (+ (let ([x 10]) x) x))))
-
-  (asfu
-   '(program
-     (let ([x (+ (- (read)) 11)])
-       (+ x 41))))
-
-  (asfu '(program (let ([a 42])
-                    (let ([b a])
-                      b))))
-
-  [(fu '(program (let ([x 32]) (+ (- 10) x))))
-   (sfu '(program (let ([x 32]) (+ (- 10) x))))
-   (asfu '(program (let ([x 32]) (+ (- 10) x))))]
-  ,
-  (pasfu '(program (let ([x 32]) (+ (let ([x 10]) x) x))))
-
-  (pasfu
-   '(program
-     (let ([x (+ (- (read)) 11)])
-       (+ x 41))))
-
-  (pasfu '(program (let ([a 42])
-                    (let ([b a])
-                      b))))
-
-  [(fu '(program (let ([x 32]) (+ (- 10) x))))
-   (sfu '(program (let ([x 32]) (+ (- 10) x))))
-   (asfu '(program (let ([x 32]) (+ (- 10) x))))
-   (pasfu '(program (let ([x 32]) (+ (- 10) x))))]
-  ,
-  (spasfu '(program (let ([x 32]) (+ (let ([x 10]) x) x))))
-
-  (spasfu
-   '(program
-     (let ([x (+ (- (read)) 11)])
-       (+ x 41))))
-
-  (spasfu '(program (let ([a 42])
-                      (let ([b a])
-                        b))))
-
-  [(fu '(program (let ([x 32]) (+ (- 10) x))))
-   (sfu '(program (let ([x 32]) (+ (- 10) x))))
-   (asfu '(program (let ([x 32]) (+ (- 10) x))))
-   (pasfu '(program (let ([x 32]) (+ (- 10) x))))
-   (spasfu '(program (let ([x 32]) (+ (- 10) x))))]
-  ,)

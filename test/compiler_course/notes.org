@@ -1,0 +1,13 @@
+#+TITLE: Notes
+
+
+Ok... my version seems to have full functionality and it's a LOT more concise and understandable than the instructor version posted here:
+https://iucompilercourse.github.io/IU-P423-P523-E313-E513-Fall-2020/lecture-Sep-8.html.
+
+On the other hand I think mine is not quite as explicit as his. He seems to have clearly defined languages step-by-step, anticipating the nanopass style, while I stayed with a sort of progressively simplified version of "racket" as the syntax. He quickly moves from (let ([x y]) e) to (Let x y e), for instance.
+
+In the lecture notes this was 2 passes: remove-complex-opera* and explicate-control, but this pass was not complex anyway... so that seems not too valuable. Perhaps in a more complete language the pain would become apparent?
+
+Yes, in the R2 language, this is extended in a way that I think will make their approach superior so I'm rewriting it.
+
+The racket version uses multiple returns, but returning a dictionary accomplishes the same thing and I think this is a lot more comprehensible.
