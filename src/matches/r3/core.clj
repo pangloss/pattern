@@ -93,8 +93,9 @@
 
 (defmethod print-method Rule [r ^java.io.Writer w]
   (.write w (prn-str
-             (or (:src (:rule (meta r)))
-                 '(rule (:pattern (:rule (meta r))) '...)))))
+             (list 'rule
+                   (:pattern (:rule (meta r)))
+                   (:src (:rule (meta r)) '...)))))
 
 (defn- match-rule [^Rule rule data env dict succeed]
   (let [env (assoc env :rule/datum data
@@ -254,7 +255,7 @@
      `(let [p# ~(@spliced pattern)]
         (make-rule p# (fn [env# ~matches] (success))
                    raw-matches {:may-call-success0? true
-                                :src '~(@rule-src &form)}))))
+                                :src '(success)}))))
   ([pattern handler-body]
    (let [args (pattern-args pattern)
          matches (gensym 'matches)]
@@ -268,4 +269,4 @@
                           ~handler-body))
                    raw-matches
                    {:may-call-success0? ~(may-call-success0? handler-body)
-                    :src '~(@rule-src &form)})))))
+                    :src '~handler-body})))))
