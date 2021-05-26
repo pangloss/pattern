@@ -109,7 +109,7 @@
   ;; FIXME Damn. This doesn't work with doubly-nested if statements because the inner statements get baked into regular statements before
   ;; being returned to the outermost statment as a value without any then/else blocks so you end up with (if (if ...) (goto nil) (goto nil)).
   ;; Need to think through the fix.... but I suspect I need to treat it more like continuation passing rather than the hybrid I've got now.
-  (directed (rule-list (rule '((?:literal let) ([?v ?->e]) ?->body)
+  (directed (rule-list (rule '((?:= let) ([?v ?->e]) ?->body)
                              (-> body
                                  (merge (:b e))
                                  (assoc :v (concat (:v e) [v] (:v body))
@@ -160,7 +160,7 @@
                       (mapcat child-rules (child-rules explicate-assign)))))))
 
 (def explicate-tail
-  (directed (rule-list (rule '((?:literal let) ([?v ?e]) ?->body)
+  (directed (rule-list (rule '((?:= let) ([?v ?e]) ?->body)
                              (let [e (explicate-assign e)]
                                {:b (merge (:b e) (:b body))
                                 :v (concat (:v e) [v] (:v body))
@@ -197,7 +197,9 @@
                     (eq? (- x) (+ x (+ y 0)))
                     (eq? x 2))
                 (+ y 2)
-                (+ y 10))))))
+                (+ y 10)))))
+
+  ,)
 
 ;; TODO: optimize-jumps, update select instructions
 ;; FIXME: do all blocks in explicate-* as continuation passing (not just the preds part)
