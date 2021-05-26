@@ -4,6 +4,7 @@
             matches.r3.core
             matches.r3.combinators
             matches.r3.rewrite
+            matches.r3.match
             matches.nanopass.dialect
             matches.nanopass.pass
             [potemkin :refer [import-vars]]))
@@ -24,6 +25,7 @@
               success
               success:env
               rule-name)
+             (matches.r3.match match match!)
              (matches.r3.combinators
               rule-list
               in-order

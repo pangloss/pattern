@@ -1,5 +1,5 @@
 (ns compiler-course.r1
-  (:require [matches :refer [rule rule-list directed descend sub success on-subexpressions]]
+  (:require [matches :refer [rule rule-list directed descend sub success on-subexpressions match]]
             [matches.nanopass.dialect :refer [=> ==> ===>]]
             [matches.nanopass.pass :refer [defpass let-rulefn]]))
 
@@ -53,67 +53,99 @@
                         (rule '(- ?->a) (success))
                         (rule '(? x symbol?) (get-in %env [:vars x]))])))
 
-(defn- rco-atom-wrap [name a b exp]
-  (let [t (gennice name)
-        a (:wrap a identity)
-        b (:wrap b identity)]
-    {:wrap (fn [r]
-             (a (b (sub (let ([?t ?exp])
-                          ?r)))))
-     :value t}))
+(declare rco-exp)
 
-(def rco-atom*
-  (directed
-   (rule-list (rule '(+ ?->a ?->b)
-                    (rco-atom-wrap 'tmp+ a b (sub (+ ~(:value a) ~(:value b)))))
-              (rule '(- ?->a)
-                    (rco-atom-wrap 'tmp- a nil (sub (- ~(:value a)))))
-              (rule '(read)
-                    (rco-atom-wrap 'read nil nil '(read)))
-              #_ ;; this was a thought experiment. let stametments may contain expressions.
-              (rule '(let ([?v ?->e]) ?->body)
-                    (let [t (gennice 'let)]
-                      {:wrap (fn [r]
-                               (let [w (:wrap body)]
-                                 ((:wrap e identity)
-                                  (sub (let ([?v ~(:value e)])
-                                         ~(if w
-                                            (w (sub (let ([?t ~(:value body)])
-                                                      ?r)))
-                                            (:value body)))))))
-                       :value t}))
-              (rule '(? x int?)
-                    {:value x})
-              (rule '?x
-                    {:value x}))))
+(def rco-atom
+  (let [wrap (fn wrap [name a b exp]
+               (let [t (gennice name)
+                     a (:wrap a identity)
+                     b (:wrap b identity)]
+                 {:wrap (fn [r]
+                          (a (b (sub (let ([?t ?exp])
+                                       ?r)))))
+                  :value t}))]
+    (directed
+     (rule-list (rule '(let ([?v ?e]) ?body)
+                      (wrap 'let nil nil
+                            (sub (let ([?v ~(rco-exp e)])
+                                   ~(rco-exp body)))))
+                (rule '(+ ?->a ?->b)
+                      (wrap 'tmp+ a b (sub (+ ~(:value a) ~(:value b)))))
+                (rule '(- ?->a)
+                      (wrap 'tmp- a nil (sub (- ~(:value a)))))
+                (rule '(read)
+                      (wrap 'read nil nil '(read)))
+                (rule '(? x int?)
+                      {:value x})
+                (rule '?x
+                      {:value x})))))
 
-(defn rco-atom [exp]
-  (let [{:keys [wrap value] :or {wrap identity}} (rco-atom* exp)]
-    (wrap value)))
 
 (def rco-exp
   (directed
    (rule-list (rule '(let ([?a ?->b]) ?->body)
                     (success))
               (rule '(+ ?a ?b)
-                    (let [a (rco-atom* a)
-                          b (rco-atom* b)]
+                    (let [a (rco-atom a)
+                          b (rco-atom b)]
                       ((:wrap a identity)
                        ((:wrap b identity)
                         (sub (+ ~(:value a) ~(:value b)))))))
               (rule '(- ?a)
-                    (let [a (rco-atom* a)]
+                    (let [a (rco-atom a)]
                       ((:wrap a identity)
                        (sub (- ~(:value a)))))))))
 
 (def remove-complex-operations
-  (directed (rule-list (rule '(program ?->p) (success))
-                       rco-exp)))
+  (rule '(program ?p) (sub (program ~(rco-exp p)))))
 
-(remove-complex-operations '(program (- (- x))))
-(rco-atom '(let ([x (+ (+ 0 1) (- 2))]) x))
-(rco-atom '(- x))
+(rco-atom '(let ([x 10]) x))
 
+(remove-complex-operations
+ (uniqify
+  '(program (let ([x 32]) (+ (let ([x 10]) x) x)))))
+
+(program (let ([x.1 32])
+           (let ([let.3 (let ([x.2 10])
+                          x.2)])
+             (+ let.3 x.1))))
+
+(def explicate-assign
+  (directed (rule-list (rule '(let ([?v ?->e]) ?->body)
+                             {:v (concat (:v e) [v] (:v body))
+                              :s (concat (:s e)
+                                         [(sub (assign ?v ~(:value e)))]
+                                         (:s body))
+                              :value (:value body)})
+                       (rule '?e
+                             {:value e}))))
+
+(def explicate-tail
+  (directed (rule-list (rule '(let ([?v ?e]) ?->body)
+                             (let [e (explicate-assign e)]
+                               {:v (concat (:v e) [v] (:v body))
+                                :s (concat (:s e)
+                                           [(sub (assign ?v ~(:value e)))]
+                                           (:s body))
+                                :value (:value body)}))
+                       (rule '?e {:value e}))))
+
+(defn explicate-expressions [p]
+  (match p
+         '(program ?p)
+         (let [p (explicate-tail p)]
+           (sub (program [~@(:v p)]
+                         ~@(:s p)
+                         (return ~(:value p)))))))
+
+(remove-complex-operations '(program (let ([x (+ 2 (- 1))]) (+ x 2))))
+[(explicate-expressions
+  (remove-complex-operations
+   '(program (let ([x (+ 2 (- 1))]) (+ x 2)))))
+ (flatten
+  '(program (let ([x (+ 2 (- 1))]) (+ x 2))))]
+
+(def flatten (comp #'explicate-expressions #'remove-complex-operations))
 
 
 ;; In the lecture notes this was 2 passes: remove-complex-opera* and
@@ -126,6 +158,7 @@
 ;; The racket version uses multiple returns, but returning a dictionary
 ;; accomplishes the same thing and I think this is a lot more comprehensible.
 ;;
+#_
 (def flatten
   (directed (rule-list (rule '(program ?->p)
                              (sub (program (~@(distinct (:v p)))
