@@ -98,7 +98,18 @@
 (def explicate-assign
   ;; NOTE these rules are also used in explicate-pred and -tail. Prefer updating the
   ;; returned block so that other keys it contains may pass through. (ie. pred?, then, else)
-  (directed (rule-list (rule '(let ([?v ?->e]) ?->body)
+  ;; NOTE this is structured differently from the instructor's version so may need to be rewritten. In his
+  ;; assign does not have a `value`, instead the var to be assigned to is passed in and every expression
+  ;; creates the assign (I create the assign in the caller). I structure my return value as a block
+  ;; and merge the blocks in the caller, but his passes the block in and merges them in place. The big
+  ;; difference is that I work with a unified data structure while he works with multiple returns. Mine
+  ;; seems better but maybe in the future his structure would be beneficial with more flexibility in
+  ;; terms of what the statements within explicate-assign want to do with the
+  ;; continuation. Also, mine doesn't seem to create trivial blocks?
+  ;; FIXME Damn. This doesn't work with doubly-nested if statements because the inner statements get baked into regular statements before
+  ;; being returned to the outermost statment as a value without any then/else blocks so you end up with (if (if ...) (goto nil) (goto nil)).
+  ;; Need to think through the fix.... but I suspect I need to treat it more like continuation passing rather than the hybrid I've got now.
+  (directed (rule-list (rule '((?:literal let) ([?v ?->e]) ?->body)
                              (-> body
                                  (merge (:b e))
                                  (assoc :v (concat (:v e) [v] (:v body))
@@ -149,7 +160,7 @@
                       (mapcat child-rules (child-rules explicate-assign)))))))
 
 (def explicate-tail
-  (directed (rule-list (rule '(let ([?v ?e]) ?->body)
+  (directed (rule-list (rule '((?:literal let) ([?v ?e]) ?->body)
                              (let [e (explicate-assign e)]
                                {:b (merge (:b e) (:b body))
                                 :v (concat (:v e) [v] (:v body))
@@ -169,6 +180,24 @@
                          ~@(:s p)
                          (return ~(:value p)))))))
 
+(comment
+  (explicate-expressions
+   (remove-complex-operations
+    '(program (if (if (< x y)
+                    (eq? (- x) (+ x (+ y 0)))
+                    (eq? x 2))
+                (+ y 2)
+                (+ y 10)))))
+
+  (explicate-expressions
+   (remove-complex-operations
+    '(program (if (if (if (< x y)
+                        (< x y)
+                        (> x y))
+                    (eq? (- x) (+ x (+ y 0)))
+                    (eq? x 2))
+                (+ y 2)
+                (+ y 10))))))
 
 ;; TODO: optimize-jumps, update select instructions
 ;; FIXME: do all blocks in explicate-* as continuation passing (not just the preds part)
