@@ -1,7 +1,8 @@
 (ns compiler-course.r1
   (:require [matches :refer [rule rule-list directed descend sub success on-subexpressions match]]
             [matches.nanopass.dialect :refer [=> ==> ===>]]
-            [matches.nanopass.pass :refer [defpass let-rulefn]]))
+            [matches.nanopass.pass :refer [defpass let-rulefn]]
+            [matches.types :refer [child-rules]]))
 
 (def niceid (atom 0))
 
@@ -92,16 +93,11 @@
 (def remove-complex-operations
   (rule '(program ?p) (sub (program ~(rco-exp p)))))
 
-(remove-complex-operations
- (shrink
-  (uniqify
-   '(program (let ([x 32]) (eq? (let ([x 10]) x) x))))))
-
-(explicate-pred (remove-complex-operations (shrink (uniqify '(program (<= (+ 1 2) 2))))))
-
 ;; Explicate expressions: remove nesting (aka flatten)
 
 (def explicate-assign
+  ;; NOTE these rules are also used in explicate-pred and -tail. Prefer updating the
+  ;; returned block so that other keys it contains may pass through. (ie. pred?, then, else)
   (directed (rule-list (rule '(let ([?v ?->e]) ?->body)
                              (-> body
                                  (merge (:b e))
@@ -109,7 +105,6 @@
                                         :s (concat (:s e)
                                                    [(sub (assign ?v ~(:value e)))]
                                                    (:s body)))))
-                       ;; TODO: is this not bit needed?
                        (rule '(not ?->x)
                              (assoc x :value (sub (not ~(:value x)))))
                        (rule '?e
@@ -151,16 +146,7 @@
                                :value (sub (?op ~(:value a) ~(:value b)))
                                :then (:then %env)
                                :else (:else %env)}))
-                      (mapcat matches.types/child-rules (matches.types/child-rules explicate-assign)))))))
-
-
-(explicate-expressions
- (remove-complex-operations
-  '(program (if (if (< (- x) (+ x (+ y 2)))
-                  (eq? (- x) (+ x (+ y 0)))
-                  (eq? x 2))
-              (+ y 2)
-              (+ y 10)))))
+                      (mapcat child-rules (child-rules explicate-assign)))))))
 
 
 (def explicate-tail
@@ -174,8 +160,7 @@
                                 :value (:value body)}))
                        (rule '(if ?exp ?->then ?->else)
                              (explicate-pred exp (pred-env then else)))
-                       ;; NOTE: I think I can just add explicate-assign here instead of any shared rules.
-                       explicate-assign)))
+                       (mapcat child-rules (child-rules explicate-assign)))))
 
 (defn explicate-block [{:keys [pred? s value label]}]
   (if pred?
@@ -196,12 +181,8 @@
                          (return ~(:value p)))))))
 
 
-(remove-complex-operations
- '(program
-   (if (eq? x 2)
-     (+ y 2)
-     (+ y 10))))
-
+;; TODO: optimize-jumps, update select instructions
+;; FIXME: do all blocks in explicate-* as continuation passing (not just the preds part)
 
 (def flatten
   (comp #'explicate-expressions #'remove-complex-operations))
@@ -210,7 +191,6 @@
 
 (def unv-rax
   (on-subexpressions (rule '(v (reg rax)) '(reg rax))))
-
 
 (def select-instructions
   (directed (rule-list (rule '(program ?vars ??->instrs)

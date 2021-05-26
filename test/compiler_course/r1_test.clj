@@ -1,6 +1,30 @@
 (ns compiler-course.r1-test)
 
-;; TODO: make some real tests
+;; TODO: make some real tests; port the test cases from the course notes.
+
+
+(comment
+  (remove-complex-operations
+   (shrink
+    (uniqify
+     '(program (let ([x 32]) (eq? (let ([x 10]) x) x))))))
+
+  (explicate-pred (remove-complex-operations (shrink (uniqify '(program (<= (+ 1 2) 2))))))
+
+  (remove-complex-operations
+   '(program
+     (if (eq? x 2)
+       (+ y 2)
+       (+ y 10))))
+
+  (explicate-expressions
+   (remove-complex-operations
+    '(program (if (if (< (- x) (+ x (+ y 2)))
+                    (eq? (- x) (+ x (+ y 0)))
+                    (eq? x 2))
+                (+ y 2)
+                (+ y 10))))))
+
 
 (comment
   (remove-complex-operations '(program (let ([x (+ 2 (- 1))]) (+ x 2))))
