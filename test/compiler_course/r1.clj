@@ -11,7 +11,23 @@
 (defn in [x env]
   (first (descend x env)))
 
+;; Shrink the number of instructions we need to support (by expanding to equivalent expressions)
+
+(def shrink
+  (let [preserve-order (fn [n a b expr]
+                         (let [t (gennice n)]
+                           (sub (let ([?t ?a])
+                                  ~(expr t)))))]
+    (on-subexpressions
+     (rule-list (rule '(- ?a ?b) (sub (+ ?a (- ?b))))
+                ;; < is our canonical choice, so alter <= > >=
+                (rule '(<= ?a ?b) (preserve-order 'le a b #(sub (not (< ?b ~%)))))))))
+                (rule '(> ?a ?b) (preserve-order 'gt a b #(sub (< ?b ~%))))
+                (rule '(>= ?a ?b) (sub (not (< ?a ?b))))
+
+
 ;; Give every var a unique name
+
 
 (def uniqify
   (directed (rule-list [(rule '(program ?p)
