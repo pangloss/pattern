@@ -95,7 +95,7 @@
 
 ;; Explicate expressions: remove nesting (aka flatten)
 
-(def explicate-assign
+(def explicate-expr
   ;; NOTE these rules are also used in explicate-pred and -tail. Prefer updating the
   ;; returned block so that other keys it contains may pass through. (ie. pred?, then, else)
   ;; NOTE this is structured differently from the instructor's version so may need to be rewritten. In his
@@ -104,11 +104,8 @@
   ;; and merge the blocks in the caller, but his passes the block in and merges them in place. The big
   ;; difference is that I work with a unified data structure while he works with multiple returns. Mine
   ;; seems better but maybe in the future his structure would be beneficial with more flexibility in
-  ;; terms of what the statements within explicate-assign want to do with the
+  ;; terms of what the statements within explicate-expr want to do with the
   ;; continuation. Also, mine doesn't seem to create trivial blocks?
-  ;; FIXME Damn. This doesn't work with doubly-nested if statements because the inner statements get baked into regular statements before
-  ;; being returned to the outermost statment as a value without any then/else blocks so you end up with (if (if ...) (goto nil) (goto nil)).
-  ;; Need to think through the fix.... but I suspect I need to treat it more like continuation passing rather than the hybrid I've got now.
   (directed (rule-list (rule '((?:= let) ([?v ?->e]) ?->body)
                              (-> body
                                  (merge (:b e))
@@ -139,16 +136,17 @@
                   (update :s vec)
                   (dissoc :pred? :value :then :else)
                   (assoc :value (sub (if ?value (goto ~(:label then)) (goto ~(:label else))))))))]
-    (comp first
+    (comp finalize-conditional
+          first
           (directed
            (rule-list (rule '(if ?exp ?->then ?->else)
                             ;; ?then and ?else can use the existing env since they need the then/else blocks passed into explicate-pred.
                             ;; See https://iucompilercourse.github.io/IU-P423-P523-E313-E513-Fall-2020/lecture-Sep-24.html
                             ;; That means they can just descend normally with -> (!!)
-                            (finalize-conditional (explicate-pred exp (pred-env then else))))
+                            (in exp (pred-env then else)))
                       (rule '((? op #{< eq?}) ?a ?b)
-                            (let [a (explicate-assign a)
-                                  b (explicate-assign b)
+                            (let [a (explicate-expr a)
+                                  b (explicate-expr b)
                                   {:keys [then else]} %env]
                               {:v (concat (:v a) (:v b))
                                :s (concat (:s a) (:s b))
@@ -157,11 +155,11 @@
                                :value (sub (?op ~(:value a) ~(:value b)))
                                :then then
                                :else else}))
-                      (mapcat child-rules (child-rules explicate-assign)))))))
+                      (mapcat child-rules (child-rules explicate-expr)))))))
 
 (def explicate-tail
   (directed (rule-list (rule '((?:= let) ([?v ?e]) ?->body)
-                             (let [e (explicate-assign e)]
+                             (let [e (explicate-expr e)]
                                {:b (merge (:b e) (:b body))
                                 :v (concat (:v e) [v] (:v body))
                                 :s (concat (:s e)
@@ -170,7 +168,7 @@
                                 :value (:value body)}))
                        (rule '(if ?exp ?->then ?->else)
                              (explicate-pred exp (pred-env then else)))
-                       (mapcat child-rules (child-rules explicate-assign)))))
+                       (mapcat child-rules (child-rules explicate-expr)))))
 
 (def explicate-expressions
   (rule '(program ?p)
