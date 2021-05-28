@@ -132,7 +132,7 @@
                           (:label then) (dissoc then :b)
                           (:label else) (dissoc else :b))
                   (update :b merge (:b then) (:b else))
-                  (update :v vec)
+                  (update :v (comp vec concat) (:v then) (:v else))
                   (update :s vec)
                   (dissoc :pred? :value :then :else)
                   (assoc :value (sub (if ?value (goto ~(:label then)) (goto ~(:label else))))))))]
@@ -144,6 +144,12 @@
                             ;; See https://iucompilercourse.github.io/IU-P423-P523-E313-E513-Fall-2020/lecture-Sep-24.html
                             ;; That means they can just descend normally with -> (!!)
                             (in exp (pred-env then else)))
+                      (rule '(not ?exp)
+                            (in exp (assoc %env :then (:else %env) :else (:then %env))))
+                      (rule true
+                            (:then %env))
+                      (rule false
+                            (:else %env))
                       (rule '((? op #{< eq?}) ?a ?b)
                             (let [a (explicate-expr a)
                                   b (explicate-expr b)
@@ -155,6 +161,9 @@
                                :value (sub (?op ~(:value a) ~(:value b)))
                                :then then
                                :else else}))
+                      (rule '(? x symbol?)
+                            (let [{:keys [then else]} %env]
+                              {:pred? true :value x :then then :else else}))
                       (mapcat child-rules (child-rules explicate-expr)))))))
 
 (def explicate-tail
@@ -186,16 +195,37 @@
                     (eq? x 2))
                 (+ y 2)
                 (+ y 10)))))
-
   (explicate-expressions
    (remove-complex-operations
-    '(program (if (if (if (< x y)
-                        (< x y)
-                        (> x y))
+    '(program (if (if false
                     (eq? (- x) (+ x (+ y 0)))
                     (eq? x 2))
                 (+ y 2)
                 (+ y 10)))))
+  (explicate-expressions
+   (remove-complex-operations
+    '(program (if false 1 2))))
+  (explicate-expressions
+   (remove-complex-operations
+    (shrink
+     '(program (if (if (if (> x y)
+                         (< x y)
+                         (> x y))
+                     (eq? (- x) (+ x (+ y 0)))
+                     (eq? x 2))
+                 (+ y 2)
+                 (+ y 10))))))
+
+  (explicate-expressions
+   (remove-complex-operations
+    (shrink
+     '(program (if (if (if (not (not false))
+                         (< x y)
+                         (> x y))
+                     (eq? (- x) (+ x (+ y 0)))
+                     (eq? x 2))
+                 (+ y 2)
+                 (+ y 10))))))
 
   ,)
 
