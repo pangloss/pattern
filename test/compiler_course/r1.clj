@@ -88,10 +88,9 @@
                        (sub (?op ~(:value a))))))
               (rule '(if ?->exp ?->then ?->else)))))
 
-
-
 (def remove-complex-operations
   (rule '(program ?p) (sub (program ~(rco-exp p)))))
+
 
 ;; Explicate expressions: remove nesting (aka flatten)
 
@@ -119,23 +118,28 @@
                              {:value e}))))
 
 (defn pred-env [then else]
-  {:then (assoc then :label (gennice 'then))
-   :else (assoc else :label (gennice 'else))})
+  ;; then/else may already have a label if their condition was a true/false
+  ;; constant and they get pushed up the tree.
+  {:then (assoc then :label (or (:label then) (gennice 'then)))
+   :else (assoc else :label (or (:label else) (gennice 'else)))})
 
 (def explicate-pred
   "Must always be called with an env containing {:then {...} :else {...}}"
-  (letfn [(finalize-conditional [{:keys [value then else] :as b}]
-            (let [then (if (:pred? then) (finalize-conditional then) then)
-                  else (if (:pred? else) (finalize-conditional else) else)]
-              (-> b
-                  (update :b assoc
-                          (:label then) (dissoc then :b)
-                          (:label else) (dissoc else :b))
-                  (update :b merge (:b then) (:b else))
-                  (update :v (comp vec concat) (:v then) (:v else))
-                  (update :s vec)
-                  (dissoc :pred? :value :then :else)
-                  (assoc :value (sub (if ?value (goto ~(:label then)) (goto ~(:label else))))))))]
+  (letfn [(finalize-conditional [{:keys [pred? value then else] :as b}]
+            (if pred?
+              (let [then (if (:pred? then) (finalize-conditional then) then)
+                    else (if (:pred? else) (finalize-conditional else) else)]
+                (-> b
+                    (update :b assoc
+                            (:label then) (dissoc then :b)
+                            (:label else) (dissoc else :b))
+                    (update :b merge (:b then) (:b else))
+                    (update :v (comp vec concat) (:v then) (:v else))
+                    (update :s vec)
+                    (dissoc :pred? :value :then :else)
+                    (assoc :value (sub (if ?value (goto ~(:label then)) (goto ~(:label else)))))))
+              ;; possible with (if true a b), return can be just {:value b}
+              b))]
     (comp finalize-conditional
           first
           (directed
@@ -145,7 +149,9 @@
                             ;; That means they can just descend normally with -> (!!)
                             (in exp (pred-env then else)))
                       (rule '(not ?exp)
-                            (in exp (assoc %env :then (:else %env) :else (:then %env))))
+                            (in exp (assoc %env
+                                           :then (:else %env)
+                                           :else (:then %env))))
                       (rule true
                             (:then %env))
                       (rule false
@@ -205,16 +211,40 @@
   (explicate-expressions
    (remove-complex-operations
     '(program (if false 1 2))))
+
   (explicate-expressions
    (remove-complex-operations
     (shrink
-     '(program (if (if (if (> x y)
-                         (< x y)
+     '(program (if (if (if true
+                         (> a b)
                          (> x y))
-                     (eq? (- x) (+ x (+ y 0)))
-                     (eq? x 2))
-                 (+ y 2)
-                 (+ y 10))))))
+                     true
+                     (eq? c 2))
+                 (+ d 2)
+                 (+ e 10))))))
+
+  (do (reset! niceid 0)
+      [(explicate-expressions
+        (remove-complex-operations
+         (shrink
+          '(program (if (if (if (let ([z (> (+ 1 (- 1)) (+ 2 (- 2)))]) z)
+                              (< x y)
+                              (> x y))
+                          (eq? (- x) (+ x (+ y 0)))
+                          (eq? x 2))
+                      (+ y 2)
+                      (+ y 10))))))
+       (reset! niceid 0)
+       (explicate-expressions
+        (remove-complex-operations
+         (shrink
+          '(program (if (if (if (> x y)
+                              (< x y)
+                              (> x y))
+                          (eq? (- x) (+ x (+ y 0)))
+                          (eq? x 2))
+                      (+ y 2)
+                      (+ y 10))))))])
 
   (explicate-expressions
    (remove-complex-operations
