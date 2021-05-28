@@ -31,18 +31,33 @@
 
 ;; Shrink the number of instructions we need to support (by expanding to equivalent expressions)
 
+(def immutable-expr?*
+  "If the expression is immutable, the result will be unmodified.
+   If the expression is mutable, the result will be modified."
+  (on-subexpressions
+   ;; NOTE: all expressions that either mutate or read mutable data must be captured here:
+   ;; NOTE: this isn't perfect because it doesn't distinguish (future) quoted expressions, but that could be added.
+   (rule-list (rule '(read) (success nil))
+              (rule '(vector-ref ??_) (success nil))
+              (rule '(vector-set! ??_) (success nil)))))
+
+(defn immutable-expr? [exp]
+  (= exp (immutable-expr?* exp)))
+
 (def shrink
   (let [preserve-order (fn [n a b expr]
                          (let [t (gennice n)]
                            (sub (let ([?t ?a])
                                   ~(expr t)))))]
     (on-subexpressions
-     (rule-list (rule '(- ?a ?b) (sub (+ ?a (- ?b))))
+     (rule-list (rule '(eq? ?same ?same)
+                      (when (immutable-expr? same)
+                        true))
+                (rule '(- ?a ?b) (sub (+ ?a (- ?b))))
                 ;; < is our canonical choice, so alter <= > >=
                 (rule '(<= ?a ?b) (preserve-order 'le a b #(sub (not (< ?b ~%)))))
-                (rule '(> ?a ?b) (preserve-order 'gt a b #(sub (< ?b ~%))))))))
-(rule '(>= ?a ?b) (sub (not (< ?a ?b))))
-
+                (rule '(> ?a ?b) (preserve-order 'gt a b #(sub (< ?b ~%))))
+                (rule '(>= ?a ?b) (sub (not (< ?a ?b))))))))
 
 ;; Remove complex operations
 
@@ -104,7 +119,7 @@
   ;; difference is that I work with a unified data structure while he works with multiple returns. Mine
   ;; seems better but maybe in the future his structure would be beneficial with more flexibility in
   ;; terms of what the statements within explicate-expr want to do with the
-  ;; continuation. Also, mine doesn't seem to create trivial blocks?
+  ;; continuation. Also, mine doesn't seem to create trivial blocks? And... mine seems to nicely optimize out constant conditionals
   (directed (rule-list (rule '((?:= let) ([?v ?->e]) ?->body)
                              (-> body
                                  (merge (:b e))
@@ -215,7 +230,7 @@
   (explicate-expressions
    (remove-complex-operations
     (shrink
-     '(program (if (if (if true
+     '(program (if (if (if (eq? a a)
                          (> a b)
                          (> x y))
                      true
