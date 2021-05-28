@@ -83,25 +83,40 @@
                       (wrap 'tmp- a nil (sub (?op ~(:value a)))))
                 (rule '(read)
                       (wrap 'read nil nil '(read)))
+                (rule '(not ?->e)
+                      (wrap 'not e nil (sub (not ~(:value e)))))
                 (rule '(? x int?)
                       {:value x})
                 (rule '?x
                       {:value x})))))
 
 (def rco-exp
-  (directed
-   (rule-list (rule '(let ([?a ?->b]) ?->body))
-              (rule '((? op #{+ < eq?}) ?a ?b)
-                    (let [a (rco-atom a)
-                          b (rco-atom b)]
-                      ((:wrap a identity)
-                       ((:wrap b identity)
-                        (sub (?op ~(:value a) ~(:value b)))))))
-              (rule '((? op #{- not}) ?a)
-                    (let [a (rco-atom a)]
-                      ((:wrap a identity)
-                       (sub (?op ~(:value a))))))
-              (rule '(if ?->exp ?->then ?->else)))))
+  (let [preserve-not (comp first
+                           (directed (rule-list (rule '(not ?->x))
+                                                (rule '?_ (:exp %env)))))]
+    (directed
+     (rule-list (rule '(let ([?a ?->b]) ?->body))
+                (rule '((? op #{+ < eq?}) ?a ?b)
+                      (let [a (rco-atom a)
+                            b (rco-atom b)]
+                        ((:wrap a identity)
+                         ((:wrap b identity)
+                          (sub (?op ~(:value a) ~(:value b)))))))
+                (rule '((? op #{- not}) ?a)
+                      (let [a (rco-atom a)]
+                        ((:wrap a identity)
+                         (sub (?op ~(:value a))))))
+                (rule '(?:letrec [maybe-not (?:as nots
+                                                  (?:fresh [nots]
+                                                           (| (not $maybe-not)
+                                                              ?->exp)))]
+                                 (if $maybe-not ?->then ?->else)))
+                ;; preserve the not in (if (not ...) ...) because a future
+                ;; pass can eliminate the not by swapping the then/else
+                ;; order. It could also be done here but I'd need to do
+                ;; more work here and it's already done there...
+                (let [exp (preserve-not nots {:exp exp})]
+                  (sub (if ?exp ?then ?else)))))))
 
 (def remove-complex-operations
   (rule '(program ?p) (sub (program ~(rco-exp p)))))
@@ -264,6 +279,11 @@
   (explicate-expressions
    (remove-complex-operations
     (shrink
+     '(program (not (< a b))))))
+
+  (explicate-expressions
+   (remove-complex-operations
+    (shrink
      '(program (if (if (if (not (not false))
                          (< x y)
                          (> x y))
@@ -283,6 +303,9 @@
 ;; Select instructions: rewrite as data representing X86 assembly
 
 (def unv-rax
+  "This is an annoying hack because I don't mark symbols as (v x) in an earlier
+  pass, so I end up with (v (reg rax)) in my return clause. This cleans that
+  up."
   (on-subexpressions (rule '(v (reg rax)) '(reg rax))))
 
 (def select-instructions
