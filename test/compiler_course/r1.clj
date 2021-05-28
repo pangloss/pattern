@@ -50,6 +50,7 @@
                            (sub (let ([?t ?a])
                                   ~(expr t)))))]
     (on-subexpressions
+     ;; TODO: if I had a breadth-first version of on-subexpressions I could do (not (< ...)) => (>= ...)
      (rule-list (rule '(eq? ?same ?same)
                       (when (immutable-expr? same)
                         true))
@@ -327,6 +328,17 @@
                                  (sub [(negq ?x)])
                                  (sub [(movq ?a ?x)
                                        (negq ?x)]))))
+                       (rule '(assign ?x ((? op #{< eq?}) ?->a ?->b))
+                             (let [flag ({'< l 'eq? e} op)]
+                               (sub [(cmpq ?b ?a)
+                                     (set ?flag (byte-reg al))
+                                     (movzbq (byte-reg al) (v ?x))])))
+                       (rule '(assign ?x (not ?->a))
+                             (let [x (sub (v ?x))]
+                               (if (= x a)
+                                 (sub [(xorq (int 1) ?x)])
+                                 (sub [(movq ?a ?x)
+                                       (xorgq (int 1) ?x)]))))
                        (rule '(assign ?x ?->a)
                              (let [x (sub (v ?x))]
                                (if (= x a)
@@ -336,6 +348,8 @@
                              (concat (unv-rax
                                       (descend (sub (assign (reg rax) ?x))))
                                      ['(retq)]))
+                       (rule true '(int 1))
+                       (rule false '(int 0))
                        (rule '(? i int?)
                              (sub (int ?i)))
                        (rule '(? v symbol?)

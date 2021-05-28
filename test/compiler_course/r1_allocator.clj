@@ -5,6 +5,9 @@
             [matches.nanopass.pass :refer [defpass let-rulefn]]
             [clojure.set :as set]))
 
+;; TODO: is rax ever looked at for liveness analysis? Not sure if I need this anyway...
+(def register-synonyms {:al :rax})
+
 (def liveness*
   (comp first
         (rule-list
