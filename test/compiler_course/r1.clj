@@ -14,7 +14,6 @@
 
 ;; Give every var a unique name
 
-
 (def uniqify
   (directed (rule-list [(rule '(program ?p)
                               (do
@@ -55,6 +54,9 @@
                       (when (immutable-expr? same)
                         true))
                 (rule '(- ?a ?b) (sub (+ ?a (- ?b))))
+                (rule '(or ?a ?b) (sub (if ?a true ?b)))
+                (rule '(and ?a ?b) (sub (if ?a (if ?b true false))))
+
                 ;; < is our canonical choice, so alter <= > >=
                 (rule '(<= ?a ?b) (preserve-order 'le a b #(sub (not (< ?b ~%)))))
                 (rule '(> ?a ?b) (preserve-order 'gt a b #(sub (< ?b ~%))))
