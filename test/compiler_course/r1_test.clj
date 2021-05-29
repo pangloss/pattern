@@ -1,7 +1,93 @@
 (ns compiler-course.r1-test)
 
 ;; TODO: make some real tests; port the test cases from the course notes.
+(comment
+  (select-instructions
+   (explicate-control
+    (remove-complex-opera*
+     '(if (if (< x y)
+            (eq? (- x) (+ x (+ y 0)))
+            (eq? x 2))
+        (+ y 2)
+        (+ y 10)))))
 
+  (select-instructions
+   (explicate-control
+    (remove-complex-opera*
+     '(if (if false
+            (eq? (- x) (+ x (+ y 0)))
+            (eq? x 2))
+        (+ y 2)
+        (+ y 10)))))
+
+
+  (select-instructions
+   (explicate-control
+    (remove-complex-opera*
+     '(if false 1 2))))
+
+  (explicate-control
+   (remove-complex-opera*
+    (shrink
+     '(if (if (if (eq? a a)
+                (> a b)
+                (> x y))
+            true
+            (eq? c 2))
+        (+ d 2)
+        (+ e 10)))))
+
+  (do (reset! niceid 0)
+      [(select-instructions
+        (explicate-control
+          (remove-complex-opera*
+           (shrink
+            '(if (if (if (let ([z (> (+ 1 (- 1)) (+ 2 (- 2)))]) z)
+                       (< x y)
+                       (> x y))
+                   (eq? (- x) (+ x (+ y 0)))
+                   (eq? x 2))
+               (+ y 2)
+               (+ y 10))))))
+       (reset! niceid 0)
+       (select-instructions
+        (explicate-control
+         (remove-complex-opera*
+          (shrink
+           '(if (if (if (> x y)
+                      (< x y)
+                      (> x y))
+                  (eq? (- x) (+ x (+ y 0)))
+                  (eq? x 2))
+              (+ y 2)
+              (+ y 10))))))])
+
+  (select-instructions
+   (explicate-control
+    (remove-complex-opera*
+     (shrink
+      '(not (< a b))))))
+
+  (select-instructions
+   (explicate-control
+    (remove-complex-opera*
+     (shrink
+      '(if a
+         1 2)))))
+
+  (select-instructions
+   (explicate-control
+    (remove-complex-opera*
+     (shrink
+      '(if (if (if (not (not false))
+                 (< x y)
+                 (> x y))
+             (eq? (- x) (+ x (+ y 0)))
+             (eq? x 2))
+         (+ y 2)
+         (+ y 10))))))
+
+  ,)
 
 (comment
   (remove-complex-operations

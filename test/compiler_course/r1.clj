@@ -240,99 +240,8 @@
                          ~@(:s p)
                          ~(:value p))))))
 
-(comment
-  (select-instructions
-   (explicate-control
-    (remove-complex-opera*
-     '(if (if (< x y)
-            (eq? (- x) (+ x (+ y 0)))
-            (eq? x 2))
-        (+ y 2)
-        (+ y 10)))))
-
-  (select-instructions
-   (explicate-control
-    (remove-complex-opera*
-     '(if (if false
-            (eq? (- x) (+ x (+ y 0)))
-            (eq? x 2))
-        (+ y 2)
-        (+ y 10)))))
-
-
-  (select-instructions
-   (explicate-control
-    (remove-complex-opera*
-     '(if false 1 2))))
-
-  (explicate-control
-   (remove-complex-opera*
-    (shrink
-     '(if (if (if (eq? a a)
-                (> a b)
-                (> x y))
-            true
-            (eq? c 2))
-        (+ d 2)
-        (+ e 10)))))
-
-  (do (reset! niceid 0)
-      [(select-instructions
-        (explicate-control
-          (remove-complex-opera*
-           (shrink
-            '(if (if (if (let ([z (> (+ 1 (- 1)) (+ 2 (- 2)))]) z)
-                       (< x y)
-                       (> x y))
-                   (eq? (- x) (+ x (+ y 0)))
-                   (eq? x 2))
-               (+ y 2)
-               (+ y 10))))))
-       (reset! niceid 0)
-       (select-instructions
-        (explicate-control
-         (remove-complex-opera*
-          (shrink
-           '(if (if (if (> x y)
-                      (< x y)
-                      (> x y))
-                  (eq? (- x) (+ x (+ y 0)))
-                  (eq? x 2))
-              (+ y 2)
-              (+ y 10))))))])
-
-  (select-instructions
-   (explicate-control
-    (remove-complex-opera*
-     (shrink
-      '(not (< a b))))))
-
-  (select-instructions
-   (explicate-control
-    (remove-complex-opera*
-     (shrink
-      '(if a
-         1 2)))))
-
-  (select-instructions
-   (explicate-control
-    (remove-complex-opera*
-     (shrink
-      '(if (if (if (not (not false))
-                 (< x y)
-                 (> x y))
-             (eq? (- x) (+ x (+ y 0)))
-             (eq? x 2))
-         (+ y 2)
-         (+ y 10))))))
-
-  ,)
-
 ;; TODO: optimize-jumps, update select instructions
 ;; FIXME: do all blocks in explicate-* as continuation passing (not just the preds part)
-
-(def flatten
-  (comp #'explicate-expressions #'remove-complex-operations))
 
 ;; Select instructions: rewrite as data representing X86 assembly
 
@@ -431,34 +340,6 @@
 (defn stack-size [var-count]
   (* 16 (max 1 (int (Math/ceil (/ (or var-count 0) 2))))))
 
-(def assign-homes
-  (directed (rule-list (rule '(program ?vars ??->i*)
-                             (sub (program ~(stack-size (:var-count %env 0))
-                                           ?vars ??i*)))
-                       (on-subexpressions
-                        (rule '(v ?x)
-                              (let [offset (get-in %env [:offset x])
-                                    found offset
-                                    offset (or offset (* -8 (inc (:var-count %env 0))))
-                                    env (if found
-                                          %env
-                                          (-> %env
-                                              (update :var-count (fnil inc 0))
-                                              (assoc-in [:offset x] offset)))]
-                                (success (sub (deref rbp ?offset))
-                                         env)))))))
-
-(def patch-instruction
-  (rule-list (rule '(?i (& ?a (deref ??_)) (& ?b (deref ??_)))
-                   (sub [(movq ?a (reg rax))
-                         (?i (reg rax) ?b)]))
-             (rule '?x [x])))
-
-(def patch-instructions
-  (rule '(program ?size ?vars ??i*)
-        (sub (program ?size ?vars
-                      ~@(mapcat patch-instruction i*)))))
-
 ;; Stringify: Turn the data representing X86 assembly into actual assembly
 
 (def stringify
@@ -491,8 +372,6 @@
                        (rule '(?x ?->a ?->b)
                              (str (name x) " " a ", " b)))))
 
+(def flatten (comp #'explicate-expressions #'remove-complex-operations))
 (def fu (comp #'flatten #'shrink #'uniqify))
 (def sfu (comp #'select-instructions #'fu))
-(def asfu (comp #'assign-homes #'sfu))
-(def pasfu (comp #'patch-instructions #'asfu))
-(def spasfu (comp println #'stringify #'pasfu))
