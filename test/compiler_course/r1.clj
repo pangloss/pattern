@@ -404,10 +404,9 @@
                                       ['(retq)]))
 
                         (rule '(if ((? cmp #{< eq?}) ?->a ?->b) (goto ?then) (goto ?else))
-                              (let [jump (if (= 'eq? cmp) 'je 'jlt)]
-                                (sub [(cmpq ?b ?a)
-                                      (?jump ?then)
-                                      (jmp ?else)])))
+                              (sub [(cmpq ?b ?a)
+                                    (jump-if ?cmp ?then)
+                                    (jmp ?else)]))
 
                         (rule '(if ?->exp (goto ?then) (goto ?else))
                               (concat
@@ -415,7 +414,7 @@
                                ;; FIXME: shouldn't it compare to 0 and go else? Seems like
                                ;; that would be a more expected semantic...
                                (sub [(cmpq $1 (v tmp))
-                                     (je ?then)
+                                     (jump-if eq? ?then)
                                      (jmp ?else)])))
                         #_
                         (rule '(?op ?->a ?->b))
