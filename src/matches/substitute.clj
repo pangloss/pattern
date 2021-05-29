@@ -28,7 +28,7 @@
   (constantly [pattern]))
 
 (defn- sub-literal [pattern]
-  (constantly [(first pattern)]))
+  (constantly [(second pattern)]))
 
 (defn- sub-restartable [pattern]
   (sub* (second pattern)))
@@ -173,6 +173,7 @@
 
 (defmethod* sub* :value #'sub-value)
 (defmethod* sub* '?:literal #'sub-literal)
+(defmethod* sub* '?:= #'sub-literal)
 (defmethod* sub* '? #'sub-element)
 (defmethod* sub* '?? #'sub-sequence)
 (defmethod* sub* :list #'sub-list)

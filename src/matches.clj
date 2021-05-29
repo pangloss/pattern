@@ -28,6 +28,7 @@
              (matches.r3.match match match!)
              (matches.r3.combinators
               rule-list
+              rule-list!
               in-order
               descend
               on-subexpressions
