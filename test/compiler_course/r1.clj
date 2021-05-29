@@ -1,5 +1,6 @@
 (ns compiler-course.r1
-  (:require [matches :refer [rule rule-list directed descend sub success on-subexpressions match]]
+  (:require [matches :refer [rule rule-list rule-list! directed
+                             descend sub success on-subexpressions match]]
             [matches.nanopass.dialect :refer [=> ==> ===>]]
             [matches.nanopass.pass :refer [defpass let-rulefn]]
             [matches.types :refer [child-rules]]))
@@ -14,19 +15,19 @@
 
 ;; Give every var a unique name
 
-(def uniqify
-  (directed (rule-list [(rule '(program ?p)
-                              (do
-                                (reset! niceid 0)
-                                (sub (program ~(descend p)))))
-                        (rule '(let ([?x ?e]) ?body)
+(def uniqify*
+  (directed (rule-list [(rule '(let ([?x ?e]) ?body)
                               (let [x' (gennice x)
                                     env (assoc-in %env [:vars x] x')]
                                 (sub (let ([?x' ~(in e env)])
                                        ~(in body env)))))
-                        (rule '(+ ?->a ?->b))
-                        (rule '(- ?->a))
+                        (rule '((? op symbol?) ?->a ?->b))
+                        (rule '((? op symbol?) ?->a))
                         (rule '(? x symbol?) (get-in %env [:vars x]))])))
+
+(defn uniqify [p]
+  (reset! niceid 0)
+  (uniqify* p))
 
 ;; Shrink the number of instructions we need to support (by expanding to equivalent expressions)
 
@@ -55,8 +56,11 @@
                         true))
                 (rule '(- ?a ?b) (sub (+ ?a (- ?b))))
                 (rule '(or ?a ?b) (sub (if ?a true ?b)))
-                (rule '(and ?a ?b) (sub (if ?a (if ?b true false))))
-
+                (rule '(and ?a ?b) (sub (if ?a (if ?b true false) false)))
+                (rule '(if ?exp ?same ?same)
+                      (when (and (immutable-expr? exp)
+                                 (immutable-expr? same))
+                        (success same)))
                 ;; < is our canonical choice, so alter <= > >=
                 (rule '(<= ?a ?b) (preserve-order 'le a b #(sub (not (< ?b ~%)))))
                 (rule '(> ?a ?b) (preserve-order 'gt a b #(sub (< ?b ~%))))
@@ -98,7 +102,7 @@
                            (directed (rule-list (rule '(not ?->x))
                                                 (rule '?_ (:exp %env)))))]
     (directed
-     (rule-list (rule '(let ([?a ?->b]) ?->body))
+     (rule-list (rule '((?:= let) ([?a ?->b]) ?->body))
                 (rule '((? op #{+ < eq?}) ?a ?b)
                       (let [a (rco-atom a)
                             b (rco-atom b)]
@@ -113,17 +117,15 @@
                                                   (?:fresh [nots]
                                                            (| (not $maybe-not)
                                                               ?->exp)))]
-                                 (if $maybe-not ?->then ?->else)))
-                ;; preserve the not in (if (not ...) ...) because a future
-                ;; pass can eliminate the not by swapping the then/else
-                ;; order. It could also be done here but I'd need to do
-                ;; more work here and it's already done there...
-                (let [exp (preserve-not nots {:exp exp})]
-                  (sub (if ?exp ?then ?else)))))))
+                                 (if $maybe-not ?->then ?->else))
+                      ;; preserve the not in (if (not ...) ...) because a future
+                      ;; pass can eliminate the not by swapping the then/else
+                      ;; order. It could also be done here but I'd need to do
+                      ;; more work here and it's already done there...
+                      (let [exp (preserve-not nots {:exp exp})]
+                        (sub (if ?exp ?then ?else))))))))
 
-(def remove-complex-operations
-  (rule '(program ?p) (sub (program ~(rco-exp p)))))
-
+(def remove-complex-opera* #'rco-exp)
 
 ;; Explicate expressions: remove nesting (aka flatten)
 
@@ -169,7 +171,7 @@
                     (update :b merge (:b then) (:b else))
                     (update :v (comp vec concat) (:v then) (:v else))
                     (update :s vec)
-                    (dissoc :pred? :value :then :else)
+                    (dissoc :value :then :else)
                     (assoc :value (sub (if ?value (goto ~(:label then)) (goto ~(:label else)))))))
               ;; possible with (if true a b), return can be just {:value b}
               b))]
@@ -218,82 +220,111 @@
                              (explicate-pred exp (pred-env then else)))
                        (mapcat child-rules (child-rules explicate-expr)))))
 
+(defn- add-block-return [{:keys [pred? value] :as b}]
+  (if pred?
+    b
+    (assoc b :value (sub (return ?value)))))
+
 (def explicate-expressions
-  (rule '(program ?p)
-         (let [p (explicate-tail p)]
+  (rule '?p
+        (let [p (add-block-return (explicate-tail p))
+              blocks (reduce-kv (fn [blocks l b]
+                                  (let [b (add-block-return b)]
+                                    (assoc blocks l
+                                           (sub (block [~@(:v b)]
+                                                       ~@(:s b)
+                                                       ~(:value b))))))
+                                {} (:b p))]
            (sub (program [[~@(:v p) ~@(mapcat :v (:vals (:b p)))]
-                          ~(:b p)]
+                          ~blocks]
                          ~@(:s p)
-                         (return ~(:value p)))))))
+                         ~(:value p))))))
 
 (comment
-  (explicate-expressions
-   (remove-complex-operations
-    '(program (if (if (< x y)
-                    (eq? (- x) (+ x (+ y 0)))
-                    (eq? x 2))
-                (+ y 2)
-                (+ y 10)))))
-  (explicate-expressions
-   (remove-complex-operations
-    '(program (if (if false
-                    (eq? (- x) (+ x (+ y 0)))
-                    (eq? x 2))
-                (+ y 2)
-                (+ y 10)))))
-  (explicate-expressions
-   (remove-complex-operations
-    '(program (if false 1 2))))
+  (select-instructions
+   (explicate-expressions
+    (remove-complex-opera*
+     '(if (if (< x y)
+            (eq? (- x) (+ x (+ y 0)))
+            (eq? x 2))
+        (+ y 2)
+        (+ y 10)))))
+
+  (select-instructions
+   (explicate-expressions
+    (remove-complex-opera*
+     '(if (if false
+            (eq? (- x) (+ x (+ y 0)))
+            (eq? x 2))
+        (+ y 2)
+        (+ y 10)))))
+
+
+  (select-instructions
+   (explicate-expressions
+    (remove-complex-opera*
+     '(if false 1 2))))
 
   (explicate-expressions
-   (remove-complex-operations
+   (remove-complex-opera*
     (shrink
-     '(program (if (if (if (eq? a a)
-                         (> a b)
-                         (> x y))
-                     true
-                     (eq? c 2))
-                 (+ d 2)
-                 (+ e 10))))))
+     '(if (if (if (eq? a a)
+                (> a b)
+                (> x y))
+            true
+            (eq? c 2))
+        (+ d 2)
+        (+ e 10)))))
 
   (do (reset! niceid 0)
-      [(explicate-expressions
-        (remove-complex-operations
-         (shrink
-          '(program (if (if (if (let ([z (> (+ 1 (- 1)) (+ 2 (- 2)))]) z)
-                              (< x y)
-                              (> x y))
-                          (eq? (- x) (+ x (+ y 0)))
-                          (eq? x 2))
-                      (+ y 2)
-                      (+ y 10))))))
+      [(select-instructions
+        (explicate-expressions
+          (remove-complex-opera*
+           (shrink
+            '(if (if (if (let ([z (> (+ 1 (- 1)) (+ 2 (- 2)))]) z)
+                       (< x y)
+                       (> x y))
+                   (eq? (- x) (+ x (+ y 0)))
+                   (eq? x 2))
+               (+ y 2)
+               (+ y 10))))))
        (reset! niceid 0)
-       (explicate-expressions
-        (remove-complex-operations
-         (shrink
-          '(program (if (if (if (> x y)
-                              (< x y)
-                              (> x y))
-                          (eq? (- x) (+ x (+ y 0)))
-                          (eq? x 2))
-                      (+ y 2)
-                      (+ y 10))))))])
+       (select-instructions
+        (explicate-expressions
+         (remove-complex-opera*
+          (shrink
+           '(if (if (if (> x y)
+                      (< x y)
+                      (> x y))
+                  (eq? (- x) (+ x (+ y 0)))
+                  (eq? x 2))
+              (+ y 2)
+              (+ y 10))))))])
 
-  (explicate-expressions
-   (remove-complex-operations
-    (shrink
-     '(program (not (< a b))))))
+  (select-instructions
+   (explicate-expressions
+    (remove-complex-opera*
+     (shrink
+      '(not (< a b))))))
 
-  (explicate-expressions
-   (remove-complex-operations
-    (shrink
-     '(program (if (if (if (not (not false))
-                         (< x y)
-                         (> x y))
-                     (eq? (- x) (+ x (+ y 0)))
-                     (eq? x 2))
-                 (+ y 2)
-                 (+ y 10))))))
+  (select-instructions
+   (explicate-expressions
+    (remove-complex-opera*
+     (shrink
+      '(if a
+         1 2)))))
+
+  (select-instructions
+   (explicate-expressions
+    (remove-complex-opera*
+     (shrink
+      '(if (if (if (not (not false))
+                 (< x y)
+                 (> x y))
+             (eq? (- x) (+ x (+ y 0)))
+             (eq? x 2))
+         (+ y 2)
+         (+ y 10))))))
 
   ,)
 
@@ -311,51 +342,89 @@
   up."
   (on-subexpressions (rule '(v (reg rax)) '(reg rax))))
 
+(def select-inst-cond
+  (comp first
+        (rule-list!
+         (rule '((? op #{< eq?}) ?a ?b)
+               (let [v (:v %env)
+                     flag ('{< l eq? e} op)]
+                 (sub [(cmpq ?b ?a)
+                       (set ?flag (byte-reg al))
+                       (movzbq (byte-reg al) ?v)])))
+         (rule '(not ?->a)
+               (let [v (:v %env)]
+                 (if (= v a)
+                   (sub [(xorq (int 1) ?v)])
+                   (sub [(movq ?a ?v)
+                         (xorgq (int 1) ?v)]))))
+         (rule '(v ?x)
+               (sub [(movq ?x ~(:v %env))])))))
+
 (def select-instructions
-  (directed (rule-list (rule '(program ?vars ??->instrs)
-                             (sub (program ?vars ~@(apply concat instrs))))
-                       (rule '(assign ?x (+ ?->a ?->b))
-                             (let [x (sub (v ?x))]
-                               (cond (= x b) (sub [(addq ?a ?b)])
-                                     (= x a) (sub [(addq ?b ?a)])
-                                     :else (sub [(movq ?a ?x)
-                                                 (addq ?b ?x)]))))
-                       (rule '(assign ?x (read))
-                             (let [x (sub (v ?x))]
-                               (sub [(callq read-int)
-                                     (movq (reg rax) ?x)])))
-                       (rule '(assign ?x (- ?->a))
-                             (let [x (sub (v ?x))]
-                               (if (= x a)
-                                 (sub [(negq ?x)])
-                                 (sub [(movq ?a ?x)
-                                       (negq ?x)]))))
-                       (rule '(assign ?x ((? op #{< eq?}) ?->a ?->b))
-                             (let [flag ({'< l 'eq? e} op)]
-                               (sub [(cmpq ?b ?a)
-                                     (set ?flag (byte-reg al))
-                                     (movzbq (byte-reg al) (v ?x))])))
-                       (rule '(assign ?x (not ?->a))
-                             (let [x (sub (v ?x))]
-                               (if (= x a)
-                                 (sub [(xorq (int 1) ?x)])
-                                 (sub [(movq ?a ?x)
-                                       (xorgq (int 1) ?x)]))))
-                       (rule '(assign ?x ?->a)
-                             (let [x (sub (v ?x))]
-                               (if (= x a)
-                                 []
-                                 (sub [(movq ?a ?x)]))))
-                       (rule '(return ?x)
-                             (concat (unv-rax
-                                      (descend (sub (assign (reg rax) ?x))))
-                                     ['(retq)]))
-                       (rule true '(int 1))
-                       (rule false '(int 0))
-                       (rule '(? i int?)
-                             (sub (int ?i)))
-                       (rule '(? v symbol?)
-                             (sub (v ?v))))))
+  ;; TODO: split to assign and tail versions.. See hints here
+  ;; https://iucompilercourse.github.io/IU-P423-P523-E313-E513-Fall-2020/lecture-Oct-6.html
+  ;; TODO: remember to select instructions on each block
+  (directed (rule-list! (rule '(program [?vars ?blocks] ??->instrs)
+                              (let [blocks (reduce-kv (fn [blocks l b]
+                                                        (assoc blocks l (descend b)))
+                                                      {} blocks)]
+                                (sub (program [?vars ?blocks] ~@(apply concat instrs)))))
+                        (rule '(block ?vars ??->instrs)
+                              (sub (block ?vars ~@(apply concat instrs))))
+                        (rule '(assign ?x (+ ?->a ?->b))
+                              (let [x (sub (v ?x))]
+                                (cond (= x b) (sub [(addq ?a ?b)])
+                                      (= x a) (sub [(addq ?b ?a)])
+                                      :else (sub [(movq ?a ?x)
+                                                  (addq ?b ?x)]))))
+                        (rule '(assign ?x (read))
+                              (let [x (sub (v ?x))]
+                                (sub [(callq read-int)
+                                      (movq (reg rax) ?x)])))
+                        (rule '(assign ?x (- ?->a))
+                              (let [x (sub (v ?x))]
+                                (if (= x a)
+                                  (sub [(negq ?x)])
+                                  (sub [(movq ?a ?x)
+                                        (negq ?x)]))))
+                        (rule '(assign ?x ((? op #{< eq?}) ?->a ?->b))
+                              (let [x (sub (v ?x))]
+                                (select-inst-cond (sub (?op ?a ?b)) {:v x})))
+                        (rule '(assign ?x (not ?->a))
+                              (let [x (sub (v ?x))]
+                                (select-inst-cond (sub (not ?a)) {:v x})))
+                        (rule '(assign ?x ?->a)
+                              (let [x (sub (v ?x))]
+                                (if (= x a)
+                                  []
+                                  (sub [(movq ?a ?x)]))))
+                        (rule '(return ?x)
+                              (concat (unv-rax
+                                       (descend (sub (assign (reg rax) ?x))))
+                                      ['(retq)]))
+
+                        (rule '(if ((? cmp #{< eq?}) ?->a ?->b) (goto ?then) (goto ?else))
+                              (let [jump (if (= 'eq? cmp) 'je 'jlt)]
+                                (sub [(cmpq ?b ?a)
+                                      (?jump ?then)
+                                      (jmp ?else)])))
+
+                        (rule '(if ?->exp (goto ?then) (goto ?else))
+                              (concat
+                               (select-inst-cond exp {:v (sub (v ~(gennice 'tmp)))})
+                               ;; FIXME: shouldn't it compare to 0 and go else? Seems like
+                               ;; that would be a more expected semantic...
+                               (sub [(cmpq $1 (v tmp))
+                                     (je ?then)
+                                     (jmp ?else)])))
+                        #_
+                        (rule '(?op ?->a ?->b))
+                        (rule true '(int 1))
+                        (rule false '(int 0))
+                        (rule '(? i int?)
+                              (sub (int ?i)))
+                        (rule '(? v symbol?)
+                              (sub (v ?v))))))
 
 ;; Assign homes and patch: This is a very basic and extremely suboptimal
 ;; allocation strategy since it puts everything on the stack.
