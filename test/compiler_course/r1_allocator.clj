@@ -3,7 +3,8 @@
             [fermor.core :as f :refer [build-graph add-edges add-vertices both-e forked]]
             [matches :refer [rule rule-list directed descend sub success on-subexpressions]]
             [matches.nanopass.pass :refer [defpass let-rulefn]]
-            [clojure.set :as set]))
+            [clojure.set :as set]
+            [fermor.core :as g]))
 
 ;; TODO: is rax ever looked at for liveness analysis? Not sure if I need this anyway...
 (def register-synonyms {:al :rax})
@@ -30,19 +31,57 @@
          (rule '(addq (v ?a) ?_)
                (update %env :live conj a)))))
 
+(def control-flow
+  (rule-list
+   (rule '(block ?label ?vars ??i* (jump ?a ?then) (jump ?b ?else))
+         (sub [[?label ?then]
+               [?label ?else]]))
+   (rule '?_ (do (prn (:rule/datum %env)) []))))
+
+
+(defn block-liveness [v init memo blocks]
+  "In the book this is both 'uncover-live' and 'build-inter' plus the bonus exercise of building the move graph."
+  (let [label (g/element-id v)]
+    (if-let [live (@memo label)]
+      live
+      (let [b* (map (fn [v]
+                      (block-liveness v init memo blocks))
+                    (g/out v))
+            live (reduce (fn [live b]
+                           (-> live
+                               (update :live into (:live b))
+                               (update :next conj b)))
+                         init
+                         b*)
+            [_ label vars & i*] (get blocks label)]
+        (let [live
+              (reduce (fn [env i]
+                        (liveness* i env
+                                   (fn a [r _ _]
+                                     [(update r :steps conj (:live r))
+                                      nil])
+                                   (fn b []
+                                     [(update env :steps conj (:live env))
+                                      nil])))
+                      (assoc live :label label)
+                      (reverse i*))]
+          (swap! memo assoc label live)
+          live)))))
+
 (def liveness
   "In the book this is both 'uncover-live' and 'build-inter' plus the bonus exercise of building the move graph."
-  (rule '(program ?vars ??i*)
-        (reduce (fn [env i]
-                  (liveness* i env
-                             (fn a [r _ _]
-                               [(update r :steps conj (:live r))
-                                nil])
-                             (fn b []
-                               [(update env :steps conj (:live env))
-                                nil])))
-                {:i [] :m [] :steps () :live #{}}
-                (reverse i*))))
+  (rule-list
+   (rule '(program ?vars ?blocks)
+         (let [edges (mapcat control-flow (vals blocks))
+               main (-> (build-graph)
+                        (add-edges :to edges)
+                        forked
+                        (g/get-vertex 'main))]
+           (block-liveness main
+                           {:i [] :m [] :steps () :live #{}}
+                           (atom {})
+                           blocks)))))
+
 
 (defn to-graph [liveness]
   (-> (build-graph)
@@ -121,10 +160,12 @@
                         (filter #(= 'stack (first %)))
                         (map second)
                         (apply max 0)
-                        r1/stack-size)]
-    (-> prog
-        (with-allocated-registers {:loc (var-locations g)})
-        (with-stack-size {:stack-size stack-size}))))
+                        r1/stack-size)
+        [_ vars blocks] prog
+        blocks (-> (vec (vals blocks))
+                   (with-allocated-registers {:loc (var-locations g)})
+                   (with-stack-size {:stack-size stack-size}))]
+    (sub (program ?vars ?blocks))))
 
 (def patch-instructions
   (directed (rule-list (rule '(program ?size ?vars ??->i*)

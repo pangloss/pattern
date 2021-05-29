@@ -228,17 +228,16 @@
 (def explicate-control
   (rule '?p
         (let [p (add-block-return (explicate-tail p))
+              ;; the above produces these blocks, too:
               blocks (reduce-kv (fn [blocks l b]
                                   (let [b (add-block-return b)]
                                     (assoc blocks l
-                                           (sub (block [~@(:v b)]
+                                           (sub (block ?l [~@(:v b)]
                                                        ~@(:s b)
                                                        ~(:value b))))))
-                                {} (:b p))]
-           (sub (program [[~@(:v p) ~@(mapcat :v (:vals (:b p)))]
-                          ~blocks]
-                         ~@(:s p)
-                         ~(:value p))))))
+                                {} (assoc (:b p) 'main p))]
+           (sub (program [~@(:v p) ~@(mapcat :v (:vals (:b p)))]
+                         ~blocks)))))
 
 ;; TODO: optimize-jumps, update select instructions
 ;; FIXME: do all blocks in explicate-* as continuation passing (not just the preds part)
@@ -273,13 +272,13 @@
   ;; TODO: split to assign and tail versions.. See hints here
   ;; https://iucompilercourse.github.io/IU-P423-P523-E313-E513-Fall-2020/lecture-Oct-6.html
   ;; TODO: remember to select instructions on each block
-  (directed (rule-list! (rule '(program [?vars ?blocks] ??->instrs)
+  (directed (rule-list! (rule '(program ?vars ?blocks)
                               (let [blocks (reduce-kv (fn [blocks l b]
                                                         (assoc blocks l (descend b)))
                                                       {} blocks)]
-                                (sub (program [?vars ?blocks] ~@(apply concat instrs)))))
-                        (rule '(block ?vars ??->instrs)
-                              (sub (block ?vars ~@(apply concat instrs))))
+                                (sub (program ?vars ?blocks))))
+                        (rule '(block ?label ?vars ??->instrs)
+                              (sub (block ?label ?vars ~@(apply concat instrs))))
                         (rule '(assign ?x (+ ?->a ?->b))
                               (let [x (sub (v ?x))]
                                 (cond (= x b) (sub [(addq ?a ?b)])
@@ -314,8 +313,8 @@
 
                         (rule '(if ((? cmp #{< eq?}) ?->a ?->b) (goto ?then) (goto ?else))
                               (sub [(cmpq ?b ?a)
-                                    (jump-if ?cmp ?then)
-                                    (jmp ?else)]))
+                                    (jump ?cmp ?then)
+                                    (jump true ?else)]))
 
                         (rule '(if ?->exp (goto ?then) (goto ?else))
                               (concat
@@ -323,10 +322,9 @@
                                ;; FIXME: shouldn't it compare to 0 and go else? Seems like
                                ;; that would be a more expected semantic...
                                (sub [(cmpq $1 (v tmp))
-                                     (jump-if eq? ?then)
-                                     (jmp ?else)])))
-                        #_
-                        (rule '(?op ?->a ?->b))
+                                     (jump eq? ?then)
+                                     (jump true ?else)])))
+
                         (rule true '(int 1))
                         (rule false '(int 0))
                         (rule '(? i int?)
