@@ -225,7 +225,7 @@
     b
     (assoc b :value (sub (return ?value)))))
 
-(def explicate-expressions
+(def explicate-control
   (rule '?p
         (let [p (add-block-return (explicate-tail p))
               blocks (reduce-kv (fn [blocks l b]
@@ -242,7 +242,7 @@
 
 (comment
   (select-instructions
-   (explicate-expressions
+   (explicate-control
     (remove-complex-opera*
      '(if (if (< x y)
             (eq? (- x) (+ x (+ y 0)))
@@ -251,7 +251,7 @@
         (+ y 10)))))
 
   (select-instructions
-   (explicate-expressions
+   (explicate-control
     (remove-complex-opera*
      '(if (if false
             (eq? (- x) (+ x (+ y 0)))
@@ -261,11 +261,11 @@
 
 
   (select-instructions
-   (explicate-expressions
+   (explicate-control
     (remove-complex-opera*
      '(if false 1 2))))
 
-  (explicate-expressions
+  (explicate-control
    (remove-complex-opera*
     (shrink
      '(if (if (if (eq? a a)
@@ -278,7 +278,7 @@
 
   (do (reset! niceid 0)
       [(select-instructions
-        (explicate-expressions
+        (explicate-control
           (remove-complex-opera*
            (shrink
             '(if (if (if (let ([z (> (+ 1 (- 1)) (+ 2 (- 2)))]) z)
@@ -290,7 +290,7 @@
                (+ y 10))))))
        (reset! niceid 0)
        (select-instructions
-        (explicate-expressions
+        (explicate-control
          (remove-complex-opera*
           (shrink
            '(if (if (if (> x y)
@@ -302,20 +302,20 @@
               (+ y 10))))))])
 
   (select-instructions
-   (explicate-expressions
+   (explicate-control
     (remove-complex-opera*
      (shrink
       '(not (< a b))))))
 
   (select-instructions
-   (explicate-expressions
+   (explicate-control
     (remove-complex-opera*
      (shrink
       '(if a
          1 2)))))
 
   (select-instructions
-   (explicate-expressions
+   (explicate-control
     (remove-complex-opera*
      (shrink
       '(if (if (if (not (not false))
