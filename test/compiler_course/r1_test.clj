@@ -52,18 +52,39 @@
                (+ y 2)
                (+ y 10)))))))
        (reset! niceid 0)
-       (a/allocate-registers
+       (a/liveness
         (select-instructions
          (explicate-control
           (remove-complex-opera*
            (shrink
-            '(if (if (if (> x y)
-                       (< x y)
-                       (> x y))
-                   (eq? (- x) (+ x (+ y 0)))
-                   (eq? x 2))
-               (+ y 2)
-               (+ y 10)))))))])
+            '(let ([x 1])
+               (let ([y 2])
+                 (if (if (if (> x y)
+                           (< x y)
+                           (> x y))
+                       (eq? (- x) (+ x (+ y 0)))
+                       (eq? x 2))
+                   (+ y 2)
+                   (+ y 10)))))))))])
+  (println
+   (stringify
+    (a/patch-instructions
+     (a/allocate-registers
+      (select-instructions
+       (explicate-control
+        (remove-complex-opera*
+         (shrink
+          (uniqify
+           '(let ([x 1])
+              (let ([y 2])
+                (if (if (if (> x y)
+                          (< x y)
+                          (> x y))
+                      (eq? (- x) (+ x (+ y 0)))
+                      (eq? x 2))
+                  (+ y 2)
+                  (+ y 10)))))))))))))
+
 
   (select-instructions
    (explicate-control

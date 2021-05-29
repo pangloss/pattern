@@ -21,6 +21,7 @@
                                     env (assoc-in %env [:vars x] x')]
                                 (sub (let ([?x' ~(in e env)])
                                        ~(in body env)))))
+                        (rule '(if ?->e ?->then ?->else))
                         (rule '((? op symbol?) ?->a ?->b))
                         (rule '((? op symbol?) ?->a))
                         (rule '(? x symbol?) (get-in %env [:vars x]))])))
@@ -210,15 +211,26 @@
 (def explicate-tail
   (directed (rule-list (rule '((?:= let) ([?v ?e]) ?->body)
                              (let [e (explicate-expr e)]
-                               {:b (merge (:b e) (:b body))
-                                :v (concat (:v e) [v] (:v body))
-                                :s (concat (:s e)
-                                           [(sub (assign ?v ~(:value e)))]
-                                           (:s body))
-                                :value (:value body)}))
+                               (merge body
+                                      {:b (merge (:b e) (:b body))
+                                       :v (concat (:v e) [v] (:v body))
+                                       :s (concat (:s e)
+                                                  [(sub (assign ?v ~(:value e)))]
+                                                  (:s body))})))
                        (rule '(if ?exp ?->then ?->else)
                              (explicate-pred exp (pred-env then else)))
-                       (mapcat child-rules (child-rules explicate-expr)))))
+                       (rule '((?:= let) ([?v ?->e]) ?->body)
+                             (-> body
+                                 (merge (:b e))
+                                 (assoc :v (concat (:v e) [v] (:v body))
+                                        :s (concat (:s e)
+                                                   [(sub (assign ?v ~(:value e)))]
+                                                   (:s body)))))
+                       (rule '(not ?->x)
+                             (assoc x :value (sub (not ~(:value x)))))
+                       (rule '?e
+                             {:value e}))))
+                       ;; (mapcat child-rules (child-rules explicate-expr)))))
 
 (defn- add-block-return [{:keys [pred? value] :as b}]
   (if pred?
@@ -227,7 +239,7 @@
 
 (def explicate-control
   (rule '?p
-        (let [p (add-block-return (explicate-tail p))
+        (let [p (explicate-tail p)
               ;; the above produces these blocks, too:
               blocks (reduce-kv (fn [blocks l b]
                                   (let [b (add-block-return b)]
@@ -235,7 +247,7 @@
                                            (sub (block ?l [~@(:v b)]
                                                        ~@(:s b)
                                                        ~(:value b))))))
-                                {} (assoc (:b p) 'main p))]
+                                {} (assoc (:b p) 'start p))]
            (sub (program [~@(:v p) ~@(mapcat :v (:vals (:b p)))]
                          ~blocks)))))
 
@@ -341,34 +353,41 @@
 ;; Stringify: Turn the data representing X86 assembly into actual assembly
 
 (def stringify
-  (directed (rule-list (rule '(program ?size ?vars ??->i*)
-                             (str
-                              "start:\n"
-                              (apply str (map #(str "\t" % "\n") i*))
-                              "\tjmp conclusion\n"
-                              "\t.globl main\n"
-                              "main:\n"
-                              "\tpushq %rbp\n"
-                              "\tmovq %rsp, %rbp\n"
-                              "\tsubq $" size ", %rsq\n"
-                              "\tjmp start\n"
-                              "conclusion:\n"
-                              "\taddq $" size ", %rsp\n"
-                              "\tpopq %rbp\n"
-                              "\tretq\n"))
-                       (rule '(int ?i)
-                             (str "$" i))
-                       (rule '(deref ?v ?o)
-                             (str o "(%" (name v) ")"))
-                       (rule '(reg ?r)
-                             (str "%" r))
-                       (rule '(ret) "")
-                       (rule '(?x)
-                             (name x))
-                       (rule '(?x ?->a)
-                             (str (name x) " " a))
-                       (rule '(?x ?->a ?->b)
-                             (str (name x) " " a ", " b)))))
+  (directed (rule-list! (rule '(program ?size ?vars ?blocks)
+                              (let [blocks (apply str (map descend blocks))]
+                                (str
+                                 blocks
+                                 "\t.globl main\n"
+                                 "main:\n"
+                                 "\tpushq %rbp\n"
+                                 "\tmovq %rsp, %rbp\n"
+                                 "\tsubq $" size ", %rsq\n"
+                                 "\tjmp start\n"
+                                 "conclusion:\n"
+                                 "\taddq $" size ", %rsp\n"
+                                 "\tpopq %rbp\n"
+                                 "\tretq\n")))
+                        (rule '(block ?label ?vars ??->i*)
+                              (apply str label ":\n"
+                                     (map #(str "\t" % "\n") i*)))
+                        (rule '(jump true ?label)
+                              (str "jmp " label))
+                        (rule '(jump < ?label)
+                              (str "jl " label))
+                        (rule '(jump eq? ?label)
+                              (str "je " label))
+                        (rule '(int ?i)
+                              (str "$" i))
+                        (rule '(deref ?v ?o)
+                              (str o "(%" (name v) ")"))
+                        (rule '(reg ?r)
+                              (str "%" r))
+                        (rule '(retq)
+                              "jmp conclusion")
+                        (rule '(?x ?->a)
+                              (str (name x) " " a))
+                        (rule '(?x ?->a ?->b)
+                              (str (name x) " " a ", " b)))))
 
 (def flatten (comp #'explicate-expressions #'remove-complex-operations))
 (def fu (comp #'flatten #'shrink #'uniqify))

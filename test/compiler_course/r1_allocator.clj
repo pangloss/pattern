@@ -9,6 +9,8 @@
 ;; TODO: is rax ever looked at for liveness analysis? Not sure if I need this anyway...
 (def register-synonyms {:al :rax})
 
+(def read-instr? (into #{} '[addq negq cmpq]))
+
 (def liveness*
   (comp first
         (rule-list
@@ -26,9 +28,13 @@
                    (update :i concat (map vector (repeat d) (disj (:live %env) d)))))
          (rule '(movq (v ?a) ?_)
                (update %env :live conj a))
-         (rule '(addq (v ?a) (v ?d))
+         (rule '((? _ ~read-instr?) (v ?a) (v ?d))
                (update %env :live conj a))
-         (rule '(addq (v ?a) ?_)
+         (rule '((? _ ~read-instr?) ?_ (v ?a))
+               (update %env :live conj a))
+         (rule '((? _ ~read-instr?) (v ?a) ?_)
+               (update %env :live conj a))
+         (rule '((? _ ~read-instr?) (v ?a))
                (update %env :live conj a)))))
 
 (def control-flow
@@ -36,7 +42,7 @@
    (rule '(block ?label ?vars ??i* (jump ?a ?then) (jump ?b ?else))
          (sub [[?label ?then]
                [?label ?else]]))
-   (rule '?_ (do (prn (:rule/datum %env)) []))))
+   (rule '?_ [])))
 
 
 (defn block-liveness [v init memo blocks]
@@ -50,7 +56,8 @@
             live (reduce (fn [live b]
                            (-> live
                                (update :live into (:live b))
-                               (update :next conj b)))
+                               (update :blocks assoc (:label b) (dissoc b :blocks))
+                               (update :blocks merge (:blocks b))))
                          init
                          b*)
             [_ label vars & i*] (get blocks label)]
@@ -70,23 +77,27 @@
 
 (def liveness
   "In the book this is both 'uncover-live' and 'build-inter' plus the bonus exercise of building the move graph."
-  (rule-list
-   (rule '(program ?vars ?blocks)
-         (let [edges (mapcat control-flow (vals blocks))
-               main (-> (build-graph)
-                        (add-edges :to edges)
-                        forked
-                        (g/get-vertex 'main))]
-           (block-liveness main
-                           {:i [] :m [] :steps () :live #{}}
-                           (atom {})
-                           blocks)))))
+  (rule '(program ?vars ?blocks)
+        (let [edges (mapcat control-flow (vals blocks))
+              main (-> (build-graph)
+                       (add-edges :to edges)
+                       forked
+                       (g/get-vertex 'start))
+              main (block-liveness main
+                                   {:i [] :m [] :steps () :live #{}}
+                                   (atom {})
+                                   blocks)
+              liveness (assoc (:blocks main) 'start (dissoc main :blocks))]
+          (reduce-kv (fn [liveness label block]
+                       (assoc-in liveness [label :block] block))
+                  liveness
+                  blocks))))
 
 
 (defn to-graph [liveness]
   (-> (build-graph)
-      (add-edges :interference (:i liveness))
-      (add-edges :move (:m liveness))
+      (add-edges :interference (mapcat :i (vals liveness)))
+      (add-edges :move (mapcat :m (vals liveness)))
       (add-vertices (map (fn [v]
                            [v {:color nil}])
                          (reduce into (:steps liveness))))
@@ -151,11 +162,12 @@
 
 (def with-stack-size
   (comp first
-        (rule '(program ??etc) (sub (program ~(:stack-size %env) ??etc)))))
+        (rule '(block ??etc) (sub (block ~(:stack-size %env) ??etc)))))
 
 (defn allocate-registers [prog]
   (let [g (to-graph (liveness prog))
         g (allocate-registers* g)
+        ;; This stack size calculation feels wrong. Is it for the whole program or per block?
         stack-size (->> (vals (var-locations g))
                         (filter #(= 'stack (first %)))
                         (map second)
@@ -163,13 +175,16 @@
                         r1/stack-size)
         [_ vars blocks] prog
         blocks (-> (vec (vals blocks))
-                   (with-allocated-registers {:loc (var-locations g)})
-                   (with-stack-size {:stack-size stack-size}))]
-    (sub (program ?vars ?blocks))))
+                   (with-allocated-registers {:loc (var-locations g)}))]
+        ;; blocks (mapv #(with-stack-size % {:stack-size stack-size})
+        ;;              blocks)]
+    (sub (program ?stack-size ?vars ?blocks))))
 
 (def patch-instructions
-  (directed (rule-list (rule '(program ?size ?vars ??->i*)
-                             (sub (program ?size ?vars ~@(apply concat i*))))
+  (directed (rule-list (rule '(program ?size ?vars [??->blocks]))
+                       (rule '(block ?label ?vars ??->i*)
+                             (sub (block ?label ?vars ~@(apply concat i*))))
+                       (rule '(addq (int 0) ?a) [])
                        (rule '(movq ?a ?a) [])
                        (rule '?x [x]))))
 
