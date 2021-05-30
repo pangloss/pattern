@@ -3,7 +3,7 @@
             [matches.r3.combinators :refer [run-rule iterated rule-list on-subexpressions
                                             on-mutual directed]]
             [matches.match.core :refer [compile-pattern matcher compile-pattern match?
-                                        matcher-type]]
+                                        matcher-type matcher-type-for-dispatch]]
             [matches.r3.rewrite :refer [sub quo]]
             [matches.match.predicator :refer [with-predicates
                                               *pattern-replace*
@@ -266,7 +266,11 @@
                                               :form-name name}))
                              {} (vals (:forms dialect)))
         terminal? (apply some-fn (map :predicate (vals (:terminals dialect))))
+
         ok (->Ok)
+        remove-terminals #(reduce-kv (fn [dict k v]
+                                       (if (terminal? v) (assoc dict k ok) dict))
+                                     % %)
         validator
         (on-mutual
          (:last-form dialect)
@@ -277,18 +281,20 @@
                    {:descend {:abbr form-abbrs}
                     :mutual {:abbr (dissoc mutual-forms (:abbr form))}}
                    (rule-list
-                    (for [expr (:exprs form)]
+                    (for [expr (:exprs form)
+                          :let [t (matcher-type-for-dispatch (:expr expr))]]
                       (make-rule (:match expr)
-                                 (fn [env dict]
-                                   (let [dict
-                                         (reduce-kv (fn [dict k v]
-                                                      (if (terminal? v)
-                                                        (assoc dict k ok)
-                                                        dict))
-                                                    dict dict)]
-                                     (if (every? #{ok} (vals dict))
-                                       ok
-                                       (merge {:fail (:orig-expr expr)} dict))))))))])))]
+                                 (if (= '? t)
+                                   (fn [env dict]
+                                     ;; For ?e exprs, let the rule fall through if not success
+                                     (let [dict (remove-terminals dict)]
+                                       (when (every? #{ok} (vals dict))
+                                         ok)))
+                                   (fn [env dict]
+                                     (let [dict (remove-terminals dict)]
+                                       (if (every? #{ok} (vals dict))
+                                         ok
+                                         (merge {:fail (:orig-expr expr)} dict)))))))))])))]
     (with-meta
       (fn dialect-checker [expr]
         (let [result (validator expr)]

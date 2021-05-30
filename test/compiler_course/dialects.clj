@@ -38,21 +38,21 @@
 
 (def-derived Simplified Shrunk
   (Atom [atm]
-        ?i ?v ?b
-        (read))
+        (read)
+        ?i ?v ?b)
   - Exp
+  (NotExp [ne]
+          ?e
+          (not ?ne))
   (Exp [e]
        ?atm
        (- ?atm)
        (+ ?atm0 ?atm1)
        (< ?atm0 ?atm1)
        (eq? ?atm0 ?atm1)
-       (not ?atm)
+       ;;(not ?atm)
        (let ([?v ?e]) ?e:body)
-       (if ?ne ?e:then ?e:else))
-  (NotExp [ne]
-          ?e
-          (not ?ne)))
+       (if ?ne ?e:then ?e:else)))
 
 (def-derived Explicit Simplified
   (terminals + [lbl symbol?])
