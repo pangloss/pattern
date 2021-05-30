@@ -1,10 +1,8 @@
 (ns compiler-course.r1-allocator
-  (:require [compiler-course.r1 :as r1]
+  (:require [clojure.set :as set]
             [fermor.core :as f :refer [build-graph add-edges add-vertices both-e forked]]
-            [matches :refer [rule rule-list directed descend sub success on-subexpressions]]
-            [matches.nanopass.pass :refer [defpass let-rulefn]]
-            [clojure.set :as set]
-            [fermor.core :as g]))
+            [fermor.core :as g]
+            [matches :refer [on-subexpressions rule rule-list sub]]))
 
 ;; TODO: is rax ever looked at for liveness analysis? Not sure if I need this anyway...
 (def register-synonyms {:al :rax})
@@ -164,30 +162,3 @@
   (comp first
         (rule '(block ??etc) (sub (block ~(:stack-size %env) ??etc)))))
 
-(defn allocate-registers [prog]
-  (let [g (to-graph (liveness prog))
-        g (allocate-registers* g)
-        ;; This stack size calculation feels wrong. Is it for the whole program or per block?
-        stack-size (->> (vals (var-locations g))
-                        (filter #(= 'stack (first %)))
-                        (map second)
-                        (apply max 0)
-                        r1/stack-size)
-        [_ vars blocks] prog
-        blocks (-> (vec (vals blocks))
-                   (with-allocated-registers {:loc (var-locations g)}))]
-        ;; blocks (mapv #(with-stack-size % {:stack-size stack-size})
-        ;;              blocks)]
-    (sub (program ?stack-size ?vars ?blocks))))
-
-(def patch-instructions
-  (directed (rule-list (rule '(program ?size ?vars [??->blocks]))
-                       (rule '(block ?label ?vars ??->i*)
-                             (sub (block ?label ?vars ~@(apply concat i*))))
-                       (rule '(addq (int 0) ?a) [])
-                       (rule '(movq ?a ?a) [])
-                       (rule '?x [x]))))
-
-(def asfu (comp #'allocate-registers #'r1/sfu))
-(def pasfu (comp #'patch-instructions #'asfu))
-(def spasfu (comp println #'r1/stringify #'pasfu))

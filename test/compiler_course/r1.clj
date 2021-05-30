@@ -1,9 +1,9 @@
 (ns compiler-course.r1
-  (:require [matches :refer [rule rule-list rule-list! directed
-                             descend sub success on-subexpressions match]]
-            [matches.nanopass.dialect :refer [=> ==> ===>]]
-            [matches.nanopass.pass :refer [defpass let-rulefn]]
-            [matches.types :refer [child-rules]]))
+  (:require [compiler-course.r1-allocator :refer [liveness to-graph allocate-registers*
+                                                  var-locations with-allocated-registers]]
+            [matches :refer [descend directed on-subexpressions rule rule-list rule-list! sub success]]
+            [matches.types :refer [child-rules]]
+            [clojure.string :as str]))
 
 (def niceid (atom 0))
 
@@ -126,7 +126,8 @@
                       (let [exp (preserve-not nots {:exp exp})]
                         (sub (if ?exp ?then ?else))))))))
 
-(def remove-complex-opera* #'rco-exp)
+(defn remove-complex-opera* [p]
+  (rco-exp p))
 
 ;; Explicate expressions: remove nesting (aka flatten)
 
@@ -219,18 +220,7 @@
                                                   (:s body))})))
                        (rule '(if ?exp ?->then ?->else)
                              (explicate-pred exp (pred-env then else)))
-                       (rule '((?:= let) ([?v ?->e]) ?->body)
-                             (-> body
-                                 (merge (:b e))
-                                 (assoc :v (concat (:v e) [v] (:v body))
-                                        :s (concat (:s e)
-                                                   [(sub (assign ?v ~(:value e)))]
-                                                   (:s body)))))
-                       (rule '(not ?->x)
-                             (assoc x :value (sub (not ~(:value x)))))
-                       (rule '?e
-                             {:value e}))))
-                       ;; (mapcat child-rules (child-rules explicate-expr)))))
+                       (mapcat child-rules (child-rules explicate-expr)))))
 
 (defn- add-block-return [{:keys [pred? value] :as b}]
   (if pred?
@@ -262,25 +252,27 @@
   up."
   (on-subexpressions (rule '(v (reg rax)) '(reg rax))))
 
-(def select-inst-cond
-  (comp first
-        (rule-list!
-         (rule '((? op #{< eq?}) ?a ?b)
-               (let [v (:v %env)
-                     flag ('{< l eq? e} op)]
-                 (sub [(cmpq ?b ?a)
-                       (set ?flag (byte-reg al))
-                       (movzbq (byte-reg al) ?v)])))
-         (rule '(not ?->a)
-               (let [v (:v %env)]
-                 (if (= v a)
-                   (sub [(xorq (int 1) ?v)])
-                   (sub [(movq ?a ?v)
-                         (xorgq (int 1) ?v)]))))
-         (rule '(v ?x)
-               (sub [(movq ?x ~(:v %env))])))))
+(def select-inst-cond*
+  (rule-list!
+   (rule '((? op #{< eq?}) ?a ?b)
+         (let [v (:v %env)
+               flag ('{< l eq? e} op)]
+           (sub [(cmpq ?b ?a)
+                 (set ?flag (byte-reg al))
+                 (movzbq (byte-reg al) ?v)])))
+   (rule '(not ?->a)
+         (let [v (:v %env)]
+           (if (= v a)
+             (sub [(xorq (int 1) ?v)])
+             (sub [(movq ?a ?v)
+                   (xorgq (int 1) ?v)]))))
+   (rule '(v ?x)
+         (sub [(movq ?x ~(:v %env))]))))
 
-(def select-instructions
+(defn select-inst-cond [x env]
+  (first (select-inst-cond* x env)))
+
+(def select-instructions*
   ;; TODO: split to assign and tail versions.. See hints here
   ;; https://iucompilercourse.github.io/IU-P423-P523-E313-E513-Fall-2020/lecture-Oct-6.html
   ;; TODO: remember to select instructions on each block
@@ -344,32 +336,61 @@
                         (rule '(? v symbol?)
                               (sub (v ?v))))))
 
-;; Assign homes and patch: This is a very basic and extremely suboptimal
-;; allocation strategy since it puts everything on the stack.
+(defn select-instructions [x]
+  (select-instructions* x))
 
 (defn stack-size [var-count]
   (* 16 (max 1 (int (Math/ceil (/ (or var-count 0) 2))))))
 
+(defn allocate-registers [prog]
+  (let [g (to-graph (liveness prog))
+        g (allocate-registers* g)
+        var-locs (var-locations g)
+        ;; This stack size calculation feels wrong. Is it for the whole program or per block?
+        stack-size (->> (vals var-locs)
+                        (filter #(= 'stack (first %)))
+                        (map second)
+                        (apply max 0)
+                        stack-size)
+        [_ vars blocks] prog
+        blocks (-> (vec (vals blocks))
+                   (with-allocated-registers {:loc var-locs}))]
+        ;; blocks (mapv #(with-stack-size % {:stack-size stack-size})
+        ;;              blocks)]
+    (sub (program ?stack-size ?var-locs ?blocks))))
+
+
+(def patch-instructions
+  (directed (rule-list (rule '(program ?size ?vars [??->blocks]))
+                       (rule '(block ?label ?vars ??->i*)
+                             (sub (block ?label ?vars ~@(apply concat i*))))
+                       (rule '(addq (int 0) ?a) [])
+                       (rule '(movq ?a ?a) [])
+                       (rule '?x [x]))))
+
 ;; Stringify: Turn the data representing X86 assembly into actual assembly
 
-(def stringify
+(def caller-saved-registers (into #{} '[rax rcx rdx rsi rdi r8 r9 r10 r11]))
+(def callee-saved-registers (into #{} '[rsp rbp rbx r12 r13 r14 r15]))
+
+(def stringify*
   (directed (rule-list! (rule '(program ?size ?vars ?blocks)
                               (let [blocks (apply str (map descend blocks))]
                                 (str
+                                 "    .globl main\n"
                                  blocks
-                                 "\t.globl main\n"
                                  "main:\n"
-                                 "\tpushq %rbp\n"
-                                 "\tmovq %rsp, %rbp\n"
-                                 "\tsubq $" size ", %rsq\n"
-                                 "\tjmp start\n"
+                                 "    pushq %rbp\n"
+                                 "    movq %rsp, %rbp\n"
+                                 "    subq $" size ", %rsq\n"
+                                 "    jmp start\n"
                                  "conclusion:\n"
-                                 "\taddq $" size ", %rsp\n"
-                                 "\tpopq %rbp\n"
-                                 "\tretq\n")))
+                                 "    addq $" size ", %rsp\n"
+                                 "    popq %rbp\n"
+                                 "    retq\n")))
                         (rule '(block ?label ?vars ??->i*)
                               (apply str label ":\n"
-                                     (map #(str "\t" % "\n") i*)))
+                                     (map #(str "    " % "\n") i*)))
                         (rule '(jump true ?label)
                               (str "jmp " label))
                         (rule '(jump < ?label)
@@ -389,6 +410,14 @@
                         (rule '(?x ?->a ?->b)
                               (str (name x) " " a ", " b)))))
 
-(def flatten (comp #'explicate-expressions #'remove-complex-operations))
-(def fu (comp #'flatten #'shrink #'uniqify))
-(def sfu (comp #'select-instructions #'fu))
+(defn stringify [x]
+  (stringify* x))
+
+(def ->flatten (comp #'explicate-control #'remove-complex-opera* #'shrink #'uniqify))
+(def ->select (comp #'select-instructions #'->flatten))
+(def ->alloc (comp #'allocate-registers #'->select))
+(def ->patch (comp #'patch-instructions #'->alloc))
+(def ->compile (comp str/split-lines (fn [x]
+                                       (str/replace (with-out-str (println x))
+                                                    #"\t" "    "))
+                     #'stringify #'->patch))
