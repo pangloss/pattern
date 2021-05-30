@@ -1,6 +1,7 @@
 (ns matches.nanopass.dialect
   (:require [matches.r3.core :refer [rule make-rule success]]
-            [matches.r3.combinators :refer [run-rule iterated rule-list on-subexpressions]]
+            [matches.r3.combinators :refer [run-rule iterated rule-list on-subexpressions
+                                            directed]]
             [matches.match.core :refer [compile-pattern matcher compile-pattern match?
                                         matcher-type]]
             [matches.r3.rewrite :refer [sub quo]]
@@ -10,7 +11,7 @@
                                               match-abbr
                                               make-abbr-predicator]]
             [matches.nanopass.kahn :refer [kahn-sort]]
-            [matches.types :refer [->MetaBox]]
+            [matches.types :refer [->MetaBox ->Ok ok?]]
             [genera :refer [defgenera defgen]]
             matches.matchers
             [clojure.walk :as walk]))
@@ -258,6 +259,33 @@
             dialect
             exprs-with-form-predicates)))
 
+(defn make-checker [dialect]
+  (let [form-abbrs (set (map :abbr (vals (:forms dialect))))
+        terminal? (apply some-fn (map :predicate (vals (:terminals dialect))))
+        ok (->Ok)
+        rule
+        (directed
+         {:descend {:abbr form-abbrs}}
+         (rule-list
+          (for [form (vals (:forms dialect))
+                expr (:exprs form)]
+            (make-rule (:match expr) (fn [env dict]
+                                       (let [dict
+                                             (reduce-kv (fn [dict k v]
+                                                          (if (terminal? v)
+                                                            (assoc dict k ok)
+                                                            dict))
+                                                        dict dict)]
+                                         (if (every? #{ok} (vals dict))
+                                           ok
+                                           (merge {:fail (:orig-expr expr)} dict))))))))]
+    (with-meta
+      (fn dialect-checker [expr]
+        (let [result (rule expr)]
+          (if (= expr result)
+            {:fail (:name dialect) :expr expr}
+            result)))
+      (meta rule))))
 
 (defn finalize-dialect [dialect]
   ;; Predicators are required for top-level forms and for terminals, not for expressions.
@@ -270,9 +298,11 @@
                                   forms)))
         tas (terminal-abbrs dialect)
         dialect (add-is-form-predicates dialect)
-        dialect (assoc dialect :predicators (dialect-predicators dialect))]
-    (when-let [abbr (some tas (map :abbr (vals (:forms dialect))))]
-      (throw (ex-info "The same abbr is used for both a terminal and a form" {:abbr abbr})))
+        dialect (assoc dialect :predicators (dialect-predicators dialect))
+        _ (when-let [abbr (some tas (map :abbr (vals (:forms dialect))))]
+            (throw (ex-info "The same abbr is used for both a terminal and a form" {:abbr abbr})))
+        dialect (assoc dialect :validate (make-checker dialect))
+        dialect (assoc dialect :valid? (comp ok? (:validate dialect)))]
     (swap! all-dialects assoc (:name dialect) dialect)
     (when (:parent-dialect dialect)
       (swap! dialect-tree derive (:name dialect) (:name @(:parent-dialect dialect))))
@@ -504,6 +534,11 @@
           expr
           (:form-order dialect)))
 
+(defn validate [dialect expr]
+  ((:validate dialect) expr))
+
+(defn valid? [dialect expr]
+  ((:valid? dialect) expr))
 
 
 (comment

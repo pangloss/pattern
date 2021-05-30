@@ -1,6 +1,7 @@
 (ns compiler-course.dialects
   (:require [matches.nanopass.dialect :as d
-             :refer [=> ==> ===> define-dialect derive-dialect unparse-dialect]
+             :refer [=> ==> ===> define-dialect derive-dialect unparse-dialect
+                     validate valid?]
              :rename {define-dialect def-dialect
                       derive-dialect def-derived}]))
 
@@ -16,7 +17,7 @@
        (read)
        (- ?e)
        (+ ?e0 ?e1)
-       (let ([?v ?e] ?e:body))
+       (let ([?v ?e]) ?e:body)
        (- ?e0 ?e1)
        (and ?e0 ?e1)
        (or ?e0 ?e1)

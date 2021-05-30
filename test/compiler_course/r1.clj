@@ -482,7 +482,6 @@
 (def ->jump (comp #'remove-jumps #'->alloc))
 (def ->patch (comp #'patch-instructions #'->jump))
 (def ->reg (comp #'save-registers #'->patch))
-(def ->compile (comp str/split-lines (fn [x]
-                                       (str/replace (with-out-str (println x))
-                                                    #"\t" "    "))
+(def ->compile (comp str/split-lines
+                     #(str/replace (with-out-str (println %)) #"\t" "    ")
                      #'stringify #'->reg))

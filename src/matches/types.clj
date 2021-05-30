@@ -49,3 +49,11 @@
       (let [m (meta r)]
         (or (`child-rules m)
             (`recombine m)))))
+
+(deftype Ok [])
+
+(defmethod print-method Ok [_ w]
+  (.write w "ok"))
+
+(defn ok? [x]
+  (instance? Ok x))
