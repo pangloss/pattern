@@ -45,8 +45,17 @@
                                                  (+ (+ 1 (+ a (+ b (+ c (+ d ( + e (+ f (+ g (+ y 2)))))))))
                                                     (+ 1 (+ a' (+ b' (+ c' (+ d' ( + e' (+ f' (+ y' 2)))))))))
                                                  (+ y 10))))))))))))))))))))]
-    [(explicate-control (remove-complex-opera* (shrink (uniqify x))))
+    [;;(explicate-control (remove-complex-opera* (shrink (uniqify x))))
      (->compile x)])
+
+
+  (->compile '(if a (if c 4 5) (if b 2 3)))
+
+  ;;
+  (let [a '(let ([x 1]) (if (eq? 1 x) 42 0))
+        r '(if (eq? 1 (read)) 42 0)]
+    [(->compile a)
+     (->compile r)])
 
 
   (->compile

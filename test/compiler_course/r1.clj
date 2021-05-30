@@ -421,6 +421,8 @@
                                 (str "jl " label))
                           (rule '(jump eq? ?label)
                                 (str "je " label))
+                          (rule '(callq read-int)
+                                (str "callq read-int"))
                           (rule '(int ?i)
                                 (str "$" i))
                           (rule '(deref ?v ?o)

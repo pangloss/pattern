@@ -74,7 +74,7 @@
           (swap! memo assoc label live)
           live)))))
 
-(def liveness
+(def liver*
   "In the book this is both 'uncover-live' and 'build-inter' plus the bonus exercise of building the move graph."
   (rule '(program ?vars ?blocks)
         (let [edges (mapcat control-flow (vals blocks))
@@ -92,6 +92,9 @@
                   liveness
                   blocks))))
 
+(defn liveness [p]
+  (liver* p))
+
 
 (defn to-graph [liveness]
   (-> (build-graph)
@@ -99,7 +102,7 @@
       (add-edges :move (mapcat :m (vals liveness)))
       (add-vertices (map (fn [v]
                            [v {:color nil}])
-                         (reduce into (:steps liveness))))
+                         (reduce into (mapcat :steps (vals liveness)))))
       forked))
 
 (defn set-color [g v color]
