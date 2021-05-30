@@ -52,8 +52,6 @@
           replacements))
 
 (defn var-abbr [prefix n]
-  nil
-  #_
   (if prefix
     (symbol prefix)
     (when-let [[_ abbr :as x] (re-matches #"[^?\w]*(\w+?)[*+0123456789]*" (name n))]

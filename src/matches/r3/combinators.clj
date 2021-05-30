@@ -130,21 +130,44 @@
 (def ^:dynamic *descent-depth* nil)
 (def ^:dynamic *do-mutual-descent* nil)
 
-(defn- directed:extend-rule-metadata [rule-meta fn-map]
+(defn- directed:extend-rule-metadata [rule-meta {:keys [fn-map descend]}]
+  ;; These letfns could be refactored but the subtle differences are annoying
+  ;; and they're not used a lot...
   (letfn [(detect-mode [rule-meta mode-type mode-string data]
             ;; capture a list of var names with the given mode-type
             (update rule-meta mode-type
                     merge
                     (reduce-kv (fn [m n modes]
-                                 (if (and modes (str/includes? modes mode-string))
+                                 (if (and modes (str/includes? modes (name mode-string)))
                                    (assoc m n (data n))
                                    m))
-                               {} (:var-modes rule-meta))))]
+                               {} (:var-modes rule-meta))))
+          (detect-meta [rule-meta mode-type meta-key f selection]
+            (if selection
+              (update rule-meta mode-type merge
+                      (reduce-kv (fn [m n attr]
+                                   (if (some selection (f attr))
+                                     (assoc m n meta-key)
+                                     m))
+                                 {} (meta-key rule-meta)))
+              rule-meta))
+          (detect-name [rule-meta mode-type name-set]
+            (if name-set
+              (update rule-meta mode-type merge
+                      (reduce (fn [m name]
+                                (if (name-set name)
+                                  (assoc m name :name)
+                                  m))
+                              {} (:var-names rule-meta)))
+              rule-meta))]
     (let [r (-> rule-meta
                 ;; marked with -> for descent.
                 (detect-mode :descending? "->" identity)
                 ;; marked with $ for mutual recursion.
                 (detect-mode :mutual? "$" meta)
+                (detect-name :descending? (:name descend))
+                (detect-meta :descending? :var-abbrs identity (:abbr descend))
+                (detect-meta :descending? :var-prefixes #(map symbol %) (:prefix descend))
                 (assoc :transform? {}))
           r (reduce (fn [rule-meta [mode-string f]]
                       (detect-mode rule-meta :transform? (name mode-string) (constantly f)))
@@ -161,12 +184,12 @@
              (seq (:active r)))
         (assoc :substitute (substitute (:pattern rule-meta)))))))
 
-(defn- directed:extended [rule fn-map]
+(defn- directed:extended [rule opts]
   (loop [rz (rule-zipper rule)]
     (cond (z/end? rz) (z/root rz)
           (z/branch? rz) (recur (z/next rz))
           :else (recur (z/next (z/edit rz vary-meta update :rule
-                                       #(directed:extend-rule-metadata % fn-map)))))))
+                                       #(directed:extend-rule-metadata % opts)))))))
 
 (defn- directed:descend-marked [apply-rules rule-meta dict env depth]
   (let [{:keys [active descending? mutual? transform? substitute]} rule-meta
@@ -203,18 +226,31 @@
   Marking a subexpression looks like ?->x or ??->x (ie. marked with -> matcher
   mode), so a matcher like ?y would not get recurred into.
 
-  You can provide an optional fn-map argument, which is a map from additional
-  mode symbols to functions that are applied to a captured match before it is
-  passed to the rule handler. Only one function per symbol is allowed.
+  You can also use opts to mark vars to descend by :name, :prefix or
+  :abbr. Look at your rule metadata to see how the var names get that info
+  extracted. For example to descend all rules that have an abbr of `e`, use
 
-  If a function is provided as the fn-map argument, it is treated as if you had
-  passed in {'>- f}, and if subexpressions are marked with >-, the expression or
-  the result of traversing into the expression if it is also marked with -> will
-  be passed to the function f. If no function is provided, [[identity]] is used.
-  In this case, the matcher would look like one of ?>-, ??>-, ?>-> (note this is
-  a shortened form), ?>-->, ??->>-, etc. The order of >- and -> does not matter.
-  If any other symbols other than >- are provided in the fn-map, the above
-  description applies with the symbol you used.
+      {:descend {:abbr #{'e}}}
+
+  Which would cause all descend the same as the following rule even if that rule
+  had no -> markings:
+
+      (rule '[?->e ?->e0 ?->e123 ?no (?-> e*) ?->e:ok ?e-no ?e0:no])
+
+  You can provide an optional :fn-map via the opts argument, which is a map from
+  additional mode symbols to functions that are applied to a captured match
+  before it is passed to the rule handler. Only one function per symbol is
+  allowed.
+
+  If a function is provided as the opts argument, it is treated as if you had
+  passed in {:fn-map {'>- f}}, and if subexpressions are marked with >-, the
+  expression or the result of traversing into the expression if it is also
+  marked with -> will be passed to the function f. If no function is provided,
+  [[identity]] is used.  In this case, the matcher would look like one of ?>-,
+  ??>-, ?>-> (note this is a shortened form), ?>-->, ??->>-, etc. The order of
+  >- and -> does not matter.  If any other symbols other than >- are provided in
+  the :fn-map key of opts, the above description applies with the symbol you
+  used.
 
   Does not iteratively descend into any expressions returned by matchers. To do
   any iterative descent, call `descend` within the handler on the subexpressions
@@ -226,11 +262,11 @@
   Note that descent order within expressions is not defined."
   ([rule]
    (directed nil rule))
-  ([fn-map raw-rule]
-   (let [fn-map (if (fn? fn-map)
-                  {">-" fn-map}
-                  fn-map)
-         rule (directed:extended raw-rule fn-map)]
+  ([opts raw-rule]
+   (let [opts (if (fn? opts)
+                {:fn-map {">-" fn-map}}
+                opts)
+         rule (directed:extended raw-rule opts)]
      (with-meta
        (fn do-on-marked
          ([data] (first (run-rule do-on-marked data nil)))
@@ -265,8 +301,8 @@
            (merge {`child-rules (fn [_] [rule])
                    `recombine (fn [_ rules]
                                 (if (next rules)
-                                  (directed fn-map (rule-list rules))
-                                  (directed fn-map (first rules))))}))))))
+                                  (directed opts (rule-list rules))
+                                  (directed opts (first rules))))}))))))
 
 (defn on-mutual
   "The idea is that you can create a group of named rule sets where matchers are tagged with metadata and a matcher mode
