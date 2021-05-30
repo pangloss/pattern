@@ -6,7 +6,7 @@
 ;; TODO: make some real tests; port the test cases from the course notes.
 
 (comment
-  (->allocate
+  (->compile
    '(let ([x 1])
       (let ([y 2])
         (if (if (< x y)
@@ -48,6 +48,10 @@
     [;;(explicate-control (remove-complex-opera* (shrink (uniqify x))))
      (->compile x)])
 
+
+  (->patch '(if a (if c 4 5) (if b 2 3)))
+
+  (->jump '(if a (if c 4 5) (if b 2 3)))
 
   (->compile '(if a (if c 4 5) (if b 2 3)))
 

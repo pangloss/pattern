@@ -355,6 +355,32 @@
                    (with-allocated-registers {:loc var-locs}))]
     (sub (program ?var-locs ?blocks))))
 
+(def remove-jumps
+  (directed (rule-list (rule '(program ?var-locs [(?:* (& ?blocks ?->jumps))])
+                             (let [blocks (reduce (fn [m [_ label :as b]]
+                                                    (assoc m label b))
+                                                  {} blocks)
+                                   linear-jumps
+                                   (->> (group-by second jumps)
+                                        (filter #(= 1 (count (val %))))
+                                        vals
+                                        (apply concat)
+                                        (into {}))
+                                   blocks
+                                   (reduce-kv (fn [blocks from to]
+                                                (-> blocks
+                                                    (update from (fn [b]
+                                                                   (sub (~@(butlast b)
+                                                                         ~@(drop 3 (blocks to))))))
+                                                    (dissoc to)))
+                                              blocks linear-jumps)]
+                               (sub (program ?var-locs [~@(vals blocks)]))))
+                       (rule '(block ?from ?vars ??i* (jump ?x ?to))
+                             [from to])
+                       (rule '(block ??x)
+                             (success nil)))))
+
+
 
 (def patch-instructions
   (directed (rule-list (rule '(program ?vars [??->blocks]))
@@ -452,7 +478,8 @@
 (def ->select (comp #'select-instructions #'->flatten))
 (def ->live (comp #'liveness #'->select))
 (def ->alloc (comp #'allocate-registers #'->select))
-(def ->patch (comp #'patch-instructions #'->alloc))
+(def ->jump (comp #'remove-jumps #'->alloc))
+(def ->patch (comp #'patch-instructions #'->jump))
 (def ->reg (comp #'save-registers #'->patch))
 (def ->compile (comp str/split-lines (fn [x]
                                        (str/replace (with-out-str (println x))
