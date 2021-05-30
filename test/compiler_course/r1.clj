@@ -162,21 +162,25 @@
 
 (def explicate-pred
   "Must always be called with an env containing {:then {...} :else {...}}"
-  (letfn [(finalize-conditional [{:keys [pred? value then else] :as b}]
-            (if pred?
-              (let [then (if (:pred? then) (finalize-conditional then) then)
-                    else (if (:pred? else) (finalize-conditional else) else)]
-                (-> b
-                    (update :b assoc
-                            (:label then) (dissoc then :b)
-                            (:label else) (dissoc else :b))
-                    (update :b merge (:b then) (:b else))
-                    (update :v (comp vec concat) (:v then) (:v else))
-                    (update :s vec)
-                    (dissoc :value :then :else)
-                    (assoc :value (sub (if ?value (goto ~(:label then)) (goto ~(:label else)))))))
-              ;; possible with (if true a b), return can be just {:value b}
-              b))]
+  (letfn [(finalize-conditional [{:keys [finalized? pred? value then else] :as b}]
+            (if finalized?
+              b
+              (if pred?
+                ;; TODO: maybe the recursion here isn't required?
+                (let [then (if (:pred? then) (finalize-conditional then) then)
+                      else (if (:pred? else) (finalize-conditional else) else)]
+                  (-> b
+                      (update :b assoc
+                              (:label then) (dissoc then :b)
+                              (:label else) (dissoc else :b))
+                      (update :b merge (:b then) (:b else))
+                      (update :v (comp vec concat) (:v then) (:v else))
+                      (update :s vec)
+                      (dissoc :value :then :else)
+                      (assoc :finalized? true)
+                      (assoc :value (sub (if ?value (goto ~(:label then)) (goto ~(:label else)))))))
+                ;; possible with (if true a b), return can be just {:value b}
+                b)))]
     (comp finalize-conditional
           first
           (directed
@@ -219,6 +223,9 @@
                                                   [(sub (assign ?v ~(:value e)))]
                                                   (:s body))})))
                        (rule '(if ?exp ?->then ?->else)
+                             ;; Because this descends into the ->then and ->else
+                             ;; expressions, the blocks they produce will be
+                             ;; finalized twice if they are `if` exprs.
                              (explicate-pred exp (pred-env then else)))
                        (mapcat child-rules (child-rules explicate-expr)))))
 
@@ -267,7 +274,7 @@
              (sub [(movq ?a ?v)
                    (xorgq (int 1) ?v)]))))
    (rule '(v ?x)
-         (sub [(movq ?x ~(:v %env))]))))
+         (sub [(movq (v ?x) ~(:v %env))]))))
 
 (defn select-inst-cond [x env]
   (first (select-inst-cond* x env)))
@@ -325,7 +332,7 @@
                                (select-inst-cond exp {:v (sub (v ~(gennice 'tmp)))})
                                ;; FIXME: shouldn't it compare to 0 and go else? Seems like
                                ;; that would be a more expected semantic...
-                               (sub [(cmpq $1 (v tmp))
+                               (sub [(cmpq (int 1) (v tmp))
                                      (jump eq? ?then)
                                      (jump true ?else)])))
 
@@ -339,29 +346,18 @@
 (defn select-instructions [x]
   (select-instructions* x))
 
-(defn stack-size [var-count]
-  (* 16 (max 1 (int (Math/ceil (/ (or var-count 0) 2))))))
-
 (defn allocate-registers [prog]
   (let [g (to-graph (liveness prog))
         g (allocate-registers* g)
         var-locs (var-locations g)
-        ;; This stack size calculation feels wrong. Is it for the whole program or per block?
-        stack-size (->> (vals var-locs)
-                        (filter #(= 'stack (first %)))
-                        (map second)
-                        (apply max 0)
-                        stack-size)
         [_ vars blocks] prog
         blocks (-> (vec (vals blocks))
                    (with-allocated-registers {:loc var-locs}))]
-        ;; blocks (mapv #(with-stack-size % {:stack-size stack-size})
-        ;;              blocks)]
-    (sub (program ?stack-size ?var-locs ?blocks))))
+    (sub (program ?var-locs ?blocks))))
 
 
 (def patch-instructions
-  (directed (rule-list (rule '(program ?size ?vars [??->blocks]))
+  (directed (rule-list (rule '(program ?vars [??->blocks]))
                        (rule '(block ?label ?vars ??->i*)
                              (sub (block ?label ?vars ~@(apply concat i*))))
                        (rule '(addq (int 0) ?a) [])
@@ -370,54 +366,93 @@
 
 ;; Stringify: Turn the data representing X86 assembly into actual assembly
 
+(defn stack-var-max [var-locs]
+  (->> (vals var-locs)
+       (filter #(= 'stack (first %)))
+       (map second)
+       (apply max 0)))
+
 (def caller-saved-registers (into #{} '[rax rcx rdx rsi rdi r8 r9 r10 r11]))
 (def callee-saved-registers (into #{} '[rsp rbp rbx r12 r13 r14 r15]))
 
+(defn save-registers* [var-locs]
+  (->> (vals var-locs)
+       (map second)
+       distinct
+       (filter callee-saved-registers)
+       (map-indexed (fn [i reg]
+                      (sub (movq (reg ?reg) (stack* ?i)))))
+       vec))
+
+(def save-registers
+  (rule '(program ?var-locs ?blocks)
+        (let [save-regs (save-registers* var-locs)]
+          (sub (program ?var-locs ?save-regs ?blocks)))))
+
+(defn stack-size [offset var-locs]
+  (let [stack-vars (+ offset (stack-var-max var-locs))]
+    (* 16 (max 1 (int (Math/ceil (/ stack-vars 2)))))))
+
 (def stringify*
-  (directed (rule-list! (rule '(program ?size ?vars ?blocks)
-                              (let [blocks (apply str (map descend blocks))]
-                                (str
-                                 "    .globl main\n"
-                                 blocks
-                                 "main:\n"
-                                 "    pushq %rbp\n"
-                                 "    movq %rsp, %rbp\n"
-                                 "    subq $" size ", %rsq\n"
-                                 "    jmp start\n"
-                                 "conclusion:\n"
-                                 "    addq $" size ", %rsp\n"
-                                 "    popq %rbp\n"
-                                 "    retq\n")))
-                        (rule '(block ?label ?vars ??->i*)
-                              (apply str label ":\n"
-                                     (map #(str "    " % "\n") i*)))
-                        (rule '(jump true ?label)
-                              (str "jmp " label))
-                        (rule '(jump < ?label)
-                              (str "jl " label))
-                        (rule '(jump eq? ?label)
-                              (str "je " label))
-                        (rule '(int ?i)
-                              (str "$" i))
-                        (rule '(deref ?v ?o)
-                              (str o "(%" (name v) ")"))
-                        (rule '(reg ?r)
-                              (str "%" r))
-                        (rule '(retq)
-                              "jmp conclusion")
-                        (rule '(?x ?->a)
-                              (str (name x) " " a))
-                        (rule '(?x ?->a ?->b)
-                              (str (name x) " " a ", " b)))))
+  (letfn [(fi [i*] (map #(str "    " % "\n") i*))]
+    (directed (rule-list! (rule '(program ?var-locs [??->save-regs] ?blocks)
+                                (let [offset (count save-regs)
+                                      blocks (apply str (map #(first (descend % {:stack-offset offset}))
+                                                             blocks))
+                                      size (stack-size offset var-locs)]
+                                  (str
+                                   "    .globl main\n"
+                                   blocks
+                                   "main:\n"
+                                   "    pushq %rbp\n"
+                                   "    movq %rsp, %rbp\n"
+                                   (apply str (fi save-regs))
+                                   "    subq $" size ", %rsq\n"
+                                   "    jmp start\n"
+                                   "conclusion:\n"
+                                   "    addq $" size ", %rsp\n"
+                                   "    popq %rbp\n"
+                                   "    retq\n")))
+                          (rule '(block ?label ?vars ??->i*)
+                                (apply str label ":\n" (fi i*)))
+                          (rule '(jump true ?label)
+                                (str "jmp " label))
+                          (rule '(jump < ?label)
+                                (str "jl " label))
+                          (rule '(jump eq? ?label)
+                                (str "je " label))
+                          (rule '(int ?i)
+                                (str "$" i))
+                          (rule '(deref ?v ?o)
+                                (str o "(%" (name v) ")"))
+                          (rule '(set ?x ?->y)
+                                (str "set" x " " y))
+                          (rule '(reg ?r)
+                                (str "%" r))
+                          (rule '(byte-reg ?r)
+                                (str "%" r))
+                          (rule '(stack* ?i)
+                                (str (* -8 (inc i)) "(%rbp)"))
+                          (rule '(stack ?i)
+                                (str (* -8 (inc (+ (:stack-offset %env) i)))
+                                     "(%rbp)"))
+                          (rule '(retq)
+                                "jmp conclusion")
+                          (rule '(?x ?->a)
+                                (str (name x) " " a))
+                          (rule '(?x ?->a ?->b)
+                                (str (name x) " " a ", " b))))))
 
 (defn stringify [x]
   (stringify* x))
 
 (def ->flatten (comp #'explicate-control #'remove-complex-opera* #'shrink #'uniqify))
 (def ->select (comp #'select-instructions #'->flatten))
+(def ->live (comp #'liveness #'->select))
 (def ->alloc (comp #'allocate-registers #'->select))
 (def ->patch (comp #'patch-instructions #'->alloc))
+(def ->reg (comp #'save-registers #'->patch))
 (def ->compile (comp str/split-lines (fn [x]
                                        (str/replace (with-out-str (println x))
                                                     #"\t" "    "))
-                     #'stringify #'->patch))
+                     #'stringify #'->reg))

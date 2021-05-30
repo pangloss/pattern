@@ -1,29 +1,56 @@
 (ns compiler-course.r1-test
   (:require [compiler-course.r1-allocator :as a]
-            [compiler-course.r1 :refer :all]))
+            [compiler-course.r1 :refer :all]
+            [clojure.test :refer [deftest testing is]]))
 
 ;; TODO: make some real tests; port the test cases from the course notes.
+
 (comment
-  (asfu
-   '(if (if (< x y)
-          (eq? (- x) (+ x (+ y 0)))
-          (eq? x 2))
-      (+ y 2)
-      (+ y 10)))
+  (->allocate
+   '(let ([x 1])
+      (let ([y 2])
+        (if (if (< x y)
+              (eq? (- x) (+ x (+ y 0)))
+              (eq? x 2))
+          (+ y 2)
+          (+ y 10)))))
 
-  (asfu
-   '(if (if false
-          (eq? (- x) (+ x (+ y 0)))
-          (eq? x 2))
-      (+ y 2)
-      (+ y 10)))
+  (let [x
+        '(let ([x 1])
+           (let ([y 0])
+             (let ([a 0])
+               (let ([b 0])
+                 (let ([c 0])
+                   (let ([d 0])
+                     (let ([e 0])
+                       (let ([f 0])
+                         (let ([g 0])
+                           (if (if (eq? x y)
+                                 (not (eq? (- x) (+ (- x) (+ y 0))))
+                                 (not (eq? x 2)))
+                             (+ 1 (+ a (+ b (+ c (+ d ( + e (+ f (+ g (+ y 2)))))))))
+                             (let ([x 1])
+                               (let ([y' 1])
+                                 (let ([a' 1])
+                                   (let ([b' 1])
+                                     (let ([c' 1])
+                                       (let ([d' 1])
+                                         (let ([e' 1])
+                                           (let ([f' 1])
+                                             (if
+                                                 ;; This deepest if statement is one of 2 that would get double-finalized
+                                                 (if (eq? a y)
+                                                     (not (eq? (- a) (+ (- a) (+ y 0))))
+                                                     (not (eq? a 2)))
+                                                 (+ (+ 1 (+ a (+ b (+ c (+ d ( + e (+ f (+ g (+ y 2)))))))))
+                                                    (+ 1 (+ a' (+ b' (+ c' (+ d' ( + e' (+ f' (+ y' 2)))))))))
+                                                 (+ y 10))))))))))))))))))))]
+    [(explicate-control (remove-complex-opera* (shrink (uniqify x))))
+     (->compile x)])
 
 
-  (a/allocate-registers
-   (select-instructions
-    (explicate-control
-     (remove-complex-opera*
-      '(if false 1 2)))))
+  (->compile
+   '(if false 1 2))
 
   (a/allocate-registers
    (select-instructions
@@ -66,6 +93,25 @@
                        (eq? x 2))
                    (+ y 2)
                    (+ y 10)))))))))])
+
+  ()
+  (a/allocate-registers
+   (select-instructions
+    (explicate-control
+     (remove-complex-opera*
+      (shrink
+       (uniqify
+        '(let ([x 1])
+           (let ([y 2])
+             (if (if (if (> x y)
+                       (< x y)
+                       (> x y))
+                   (eq? (- x) (+ x (+ y 0)))
+                   (eq? x 2))
+               (+ y 2)
+               (+ y 10))))))))))
+
+
   (println
    (stringify
     (a/patch-instructions

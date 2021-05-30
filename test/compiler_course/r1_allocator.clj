@@ -7,12 +7,13 @@
 ;; TODO: is rax ever looked at for liveness analysis? Not sure if I need this anyway...
 (def register-synonyms {:al :rax})
 
+(def move-instr? (into #{} '[movq movzbq]))
 (def read-instr? (into #{} '[addq negq cmpq]))
 
 (def liveness*
   (comp first
         (rule-list
-         (rule '(movq (v ?a) (v ?d))
+         (rule '((? _ ~move-instr?) (v ?a) (v ?d))
                (let [live (-> (:live %env)
                               (disj d)
                               (conj a))]
@@ -20,11 +21,11 @@
                      (assoc :live live)
                      (update :i concat (map vector (repeat d) (disj live a d)))
                      (update :m conj [a d]))))
-         (rule '(movq ?_ (v ?d))
+         (rule '((? _ ~move-instr?) ?_ (v ?d))
                (-> %env
                    (update :live disj d)
                    (update :i concat (map vector (repeat d) (disj (:live %env) d)))))
-         (rule '(movq (v ?a) ?_)
+         (rule '((? _ ~move-instr?) (v ?a) ?_)
                (update %env :live conj a))
          (rule '((? _ ~read-instr?) (v ?a) (v ?d))
                (update %env :live conj a))
@@ -157,8 +158,3 @@
 (def with-allocated-registers
   (comp first
         (on-subexpressions (rule '(v ?v) (get-in %env [:loc v])))))
-
-(def with-stack-size
-  (comp first
-        (rule '(block ??etc) (sub (block ~(:stack-size %env) ??etc)))))
-
