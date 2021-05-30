@@ -130,7 +130,7 @@
 (def ^:dynamic *descent-depth* nil)
 (def ^:dynamic *do-mutual-descent* nil)
 
-(defn- directed:extend-rule-metadata [rule-meta {:keys [fn-map descend on-rule-meta]
+(defn- directed:extend-rule-metadata [rule-meta {:keys [fn-map descend mutual on-rule-meta]
                                                  :or {on-rule-meta (fn [from to] to)}}]
   ;; These letfns could be refactored but the subtle differences are annoying
   ;; and they're not used a lot...
@@ -147,17 +147,19 @@
             (if selection
               (update rule-meta mode-type merge
                       (reduce-kv (fn [m n attr]
-                                   (if (some selection (f attr))
-                                     (assoc m n meta-key)
+                                   (if-let [sel (some selection (f attr))]
+                                     (assoc m n (if (map? selection)
+                                                  sel
+                                                  meta-key))
                                      m))
                                  {} (meta-key rule-meta)))
               rule-meta))
-          (detect-name [rule-meta mode-type name-set]
-            (if name-set
+          (detect-name [rule-meta mode-type selection]
+            (if selection
               (update rule-meta mode-type merge
                       (reduce (fn [m name]
-                                (if (name-set name)
-                                  (assoc m name :name)
+                                (if-let [sel (selection name)]
+                                  (assoc m name (if (map? selection) sel :name))
                                   m))
                               {} (:var-names rule-meta)))
               rule-meta))]
@@ -167,10 +169,13 @@
                  ;; marked with -> for descent.
                  (detect-mode :descending? "->" identity)
                  ;; marked with $ for mutual recursion.
-                 (detect-mode :mutual? "$" meta)
                  (detect-name :descending? (:name descend))
                  (detect-meta :descending? :var-abbrs identity (:abbr descend))
                  (detect-meta :descending? :var-prefixes #(map symbol %) (:prefix descend))
+                 (detect-mode :mutual? "$" meta) ;; meta is called against the var-name symbol. The metadata is attached by the predicator.
+                 (detect-name :mutual? (:name mutual))
+                 (detect-meta :mutual? :var-abbrs identity (:abbr mutual))
+                 (detect-meta :mutual? :var-prefixes #(map symbol %) (:prefix mutual))
                  (assoc :transform? {}))
            r (reduce (fn [rule-meta [mode-string f]]
                        (detect-mode rule-meta :transform? (name mode-string) (constantly f)))
@@ -201,9 +206,9 @@
     (binding [*descend* apply-rules] ;; TODO: bind descend in do-mutual-descent, too
       (reduce (fn [[dict env substitute] k]
                 (if-let [match (dict k)]
-                  (let [enter (cond (descending? k) apply-rules
-                                    (and mutual-fn (mutual? k))
+                  (let [enter (cond (and mutual-fn (mutual? k))
                                     (partial mutual-fn (mutual? k) (inc depth))
+                                    (descending? k) apply-rules
                                     :else vector)
                         enter (if-let [f (transform? k)]
                                 (comp (fn [[v e]] [(f v) e]) enter)
@@ -309,20 +314,22 @@
                                   (directed opts (first rules))))}))))))
 
 (defn on-mutual
-  "The idea is that you can create a group of named rule sets where matchers are tagged with metadata and a matcher mode
-  that tells this system to switch which rule set is applied for subexpressions of the given type. Effectively this lets you
-  switch between expression types (or dialects?) when applying rules to an expression.
+  "The idea is that you can create a group of named rule sets where matchers are
+  tagged with metadata and a matcher mode that tells this system to switch which
+  rule set is applied for subexpressions of the given type. Effectively this
+  lets you switch between expression types (or dialects?)  when applying rules
+  to an expression.
 
-  This is currently done in a somewhat simplistic way with bound variables because I'm not exactly sure how it should be structured but
-  eventually it should be done without the need for extra global state like this.
-  "
+  This is currently done in a somewhat simplistic way with bound variables
+  because I'm not exactly sure how it should be structured but eventually it
+  should be done without the need for extra global state like this.  "
   [initial-form name-rule-pairs]
   (let [forms (if (map? name-rule-pairs)
                 name-rule-pairs
                 (apply hash-map name-rule-pairs))]
     (letfn [(switch-branch [{:keys [form-name]} depth datum env]
-              (let [form-name (if (vector? form-name) (second form-name) form-name)
-                    rule (forms form-name)]
+              (let [rule (or (forms form-name)
+                             (when (vector? form-name) (forms (second form-name))))]
                 ;; TODO: probably want to just keep on the same branch if there is no option? Or maybe don't descend?
                 (if rule
                   (binding [*descent-depth* depth]
@@ -343,7 +350,9 @@
                  (y result env n))))))
         {:rule {:rule-type ::on-mutual
                 :initial-form initial-form
-                :name-rule-pairs (walk/postwalk (some-fn meta identity) name-rule-pairs)}}))))
+                :name-rule-pairs (reduce-kv (fn [m k v]
+                                              (assoc m k (meta v)))
+                                            {} name-rule-pairs)}}))))
 
 (defn- try-subexpressions [the-rule datum env events]
   (if (and (seqable? datum) (not (string? datum)))

@@ -1,7 +1,7 @@
 (ns matches.nanopass.dialect
   (:require [matches.r3.core :refer [rule make-rule success]]
             [matches.r3.combinators :refer [run-rule iterated rule-list on-subexpressions
-                                            directed]]
+                                            on-mutual directed]]
             [matches.match.core :refer [compile-pattern matcher compile-pattern match?
                                         matcher-type]]
             [matches.r3.rewrite :refer [sub quo]]
@@ -261,31 +261,41 @@
 
 (defn make-checker [dialect]
   (let [form-abbrs (set (map :abbr (vals (:forms dialect))))
+        mutual-forms (reduce (fn [m {:keys [abbr name] :as f}]
+                               (assoc m abbr {:dialect (:name dialect)
+                                              :form-name name}))
+                             {} (vals (:forms dialect)))
         terminal? (apply some-fn (map :predicate (vals (:terminals dialect))))
         ok (->Ok)
-        rule
-        (directed
-         {:descend {:abbr form-abbrs}}
-         (rule-list
-          (for [form (vals (:forms dialect))
-                expr (:exprs form)]
-            (make-rule (:match expr) (fn [env dict]
-                                       (let [dict
-                                             (reduce-kv (fn [dict k v]
-                                                          (if (terminal? v)
-                                                            (assoc dict k ok)
-                                                            dict))
-                                                        dict dict)]
-                                         (if (every? #{ok} (vals dict))
-                                           ok
-                                           (merge {:fail (:orig-expr expr)} dict))))))))]
+        validator
+        (on-mutual
+         (:last-form dialect)
+         (into {}
+               (for [form (vals (:forms dialect))]
+                 [(:name form)
+                  (directed
+                   {:descend {:abbr form-abbrs}
+                    :mutual {:abbr (dissoc mutual-forms (:abbr form))}}
+                   (rule-list
+                    (for [expr (:exprs form)]
+                      (make-rule (:match expr)
+                                 (fn [env dict]
+                                   (let [dict
+                                         (reduce-kv (fn [dict k v]
+                                                      (if (terminal? v)
+                                                        (assoc dict k ok)
+                                                        dict))
+                                                    dict dict)]
+                                     (if (every? #{ok} (vals dict))
+                                       ok
+                                       (merge {:fail (:orig-expr expr)} dict))))))))])))]
     (with-meta
       (fn dialect-checker [expr]
-        (let [result (rule expr)]
+        (let [result (validator expr)]
           (if (= expr result)
             {:fail (:name dialect) :expr expr}
             result)))
-      (meta rule))))
+      (meta validator))))
 
 (defn finalize-dialect [dialect]
   ;; Predicators are required for top-level forms and for terminals, not for expressions.
@@ -341,7 +351,8 @@
                                              (conj exprs (add-form-expr dialect form expr)))
                                         '- (vec (remove #(= expr (:orig-expr %)) exprs))))
                                     es
-                                    (map vector ops exprs))))))))
+                                    (map vector ops exprs)))))
+        (assoc :last-form full-name))))
 
 (defn- remove-form [dialect name]
   (update dialect :forms dissoc name))
