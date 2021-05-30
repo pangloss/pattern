@@ -1,8 +1,8 @@
 (ns compiler-course.r1-dialects
   (:require [matches.nanopass.dialect :as d
              :refer [=> ==> ===> define-dialect derive-dialect]
-             :rename {def-dialect define-dialect
-                      def-derived derive-dialect}]))
+             :rename {define-dialect def-dialect
+                      derive-dialect def-derived}]))
 
 ;; I'm using this with 2 dimensions (book stage X pass progression) and it
 ;; doesn't work well. Forget about the previous book stage languages.
@@ -20,7 +20,6 @@
        (+ ?e0 ?e1)
        (let ([?v ?e] ?e:body))))
 
-(def cmp? #{'eq? '< '<= '> '>=})
 
 (def-derived R-If R-Var
   (terminals + [b boolean?]
@@ -33,19 +32,6 @@
        + (not ?e)
        + (?cmp ?e0 ?e1)
        + (if ?e ?e:then ?e:else)))
-
-(def-derived R-AbsIf R-AbsVar
-  (terminals + [b boolean?]
-             + [cmp `cmp?])
-  (Exp [e]
-       - (Prim read ())
-       - (Prim - (?e))
-       - (Prim + (?e0 ?e1))
-       + (Bool ?b)
-       + (Prim ?op (??e*))
-       ;; Note that and/or are gone. They can be turned into if statements I think
-       + (If ?e ?e:then ?e:else)))
-
 
 
 

@@ -324,6 +324,21 @@
              :length (len 1)))))
 
 
+(defn match-+map
+  "Create a ?:+map matcher than can match a key/value pair at least once."
+  [[_ k v] comp-env]
+  (compile-pattern* (list '?:chain '?_ 'seq (list (list '?:* [k v])))
+                    comp-env))
+
+(defn match-*map
+  "Create a ?:*map matcher than can match a key/value pair multiple times."
+  [[_ k v] comp-env]
+  (compile-pattern* (list '?:chain
+                          (list '? '_ (some-fn nil? map?))
+                          'seq (list '| nil (list (list '?:* [k v]))))
+                    comp-env))
+
+
 (defn- match-optional
   "Match the given form 0 or 1 times. There may be any number of separate
   matcher patterns within this form, which all must match sequentially to make a
@@ -857,6 +872,8 @@
 (register-matcher '? #'match-element {:named? true})
 (register-matcher '?? #'match-segment {:named? true})
 (register-matcher '?:map match-map)
+(register-matcher '?:+map #'match-+map)
+(register-matcher '?:*map #'match-*map)
 (register-matcher '?:as match-as {:named? true :restriction-position 3})
 (register-matcher '?:? #'match-optional {:aliases ['?:optional]})
 (register-matcher '?:1 #'match-one {:aliases ['?:one]})
