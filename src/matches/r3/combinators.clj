@@ -130,7 +130,8 @@
 (def ^:dynamic *descent-depth* nil)
 (def ^:dynamic *do-mutual-descent* nil)
 
-(defn- directed:extend-rule-metadata [rule-meta {:keys [fn-map descend]}]
+(defn- directed:extend-rule-metadata [rule-meta {:keys [fn-map descend on-rule-meta]
+                                                 :or {on-rule-meta (fn [from to] to)}}]
   ;; These letfns could be refactored but the subtle differences are annoying
   ;; and they're not used a lot...
   (letfn [(detect-mode [rule-meta mode-type mode-string data]
@@ -160,29 +161,31 @@
                                   m))
                               {} (:var-names rule-meta)))
               rule-meta))]
-    (let [r (-> rule-meta
-                ;; marked with -> for descent.
-                (detect-mode :descending? "->" identity)
-                ;; marked with $ for mutual recursion.
-                (detect-mode :mutual? "$" meta)
-                (detect-name :descending? (:name descend))
-                (detect-meta :descending? :var-abbrs identity (:abbr descend))
-                (detect-meta :descending? :var-prefixes #(map symbol %) (:prefix descend))
-                (assoc :transform? {}))
-          r (reduce (fn [rule-meta [mode-string f]]
-                      (detect-mode rule-meta :transform? (name mode-string) (constantly f)))
-                    r fn-map)
-          ;; descend in var-name order
-          r (assoc r :active (map (set (concat (keys (:descending? r))
-                                               (keys (:transform? r))))
-                                  (:var-names rule-meta)))]
-      (cond-> r
-        ;; If the datum will change after the initial match, and it's possible
-        ;; that (success) arity 0 will be called, the datum needs to have the
-        ;; new values substituted into it:
-        (and (:may-call-success0? r)
-             (seq (:active r)))
-        (assoc :substitute (substitute (:pattern rule-meta)))))))
+    (on-rule-meta
+     rule-meta
+     (let [r (-> rule-meta
+                 ;; marked with -> for descent.
+                 (detect-mode :descending? "->" identity)
+                 ;; marked with $ for mutual recursion.
+                 (detect-mode :mutual? "$" meta)
+                 (detect-name :descending? (:name descend))
+                 (detect-meta :descending? :var-abbrs identity (:abbr descend))
+                 (detect-meta :descending? :var-prefixes #(map symbol %) (:prefix descend))
+                 (assoc :transform? {}))
+           r (reduce (fn [rule-meta [mode-string f]]
+                       (detect-mode rule-meta :transform? (name mode-string) (constantly f)))
+                     r fn-map)
+           ;; descend in var-name order
+           r (assoc r :active (map (set (concat (keys (:descending? r))
+                                                (keys (:transform? r))))
+                                   (:var-names rule-meta)))]
+       (cond-> r
+         ;; If the datum will change after the initial match, and it's possible
+         ;; that (success) arity 0 will be called, the datum needs to have the
+         ;; new values substituted into it:
+         (and (:may-call-success0? r)
+              (seq (:active r)))
+         (assoc :substitute (substitute (:pattern rule-meta))))))))
 
 (defn- directed:extended [rule opts]
   (loop [rz (rule-zipper rule)]
@@ -226,6 +229,10 @@
   Marking a subexpression looks like ?->x or ??->x (ie. marked with -> matcher
   mode), so a matcher like ?y would not get recurred into.
 
+  Does not iteratively descend into any expressions returned by matchers. To do
+  any iterative descent, call `descend` within the handler on the subexpressions
+  you wish to descend into.
+
   You can also use opts to mark vars to descend by :name, :prefix or
   :abbr. Look at your rule metadata to see how the var names get that info
   extracted. For example to descend all rules that have an abbr of `e`, use
@@ -252,19 +259,16 @@
   the :fn-map key of opts, the above description applies with the symbol you
   used.
 
-  Does not iteratively descend into any expressions returned by matchers. To do
-  any iterative descent, call `descend` within the handler on the subexpressions
-  you wish to descend into.
+  You can provide a function on the :on-rule-meta opts key to make any
+  arbitrary changes to rule metadata. The default is:
 
-  This uses the rule metadata to reconstruct the rules, and does not actually
-  run the rule-list or any rules directly
-
-  Note that descent order within expressions is not defined."
+      (fn on-rule-meta [rule-meta-before rule-meta-after]
+        rule-meta-after)"
   ([rule]
    (directed nil rule))
   ([opts raw-rule]
    (let [opts (if (fn? opts)
-                {:fn-map {">-" fn-map}}
+                {:fn-map {">-" opts}}
                 opts)
          rule (directed:extended raw-rule opts)]
      (with-meta
