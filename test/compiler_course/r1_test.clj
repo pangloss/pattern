@@ -13,8 +13,8 @@
               #'remove-complex-opera* #'d/Simplified
               #'explicate-control #'d/Explicit
               #'select-instructions #'d/Selected
-              #_#_#_#_
               #'allocate-registers #'d/Allocated
+              #_#_
               #'remove-jumps #'d/NoJumps
               #_#_#_#_
               #'patch-instructions #'d/Patched
@@ -32,6 +32,17 @@
           (recur result more)
           v)
         v))))
+
+(defn test-pipeline! [form]
+  (loop [form form [[pass dialect] & more] passes results []]
+    (let [result (pass form)
+          results (conj results result)
+          v (validate @dialect result)]
+      (if (ok? v)
+        (if more
+          (recur result more results)
+          v)
+        (conj results v)))))
 
 (def iffy-program
   '(let ([x 1])
@@ -125,7 +136,9 @@
        (+ y 2)
        (+ y 10))
 
-    '(not (< a b))
+    '(let ([a 1])
+       (let ([b 2])
+         (not (< a b))))
 
     '(if (if (< (- x) (+ x (+ y 2)))
            (eq? (- x) (+ x (+ y 0)))
@@ -133,10 +146,9 @@
        (+ y 2)
        (+ y 10))
 
-    '(if a 1 2)))
+    '(let ([a true])
+       (if a 1 2))))
 
-
-(test-pipeline '(not (< a b)))
 
 (comment
   (println

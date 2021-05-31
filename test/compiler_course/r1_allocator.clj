@@ -28,7 +28,7 @@
          (rule '((? _ ~move-instr?) (v ?a) ?_)
                (update %env :live conj a))
          (rule '((? _ ~read-instr?) (v ?a) (v ?d))
-               (update %env :live conj a))
+               (update %env :live conj a d))
          (rule '((? _ ~read-instr?) ?_ (v ?a))
                (update %env :live conj a))
          (rule '((? _ ~read-instr?) (v ?a) ?_)

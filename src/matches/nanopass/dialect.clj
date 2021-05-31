@@ -328,7 +328,8 @@
                        {:fail (:name dialect) :expr expr}
                        result)]
           (if (map? result)
-            (merge {:dialect (:name dialect)} result)
+            (merge {:dialect (:name dialect)}
+                   result)
             result)))
       (meta validator))))
 

@@ -114,6 +114,22 @@
            (program [??v*] (?:+map ?lbl* ?block*))))
 
 
+(def-derived Allocated Selected
+  (Caller [caller] (reg (| rax rcx rdx rsi rdi r8 r9 r10 r11)))
+  (Callee [callee] (reg (| rsp rbp rbx r12 r13 r14 r15)))
+  (Loc [loc]
+       ?caller
+       ?callee
+       (stack ?i))
+  (Arg [arg]
+       - (v ?v)
+       - (reg rax)
+       + ?loc)
+  - Program
+  (Program [program]
+           (program (?:+map ?v* ?loc*)
+                    [??block*])))
+
 
 (def-derived Future Selected
   (Arg [arg]
