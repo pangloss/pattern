@@ -323,9 +323,12 @@
                                  {}))))])))]
     (with-meta
       (fn dialect-checker [expr]
-        (let [result (validator expr)]
-          (if (= expr result)
-            {:fail (:name dialect) :expr expr}
+        (let [result (validator expr)
+              result (if (= expr result)
+                       {:fail (:name dialect) :expr expr}
+                       result)]
+          (if (map? result)
+            (merge {:dialect (:name dialect)} result)
             result)))
       (meta validator))))
 

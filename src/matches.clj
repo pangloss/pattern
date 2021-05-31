@@ -6,6 +6,7 @@
             matches.r3.rewrite
             matches.nanopass.dialect
             matches.nanopass.pass
+            matches.types
             [potemkin :refer [import-vars]]))
 
 (import-vars (matches.match.core
@@ -40,7 +41,9 @@
               => ==> ===>
               from-dialect to-dialect dialects
               tag-result tag
-              unparse-dialect)
+              unparse-dialect
+              valid? validate)
+             (matches.types ok?)
              (matches.nanopass.pass
               defpass
               let-rulefn))

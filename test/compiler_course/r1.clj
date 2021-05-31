@@ -262,10 +262,9 @@
 (def select-inst-cond*
   (rule-list!
    (rule '((? op #{< eq?}) ?a ?b)
-         (let [v (:v %env)
-               flag ('{< l eq? e} op)]
+         (let [v (:v %env)]
            (sub [(cmpq ?b ?a)
-                 (set ?flag (byte-reg al))
+                 (set ?op (byte-reg al))
                  (movzbq (byte-reg al) ?v)])))
    (rule '(not ?->a)
          (let [v (:v %env)]
@@ -453,8 +452,9 @@
                                 (str "$" i))
                           (rule '(deref ?v ?o)
                                 (str o "(%" (name v) ")"))
-                          (rule '(set ?x ?->y)
-                                (str "set" x " " y))
+                          (rule '(set ?op ?->y)
+                                (let [flag ('{< l eq? e} op)]
+                                  (str "set" flag " " y)))
                           (rule '(reg ?r)
                                 (str "%" r))
                           (rule '(byte-reg ?r)

@@ -1,161 +1,143 @@
 (ns compiler-course.r1-test
   (:require [compiler-course.r1-allocator :as a]
             [compiler-course.r1 :refer :all]
+            [matches :refer [valid? validate ok?]]
             [compiler-course.dialects :as d]
-            [clojure.test :refer [deftest testing is]]))
+            [clojure.test :refer [deftest testing is are]]))
 
-;; TODO: make some real tests; port the test cases from the course notes.
+(def passes
+  (partition 2
+             [#'identity #'d/R1
+              (comp #'shrink #'uniqify) #'d/Shrunk
+              #'remove-complex-opera* #'d/Simplified
+              #'explicate-control #'d/Explicit
+              #'select-instructions #'d/Selected
+              #_#_#_#_
+              #'allocate-registers #'d/Allocated
+              #'remove-jumps #'d/NoJumps
+              #_#_#_#_
+              #'patch-instructions #'d/Patched
+              #'save-registers #'d/Patched
+              #_#_
+              #'stringify #'d/Strings]))
 
-(comment
 
-  (meta (:validate d/Shrunk))
+(defn test-pipeline [form]
+  (loop [form form [[pass dialect] & more] passes]
+    (let [result (pass form)
+          v (validate @dialect result)]
+      (if (ok? v)
+        (if more
+          (recur result more)
+          v)
+        v))))
 
-  ((:validate d/Shrunk)
-   (->shrink
-    '(+ (- y) 1)))
+(def iffy-program
+  '(let ([x 1])
+     (let ([y 2])
+       (if (if (< x y)
+             (eq? (- x) (+ x (+ y 0)))
+             (eq? x 2))
+         (+ y 2)
+         (+ y 10)))))
 
-  ((:validate d/Simplified)
-   (->simple
+
+(def iffier-program
+  '(if (if (if (let ([z (> (+ 1 (- 1)) (+ 2 (- 2)))]) z)
+             (< x y)
+             (> x y))
+         (eq? (- x) (+ x (+ y 0)))
+         (eq? x 2))
+     (+ y 2)
+     (+ y 10)))
+
+
+(deftest compile-iffy-programs
+  (is (ok? (test-pipeline iffy-program)))
+  (is (ok? (test-pipeline iffier-program))))
+
+(def spilly-program
+  '(let ([x 1])
+     (let ([y 0])
+       (let ([a 0])
+         (let ([b 0])
+           (let ([c 0])
+             (let ([d 0])
+               (let ([e 0])
+                 (let ([f 0])
+                   (let ([g 0])
+                     (if (if (eq? x y)
+                           (not (eq? (- x) (+ (- x) (+ y 0))))
+                           (not (eq? x 2)))
+                       (+ 1 (+ a (+ b (+ c (+ d ( + e (+ f (+ g (+ y 2)))))))))
+                       (let ([x 1])
+                         (let ([y' 1])
+                           (let ([a' 1])
+                             (let ([b' 1])
+                               (let ([c' 1])
+                                 (let ([d' 1])
+                                   (let ([e' 1])
+                                     (let ([f' 1])
+                                       (if (if (eq? a y)
+                                             (not (eq? (- a) (+ (- a) (+ y 0))))
+                                             (not (eq? a 2)))
+                                         (+ (+ 1 (+ a (+ b (+ c (+ d ( + e (+ f (+ g (+ y 2)))))))))
+                                            (+ 1 (+ a' (+ b' (+ c' (+ d' ( + e' (+ f' (+ y' 2)))))))))
+                                         (+ y 10)))))))))))))))))))))
+
+(deftest compile-spilly-program
+  (is (ok? (test-pipeline spilly-program))))
+
+
+(deftest various-programs
+  (are [p] (ok? (test-pipeline p))
+
+    '(if a (if c 4 5) (if b 2 3))
+
+    '(let ([x 1]) (if (eq? 1 x) 42 0))
+
+    '(if (eq? 1 (read)) 42 0)
+
+    '(if (if (if (eq? a a)
+               (> a b)
+               (> x y))
+           true
+           (eq? c 2))
+       (+ d 2)
+       (+ e 10))
+
     '(let ([x 1])
        (let ([y 2])
-         (if (if (< x y)
+         (if (if (if (> x y)
+                   (< x y)
+                   (> x y))
                (eq? (- x) (+ x (+ y 0)))
                (eq? x 2))
            (+ y 2)
-           (+ y 10))))))
+           (+ y 10))))
 
-  ((:validate d/Explicit)
-   '(program
-     [x.1 y.2 tmp-.3 tmp+.4 tmp+.5]
-     {then.8
-      (block
-       then.8
-       [tmp-.3 tmp+.4 tmp+.5]
-       (assign tmp-.3 (- x.1))
-       (assign tmp+.4 (+ y.2 0))
-       (assign tmp+.5 (+ x.1 tmp+.4))
-       (if (eq? tmp-.3 tmp+.5) (goto then.6) (goto else.7))),
-      else.9 (block else.9 [] (if (eq? x.1 2) (goto then.6) (goto else.7))),
-      then.6 (block then.6 [] (return (+ y.2 2))),
-      else.7 (block else.7 [] (return (+ y.2 10))),
-      start
-      (block
-       start
-       [x.1 y.2 tmp-.3 tmp+.4 tmp+.5]
-       (assign x.1 1)
-       (assign y.2 2)
-       (if (< x.1 y.2) (goto then.8) (goto else.9)))}))
-   
+    '(if (if (if (not (not false))
+               (< x y)
+               (> x y))
+           (eq? (- x) (+ x (+ y 0)))
+           (eq? x 2))
+       (+ y 2)
+       (+ y 10))
+
+    '(not (< a b))
+
+    '(if (if (< (- x) (+ x (+ y 2)))
+           (eq? (- x) (+ x (+ y 0)))
+           (eq? x 2))
+       (+ y 2)
+       (+ y 10))
+
+    '(if a 1 2)))
 
 
+(test-pipeline '(not (< a b)))
 
-  (let [x
-        '(let ([x 1])
-           (let ([y 0])
-             (let ([a 0])
-               (let ([b 0])
-                 (let ([c 0])
-                   (let ([d 0])
-                     (let ([e 0])
-                       (let ([f 0])
-                         (let ([g 0])
-                           (if (if (eq? x y)
-                                 (not (eq? (- x) (+ (- x) (+ y 0))))
-                                 (not (eq? x 2)))
-                             (+ 1 (+ a (+ b (+ c (+ d ( + e (+ f (+ g (+ y 2)))))))))
-                             (let ([x 1])
-                               (let ([y' 1])
-                                 (let ([a' 1])
-                                   (let ([b' 1])
-                                     (let ([c' 1])
-                                       (let ([d' 1])
-                                         (let ([e' 1])
-                                           (let ([f' 1])
-                                             (if
-                                                 ;; This deepest if statement is one of 2 that would get double-finalized
-                                                 (if (eq? a y)
-                                                   (not (eq? (- a) (+ (- a) (+ y 0))))
-                                                   (not (eq? a 2)))
-                                               (+ (+ 1 (+ a (+ b (+ c (+ d ( + e (+ f (+ g (+ y 2)))))))))
-                                                  (+ 1 (+ a' (+ b' (+ c' (+ d' ( + e' (+ f' (+ y' 2)))))))))
-                                               (+ y 10))))))))))))))))))))]
-    [;;(explicate-control (remove-complex-opera* (shrink (uniqify x))))
-     ((:validate d/Explicit)
-      (->flatten x))])
-
-
-  (->patch '(if a (if c 4 5) (if b 2 3)))
-
-  (->jump '(if a (if c 4 5) (if b 2 3)))
-
-  (->compile '(if a (if c 4 5) (if b 2 3)))
-
-  ;;
-  (let [a '(let ([x 1]) (if (eq? 1 x) 42 0))
-        r '(if (eq? 1 (read)) 42 0)]
-    [(->compile a)
-     (->compile r)])
-
-
-  (->compile
-   '(if false 1 2))
-
-  (->flatten
-   '(if (if (if (eq? a a)
-              (> a b)
-              (> x y))
-          true
-          (eq? c 2))
-      (+ d 2)
-      (+ e 10)))
-
-  (do (reset! niceid 0)
-      [(a/allocate-registers
-        (select-instructions
-         (explicate-control
-          (remove-complex-opera*
-           (shrink
-            '(if (if (if (let ([z (> (+ 1 (- 1)) (+ 2 (- 2)))]) z)
-                       (< x y)
-                       (> x y))
-                   (eq? (- x) (+ x (+ y 0)))
-                   (eq? x 2))
-               (+ y 2)
-               (+ y 10)))))))
-       (reset! niceid 0)
-       (a/liveness
-        (select-instructions
-         (explicate-control
-          (remove-complex-opera*
-           (shrink
-            '(let ([x 1])
-               (let ([y 2])
-                 (if (if (if (> x y)
-                           (< x y)
-                           (> x y))
-                       (eq? (- x) (+ x (+ y 0)))
-                       (eq? x 2))
-                   (+ y 2)
-                   (+ y 10)))))))))])
-
-  ()
-  (a/allocate-registers
-   (select-instructions
-    (explicate-control
-     (remove-complex-opera*
-      (shrink
-       (uniqify
-        '(let ([x 1])
-           (let ([y 2])
-             (if (if (if (> x y)
-                       (< x y)
-                       (> x y))
-                   (eq? (- x) (+ x (+ y 0)))
-                   (eq? x 2))
-               (+ y 2)
-               (+ y 10))))))))))
-
-
+(comment
   (println
    (stringify
     (a/patch-instructions
@@ -174,34 +156,6 @@
                       (eq? x 2))
                   (+ y 2)
                   (+ y 10)))))))))))))
-
-
-  (select-instructions
-   (explicate-control
-    (remove-complex-opera*
-     (shrink
-      '(not (< a b))))))
-
-  (select-instructions
-   (explicate-control
-    (remove-complex-opera*
-     (shrink
-      '(if a
-         1 2)))))
-
-  (select-instructions
-   (explicate-control
-    (remove-complex-opera*
-     (shrink
-      '(if (if (if (not (not false))
-                 (< x y)
-                 (> x y))
-             (eq? (- x) (+ x (+ y 0)))
-             (eq? x 2))
-         (+ y 2)
-         (+ y 10)))))
-
-   ,)
 
   (comment
     (remove-complex-operations

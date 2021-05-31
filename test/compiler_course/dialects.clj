@@ -50,7 +50,7 @@
        (+ ?atm0 ?atm1)
        (< ?atm0 ?atm1)
        (eq? ?atm0 ?atm1)
-       ;;(not ?atm)
+       (not ?atm)
        (let ([?v ?e]) ?e:body)
        (if ?ne ?e:then ?e:else)))
 
@@ -79,3 +79,38 @@
          (block ?lbl [??v*] ??stmt* ?tail))
   (Program [program]
            (program [??v*] (?:+map ?lbl* ?block*))))
+
+(def jmp-cond #{true '< 'eq?})
+
+(def-dialect Selected
+  (terminals [lbl symbol?]
+             [v symbol?]
+             [i int?]
+             [jc `jmp-cond])
+  (ByteReg [bytereg] (byte-reg (| ah al bh bl ch cl dh dl)))
+  (Arg [arg]
+       (reg rax)
+       (int ?i)
+       (v ?v))
+  ;; this could get fancy and encode some of the restrictions
+  (Stmt [stmt]
+        (callq read-int)
+        (cmpq ?arg0 ?arg1)
+        (movq ?arg0 ?arg1)
+        (addq ?arg0 ?arg1)     ; (+ 1 2)
+        (negq ?arg)            ; (- 1)
+        (xorgq (int 1) ?arg)   ; (not 1)
+        (set ?jc ?bytereg)     ; get cmp flag 1
+        (movzbq ?bytereg ?arg) ; get cmp flag 2
+        (jump ?jc ?lbl))
+  ;; there is specific valid sequencing like cmp -> jump -> jump, but I'm not
+  ;; sure how or if I can encode that here...
+  (Tail [tail]
+        (jump ?jc ?lbl)
+        (retq))
+  (Block [block]
+         (block ?lbl [??v*] ??stmt* ?tail))
+  (Program [program]
+           (program [??v*] (?:+map ?lbl* ?block*))))
+
+
