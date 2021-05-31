@@ -7,7 +7,7 @@
 
 (def cmp? #{'eq? '< '<= '> '>=})
 
-(define-dialect R1
+(def-dialect R1
   (terminals [i int?]
              [v symbol?]
              [b boolean?]
@@ -56,11 +56,6 @@
 
 (def-derived Explicit Simplified
   (terminals + [lbl symbol?])
-  (Atom [atm]
-        - ?i
-        - ?v
-        + (int ?i)
-        + (v ?v))
   - Exp
   - NotExp
   (Pred [pred]
@@ -81,6 +76,6 @@
         (if ?pred (goto ?lbl:then) (goto ?lbl:else))
         (return ?e))
   (Block [block]
-         (block ?label [??v*] ??stmt* ?tail))
+         (block ?lbl [??v*] ??stmt* ?tail))
   (Program [program]
            (program [??v*] (?:+map ?lbl* ?block*))))

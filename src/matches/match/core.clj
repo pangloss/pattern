@@ -248,9 +248,11 @@
   [form fail]
   (let [f (cond (symbol? form) (resolve form)
                 (listy? form)
-                (when (and (= 2 (count form))
-                           (#{'apply `apply} (first form)))
-                  (partial apply (resolve-fn (second form) fail)))
+                (when (= 2 (count form))
+                  (cond (#{'apply `apply} (first form))
+                        (partial apply (resolve-fn (second form) fail))
+                        (#{'on-each `on-each 'on-all `on-all} (first form))
+                        (resolve-fn (second form) fail)))
                 form form)]
     (if (and form (not (ifn? f)))
       (fail)
@@ -262,34 +264,36 @@
   [var comp-env]
   (if (or (:ignore-predicates comp-env)
           (not (named-matcher? var)))
-    (constantly true)
+    [nil (constantly true)]
     (let [pos @restriction-position
           pos (pos (matcher-type var) (pos ::default))
           restr-part (drop pos var)
-          sym-or-fn (first restr-part)
+          form (first restr-part)
+          f-mode (when (and (listy? form) (symbol? (first form)))
+                   ;; The possible valid modes could be configurable... They're just passed to the matcher
+                   (#{'on-each 'on-all} (symbol (name (first form)))))
           arg-vars (next restr-part)
-          f (if sym-or-fn
-              (if-let [sym-or-fn (some (fn [f] (f sym-or-fn))
-                                       (:restrictions comp-env))]
-                sym-or-fn
-                (resolve-fn sym-or-fn
-                            #(throw (ex-info "Restriction did not resolve to a function" {:var var})))))]
-      (vary-meta
+          f (if form
+              ;; either apply a transform provided in the comp-env or try to resolve the form directly
+              (or (some (fn [f] (f form))
+                        ;; TODO: I think I should remove this. It's used in just one place
+                        ;; to allow sequences to be restricted with just an integer representing count.
+                        (:restrictions comp-env))
+                  (resolve-fn form
+                              #(throw (ex-info "Restriction did not resolve to a function" {:var var})))))]
+      [f-mode
        (if f
          (if arg-vars
            (let [arg-vars (map #(if (symbol? %) (var-name %) %)
                                arg-vars)]
-             (with-meta
-               (fn apply-restriction [dictionary datum]
-                 (apply f datum (map (fn [v]
-                                       (if (symbol? v)
-                                         (get (get dictionary v) :value)
-                                         v))
-                                     arg-vars)))
-               (meta f)))
+             (fn apply-restriction [dictionary datum]
+               (apply f datum (map (fn [v]
+                                     (if (symbol? v)
+                                       (get (get dictionary v) :value)
+                                       v))
+                                   arg-vars))))
            (fn restriction [dictionary datum] (f datum)))
-         (constantly true))
-       merge (meta sym-or-fn)))))
+         (constantly true))])))
 
 (defn lookup [name dict env]
   (let [name (var-key name env)]
@@ -353,6 +357,16 @@
     (fn [dict]
       (reduce (fn [result name]
                 (assoc result (keyword name) (get-in dict [name :value])))
+              {} names))))
+
+(defn symbol-dict
+  "A success continuation that creates a simple dictionary of 'name -> value from
+  the full match dictionary."
+  [match-procedure]
+  (let [names (all-names match-procedure)]
+    (fn [dict]
+      (reduce (fn [result name]
+                (assoc result name (get-in dict [name :value])))
               {} names))))
 
 (defn restartable? [pattern]

@@ -474,7 +474,8 @@
 (defn stringify [x]
   (stringify* x))
 
-(def ->simple (comp #'remove-complex-opera* #'shrink #'uniqify))
+(def ->shrink (comp #'shrink #'uniqify))
+(def ->simple (comp #'remove-complex-opera* #'->shrink))
 (def ->flatten (comp #'explicate-control #'->simple))
 (def ->select (comp #'select-instructions #'->flatten))
 (def ->live (comp #'liveness #'->select))

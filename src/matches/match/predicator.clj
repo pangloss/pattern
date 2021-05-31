@@ -18,13 +18,21 @@
 (defn on-each
   "Mark that a predicate should apply to each element of a sequential matcher.
 
-  Usage:
+  This shouldn't really be needed anymore. Just put it in the matcher directly.
 
-      (?? x ~(on-each symbol?))"
+  The basic options are (? x (on-each x)) (? x (apply f)) (? x (on-all x)).
+
+  On-each is generally the default now anyway.
+
+  Usage, either:
+
+      (?? x ~(on-each symbol?))
+
+  or
+
+      (?? x (on-each ~symbol?))"
   [pred]
-  (if (instance? clojure.lang.IObj pred)
-    (with-meta pred {:each true})
-    pred))
+  (list 'on-each pred))
 
 (defn apply-predicator [{:keys [abbr predicate metadata]} pattern]
   (let [mode (when metadata "$")
@@ -34,9 +42,7 @@
                        (list* (symbol (str ? -> mode))
                               (with-meta (symbol (str p n)) metadata)
                               (when predicate
-                                [(if (= "??" ?)
-                                   (on-each predicate)
-                                   predicate)]))
+                                [predicate]))
                        x))
                    pattern)))
 

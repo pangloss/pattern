@@ -3,6 +3,7 @@
             [matches.r3.combinators :refer [run-rule iterated rule-list on-subexpressions
                                             on-mutual directed]]
             [matches.match.core :refer [compile-pattern matcher compile-pattern match?
+                                        symbol-dict
                                         matcher-type matcher-type-for-dispatch]]
             [matches.r3.rewrite :refer [sub quo]]
             [matches.match.predicator :refer [with-predicates
@@ -195,6 +196,10 @@
                           exprs)))
         (assoc :form? form?)
         (assoc :maybe-contains-forms maybe-contains-forms)
+        #_ ;; FIXME: these expr-level automatic predicators do seem awful. Is
+         ;; there ever a need for them? Don't we just recur rules into exprs? Maybe
+         ;; sometimes I'd want expr predicators but I think not usually. Anyway
+         ;; for now disabling them seems by far the best approach.
         (assoc :predicator
                ;; Predicator will add $ to the matcher-mode of these matchers to
                ;; indicate the name has attached metadata
@@ -254,6 +259,8 @@
                 (-> dialect
                     (assoc-in [:forms containing :form?]
                               form?-new)
+                    #_ ;; FIXME: see the fixme note in finalize-form on the
+                    ;; topic of form predicators being broken
                     (assoc-in [:forms containing :predicator :predicate]
                               form?-new))))
             dialect
@@ -268,9 +275,18 @@
         terminal? (apply some-fn (map :predicate (vals (:terminals dialect))))
 
         ok (->Ok)
-        remove-terminals #(reduce-kv (fn [dict k v]
-                                       (if (terminal? v) (assoc dict k ok) dict))
-                                     % %)
+        remove-terminals (fn [raw dict]
+                           (reduce-kv (fn [dict k v]
+                                        (if (= '? (:type (raw k)))
+                                          (if (terminal? v)
+                                            (assoc dict k ok)
+                                            dict)
+                                          (assoc dict k
+                                                 (if (every? #(or (= ok %) (terminal? %))
+                                                             v)
+                                                   ok
+                                                   v))))
+                                      dict dict))
         validator
         (on-mutual
          (:last-form dialect)
@@ -285,16 +301,21 @@
                           :let [t (matcher-type-for-dispatch (:expr expr))]]
                       (make-rule (:match expr)
                                  (if (= '? t)
-                                   (fn [env dict]
+                                   (fn [env raw dict]
                                      ;; For ?e exprs, let the rule fall through if not success
-                                     (let [dict (remove-terminals dict)]
+                                     (let [dict (remove-terminals raw dict)]
                                        (when (every? #{ok} (vals dict))
                                          ok)))
-                                   (fn [env dict]
-                                     (let [dict (remove-terminals dict)]
+                                   (fn [env raw dict]
+                                     (let [dict (remove-terminals raw dict)]
                                        (if (every? #{ok} (vals dict))
                                          ok
-                                         (merge {:fail (:orig-expr expr)} dict)))))))))])))]
+                                         (merge {:fail (:orig-expr expr)} dict)))))
+                                 (fn [x]
+                                   ;; give the handler both the raw matches and the processed version for now
+                                   (let [f (symbol-dict x)]
+                                     (fn [m] [m (f m)])))
+                                 {}))))])))]
     (with-meta
       (fn dialect-checker [expr]
         (let [result (validator expr)]

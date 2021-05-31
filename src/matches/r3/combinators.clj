@@ -172,7 +172,7 @@
                  (detect-name :descending? (:name descend))
                  (detect-meta :descending? :var-abbrs identity (:abbr descend))
                  (detect-meta :descending? :var-prefixes #(map symbol %) (:prefix descend))
-                 (detect-mode :mutual? "$" meta) ;; meta is called against the var-name symbol. The metadata is attached by the predicator.
+                 (detect-mode :mutual? "$" meta)
                  (detect-name :mutual? (:name mutual))
                  (detect-meta :mutual? :var-abbrs identity (:abbr mutual))
                  (detect-meta :mutual? :var-prefixes #(map symbol %) (:prefix mutual))
@@ -330,7 +330,8 @@
     (letfn [(switch-branch [{:keys [form-name]} depth datum env]
               (let [rule (or (forms form-name)
                              (when (vector? form-name) (forms (second form-name))))]
-                ;; TODO: probably want to just keep on the same branch if there is no option? Or maybe don't descend?
+                ;; TODO: probably want to just keep on the same branch if there
+                ;; is no option? Or maybe don't descend?
                 (if rule
                   (binding [*descent-depth* depth]
                     (run-rule rule datum env))

@@ -153,7 +153,7 @@
   third position.
   "
   [variable comp-env]
-  (let [sat? (var-restriction variable comp-env)
+  (let [[sat-mode sat?] (var-restriction variable comp-env)
         name (var-name variable)]
     (with-meta
       (fn element-matcher [data dictionary ^Env env]
@@ -203,13 +203,13 @@
   Mark restrictions with ^:each if you want them to match each element.
   Otherwise they match the aggregate collection."
   [variable {:keys [reserve-min-tail] :as comp-env}]
-  (let [sat? (var-restriction variable
-                              (update comp-env :restrictions
-                                      (fnil conj []) (fn [i] (when (int? i)
-                                                              #(= i (count %))))))
-        sat? (if (:each (meta sat?))
-               (fn [dict s] (every? #(sat? dict %) s))
-               sat?)
+  (let [[sat-mode sat?] (var-restriction variable
+                                         (update comp-env :restrictions
+                                                 (fnil conj []) (fn [i] (when (int? i)
+                                                                         #(= i (count %))))))
+        sat? (if (= 'on-all sat-mode)
+               sat?
+               (fn [dict s] (every? #(sat? dict %) s)))
         force-greedy (not (:v reserve-min-tail)) ;; no later list matchers are variable-sized.
         reserved-tail (or (:n reserve-min-tail) 0)
         name (var-name variable)
@@ -261,7 +261,7 @@
   Allows a restriction to be added, similar to [[match-element]]."
   [[_ name pattern :as as-pattern] comp-env]
   (let [m (compile-pattern* pattern comp-env)
-        sat? (var-restriction as-pattern comp-env)
+        [sat-mode sat?] (var-restriction as-pattern comp-env)
         name (if (namespace name) (symbol (clojure.core/name name)) name)]
     (with-meta
       (fn as-matcher [data dictionary ^Env env]
