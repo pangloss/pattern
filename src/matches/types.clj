@@ -1,4 +1,5 @@
-(ns matches.types)
+(ns matches.types
+  (:require [clojure.pprint :refer [simple-dispatch]]))
 
 (defrecord Success [x])
 (defrecord SuccessEnv [x env])
@@ -50,10 +51,18 @@
         (or (`child-rules m)
             (`recombine m)))))
 
-(deftype Ok [])
+(deftype Ok []
+  Object
+  (equals [a b]
+    (instance? Ok b)))
 
-(defmethod print-method Ok [_ w]
+(defmethod print-method Ok [_ ^java.io.Writer w]
   (.write w "ok"))
 
 (defn ok? [x]
   (instance? Ok x))
+
+(def ok (->Ok))
+
+(defmethod simple-dispatch Ok [ok]
+  (print-method ok *out*))
