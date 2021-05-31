@@ -114,3 +114,11 @@
            (program [??v*] (?:+map ?lbl* ?block*))))
 
 
+
+(def-derived Future Selected
+  (Arg [arg]
+       (stack ?i))
+  (CC [cc] e l le g ge) ;; really just e and l though?
+  (Instruction [instr]
+               (pushq ?arg)
+               (popq ?arg)))
