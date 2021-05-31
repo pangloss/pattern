@@ -300,7 +300,8 @@ ExpandedInput
                    (rule '(| ?s ?n ?str true false nil)
                          datum)
                    (rule '?_
-                         (throw (ex-info "Not an aexpr!" {:datum datum})))])]
+                         "umm not what I hoped would happen"
+                         #_ (throw (ex-info "Not an aexpr!" {:datum datum})))])]
     [M T-c]))
 
 

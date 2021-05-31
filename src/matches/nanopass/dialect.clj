@@ -266,15 +266,20 @@
             dialect
             exprs-with-form-predicates)))
 
+
 (defn make-checker [dialect]
   (let [form-abbrs (set (map :abbr (vals (:forms dialect))))
         mutual-forms (reduce (fn [m {:keys [abbr name] :as f}]
                                (assoc m abbr {:dialect (:name dialect)
                                               :form-name name}))
                              {} (vals (:forms dialect)))
-        terminal? (apply some-fn (map :predicate (vals (:terminals dialect))))
-
+        terminals (vals (:terminals dialect))
+        terminal? (if terminals
+                    (apply some-fn (map :predicate terminals))
+                    (constantly false))
         ok (->Ok)
+        ;; TODO: how do I deal with matchers that are just normal loose
+        ;; matchers, not binding any particular language form?
         remove-terminals (fn [raw dict]
                            (reduce-kv (fn [dict k v]
                                         (if (= '? (:type (raw k)))

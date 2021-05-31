@@ -196,6 +196,7 @@
   (loop [rz (rule-zipper rule)]
     (cond (z/end? rz) (z/root rz)
           (z/branch? rz) (recur (z/next rz))
+          (nil? (z/node rz)) (recur (z/next rz))
           :else (recur (z/next (z/edit rz vary-meta update :rule
                                        #(directed:extend-rule-metadata % opts)))))))
 
