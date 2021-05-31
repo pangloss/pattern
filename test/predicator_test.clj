@@ -41,7 +41,6 @@
          '??x:foo*1)]
     (is (= '?? matcher))
     (is (= 'x:foo*1 name))
-    (is (= {:each true} (meta pred)))
     (is (= symbol? (with-meta pred nil)))))
 
 #_ ;; TODO

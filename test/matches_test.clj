@@ -297,14 +297,14 @@
          (matcher '(a ((?? a) (?? x)) (? b) c (?? x))
                   '(a (1 2 3) 2 c 2 3))))
   (is (= [3 nil 4]
-         (matcher [1 2 '(| [3 5] [(? a) (?? x seq) 4] [(? a) (? a)] [(? a) (? b even?)])]
+         (matcher [1 2 '(| [3 5] [(? a) (?? x (on-all seq)) 4] [(? a) (? a)] [(? a) (? b even?)])]
                   [1 2 [3 4]])))
   (testing "syntax quoted"
     (is (= [[1] [2 3] 2]
            (matcher `(a ((?? a) (?? x)) (? b) c (?? x))
                     `(a (1 2 3) 2 c 2 3))))
     (is (= [3 nil 4]
-           (matcher [1 2 `(| [3 5] [(? a) (?? x seq) 4] [(? a) (? a)] [(? a) (? b even?)])]
+           (matcher [1 2 `(| [3 5] [(? a) (?? x (on-all seq)) 4] [(? a) (? a)] [(? a) (? b even?)])]
                     [1 2 [3 4]]))))
   (testing "apply-style restrictions using other match values as arguments"
     (is (nil?

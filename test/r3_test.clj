@@ -250,20 +250,20 @@
                     (rule '(* (? x number?) (? y number?) ??z)
                           (sub (* ~(* x y) ??z)))
 
-                    (rule '(+ ??a (??! x all-equal?) ??b)
+                    (rule '(+ ??a (??! x (on-all all-equal?)) ??b)
                           (sub (+ ??a (* ~(count x) ~(first x)) ??b)))
 
                     (rule '(* ??a (expt ?x ?e1) (expt ?x ?e2) ??b)
                           (sub (* ??a (expt ?x (+ ?e1 ?e2)) ??b)))
                     (rule '(* ??a ?x ??b (expt ?x ?e) ??c)
                           (sub (* ??a ??b (expt ?x (+ 1 ?e)) ??c)))
-                    (rule '(* ??a (??! x all-equal?) ??b)
+                    (rule '(* ??a (??! x (on-all all-equal?)) ??b)
                           (sub (* ??a (expt ~(first x) ~(count x)) ??b)))]))
 
 (deftest predicates
   (let [rs (atom [])
         pred (fn [s] (= 1 (count s)))
-        m (rule '(a ((?? v 3) (?? w ~pred))
+        m (rule '(a ((?? v 3) (?? w (on-all ~pred)))
                     (? x int?)
                     c (?? y) (?? z))
                 {:v v :w w :x x :y y :z z})]

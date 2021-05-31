@@ -249,10 +249,12 @@
   (let [f (cond (symbol? form) (resolve form)
                 (listy? form)
                 (when (= 2 (count form))
-                  (cond (#{'apply `apply} (first form))
-                        (partial apply (resolve-fn (second form) fail))
-                        (#{'on-each `on-each 'on-all `on-all} (first form))
-                        (resolve-fn (second form) fail)))
+                  (let [fm (first form)
+                        fm (when (symbol? fm) (symbol (name fm)))]
+                    (cond (#{'apply} fm)
+                          (partial apply (resolve-fn (second form) fail))
+                          (#{'on-each 'on-all} fm)
+                          (resolve-fn (second form) fail))))
                 form form)]
     (if (and form (not (ifn? f)))
       (fail)
@@ -269,18 +271,19 @@
           pos (pos (matcher-type var) (pos ::default))
           restr-part (drop pos var)
           form (first restr-part)
+          arg-vars (next restr-part)
+          form (when form
+                 ;; either apply a transform provided in the comp-env or try to resolve the form directly
+                 (or (some (fn [f] (f form))
+                           ;; TODO: I think I should remove this. It's used in just one place
+                           ;; to allow sequences to be restricted with just an integer representing count.
+                           (:restrictions comp-env))
+                     form))
           f-mode (when (and (listy? form) (symbol? (first form)))
                    ;; The possible valid modes could be configurable... They're just passed to the matcher
                    (#{'on-each 'on-all} (symbol (name (first form)))))
-          arg-vars (next restr-part)
-          f (if form
-              ;; either apply a transform provided in the comp-env or try to resolve the form directly
-              (or (some (fn [f] (f form))
-                        ;; TODO: I think I should remove this. It's used in just one place
-                        ;; to allow sequences to be restricted with just an integer representing count.
-                        (:restrictions comp-env))
-                  (resolve-fn form
-                              #(throw (ex-info "Restriction did not resolve to a function" {:var var})))))]
+          f (resolve-fn form
+                        #(throw (ex-info "Restriction did not resolve to a function" {:var var})))]
       [f-mode
        (if f
          (if arg-vars

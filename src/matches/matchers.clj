@@ -206,7 +206,7 @@
   (let [[sat-mode sat?] (var-restriction variable
                                          (update comp-env :restrictions
                                                  (fnil conj []) (fn [i] (when (int? i)
-                                                                         #(= i (count %))))))
+                                                                         (list 'on-all #(= i (count %)))))))
         sat? (if (= 'on-all sat-mode)
                sat?
                (fn [dict s] (every? #(sat? dict %) s)))
