@@ -8,7 +8,8 @@
 (def passes
   (partition 2
              [#'identity #'d/R1
-              (comp #'shrink #'uniqify) #'d/Shrunk
+              #'uniqify #'d/R1
+              #'shrink #'d/Shrunk
               #'remove-complex-opera* #'d/Simplified
               #'explicate-control #'d/Explicit
               #'select-instructions #'d/Selected
