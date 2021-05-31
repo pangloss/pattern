@@ -15,11 +15,9 @@
               #'explicate-control #'d/Explicit
               #'select-instructions #'d/Selected
               #'allocate-registers #'d/Allocated
-              #_#_
-              #'remove-jumps #'d/NoJumps
-              #_#_#_#_
+              #'remove-jumps #'d/Allocated
               #'patch-instructions #'d/Patched
-              #'save-registers #'d/Patched
+              #'save-registers #'d/Patched+
               #_#_
               #'stringify #'d/Strings]))
 
@@ -27,7 +25,7 @@
 (defn test-pipeline [form]
   (loop [form form [[pass dialect] & more] passes results []]
     (let [result (pass form)
-          results (conj results [pass result])
+          results (conj results [pass (:name dialect) result])
           v (validate @dialect result)]
       (if (ok? v)
         (if more

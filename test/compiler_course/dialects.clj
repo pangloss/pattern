@@ -130,6 +130,24 @@
            (program (?:+map ?v* ?loc*)
                     [??block*])))
 
+(def-derived Patched Allocated
+  (Stmt [stmt]
+        - (movq ?arg0 ?arg1)
+        + (movq ?arg0 (& ?arg1 (? arg1 not= ?arg0)))
+        - (addq ?arg0 ?arg1)
+        + (addq (& ?arg0 (? arg0 not= (int 0))) ?arg1))
+  ;; Ensure Program is still the entrypoint
+  (Program [program]))
+
+(def-derived Patched+ Patched
+  - Program
+  (SaveReg [savereg]
+           (movq ?callee (stack* ?i)))
+  (Program [program]
+           (program (?:+map ?v* ?loc*)
+                    [??savereg*]
+                    [??block*])))
+(unparse-dialect Patched)
 
 (def-derived Future Selected
   (Arg [arg]

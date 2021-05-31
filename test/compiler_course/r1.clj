@@ -426,13 +426,14 @@
                                                              blocks))
                                       size (stack-size offset var-locs)]
                                   (str
-                                   "    .globl main\n"
+                                   ".globl main\n"
                                    blocks
                                    "main:\n"
                                    "    pushq %rbp\n"
                                    "    movq %rsp, %rbp\n"
                                    (apply str (fi save-regs))
-                                   "    subq $" size ", %rsq\n"
+                                   "    subq $" size ", %rsp\n"
+                                   ;; TODO: inline start
                                    "    jmp start\n"
                                    "conclusion:\n"
                                    "    addq $" size ", %rsp\n"
@@ -483,6 +484,8 @@
 (def ->jump (comp #'remove-jumps #'->alloc))
 (def ->patch (comp #'patch-instructions #'->jump))
 (def ->reg (comp #'save-registers #'->patch))
+(def compile (comp println
+                   #'stringify #'->reg))
 (def ->compile (comp str/split-lines
                      #(str/replace (with-out-str (println %)) #"\t" "    ")
                      #'stringify #'->reg))
