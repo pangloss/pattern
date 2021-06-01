@@ -12,7 +12,8 @@
              [#'identity #'d/R1
               #'uniqify #'d/R1
               #'shrink #'d/Shrunk
-              #'add-types [#'d/Shrunk shrunk-typed?]
+              #'add-types [#'d/Shrunk #'shrunk-typed?]
+              #'expose-allocation #'d/Alloc
               #'remove-complex-opera* #'d/Simplified
               #'explicate-control #'d/Explicit
               #'select-instructions #'d/Selected
@@ -54,7 +55,7 @@
   (let [untyped
         (->> form
              (tree-seq seqable? seq)
-             (remove (into #{} '[if eq? - + < let vector vector-ref vector-set!]))
+             (remove (into #{} '[if eq? - + < let vector vector-ref vector-set! read not void]))
              (filter (partial valid? d/Shrunk))
              (remove #(:type (meta %)))
              (remove int?)
@@ -120,22 +121,57 @@
 
 (test-pipeline veccy-program)
 
+(test-pipeline
+  '(let ([t (vector 40 true 2)])
+     (if (vector-ref t 1)
+       (+ (vector-ref t 0)
+          (vector-ref t 2))
+       44)))
+
+(test-pipeline
+  '(let ([t (vector 40 true 2)])
+     (vector-ref t 1)))
+
+(test-pipeline
+  '(vector 40))
+
+(->simple iffy-program)
+
+
+(->flatten
+ '(if (let ([x (void)])
+        (eq? 2 1))
+    1 2))
+
+
 (deftest various-programs
   (are [p] (= ok (test-pipeline p))
 
-    '(if a (if c 4 5) (if b 2 3))
+    '(let ([a true])
+       (let ([b false])
+         (let ([c true])
+           (if a (if c 4 5) (if b 2 3)))))
 
-    '(let ([x 1]) (if (eq? 1 x) 42 0))
+    '(if (let ([x (void)])
+           (eq? 2 1))
+       1 2)
 
     '(if (eq? 1 (read)) 42 0)
 
-    '(if (if (if (eq? a a)
-               (> a b)
-               (> x y))
-           true
-           (eq? c 2))
-       (+ d 2)
-       (+ e 10))
+    '(let ([a true])
+       (let ([b false])
+         (let ([c true])
+           (let ([d true])
+              (let ([e false])
+                (let ([x true])
+                  (let ([y true])
+                    (if (if (if (eq? a a)
+                               (> a b)
+                               (> x y))
+                           true
+                           (eq? c 2))
+                       (+ d 2)
+                       (+ e 10)))))))))
 
     '(let ([x 1])
        (let ([y 2])
@@ -147,23 +183,27 @@
            (+ y 2)
            (+ y 10))))
 
-    '(if (if (if (not (not false))
-               (< x y)
-               (> x y))
-           (eq? (- x) (+ x (+ y 0)))
-           (eq? x 2))
-       (+ y 2)
-       (+ y 10))
+    '(let ([x 123])
+       (let ([y 33])
+         (if (if (if (not (not false))
+                   (< x y)
+                   (> x y))
+               (eq? (- x) (+ x (+ y 0)))
+               (eq? x 2))
+           (+ y 2)
+           (+ y 10))))
 
     '(let ([a 1])
        (let ([b 2])
          (not (< a b))))
 
-    '(if (if (< (- x) (+ x (+ y 2)))
-           (eq? (- x) (+ x (+ y 0)))
-           (eq? x 2))
-       (+ y 2)
-       (+ y 10))
+    '(let ([x 123])
+       (let ([y 33])
+         (if (if (< (- x) (+ x (+ y 2)))
+                (eq? (- x) (+ x (+ y 0)))
+                (eq? x 2))
+            (+ y 2)
+            (+ y 10))))
 
     '(let ([a true]) (if a 1 2))
 
@@ -194,14 +234,7 @@
     '(let ([x1 (read)])
        (let ([x2 (read)])
          (+ (+ x1 x2)
-            42)))
-
-    '(if (if (< (- x) (+ x (+ y 2)))
-           (eq? (- x) (+ x (+ y 0)))
-           (eq? x 2))
-       (+ y 2)
-       (+ y 10))))
-
+            42)))))
 
 (deftest splatter-vec
   (reset! niceid 0)

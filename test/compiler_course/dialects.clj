@@ -39,6 +39,7 @@
 (def-derived Alloc Shrunk
   (terminals + [name symbol?])
   (Exp [e]
+       - (vector ??e*)
        + (collect ?i)
        + (allocate ?i ?type)
        + (global-value ?name)))
@@ -60,6 +61,8 @@
        (not ?atm)
        (let ([?v ?e]) ?e:body)
        (if ?ne ?e:then ?e:else)
+       (vector-ref ?e ?i) (vector-set! ?e0 ?i ?e1)
+       (void) (has-type ?e ?type)
        (collect ?i)
        (allocate ?i ?type)
        (global-value ?name)))
@@ -75,11 +78,15 @@
         (< ?atm0 ?atm1)
         (eq? ?atm0 ?atm1)
         (if ?pred (goto ?lbl:then) (goto ?lbl:else)))
+  (Atom [atm]
+        + (void)
+        + (global-value ?name))
   (Exp [e]
        ?atm
        ?pred
-       (+ ?atm0 ?atm1)
-       (- ?atm))
+       (+ ?atm0 ?atm1) (- ?atm)
+       (allocate ?i ?type)
+       (vector-set! ?v ?i ?v))
   (Stmt [stmt]
         ?e
         (assign ?v ?e))

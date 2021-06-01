@@ -6,7 +6,8 @@
             [clojure.string :as str]
             [genera :refer [trampoline bouncing]]
             [clojure.walk :as walk]
-            [clojure.zip :as z :refer [zipper]]))
+            [clojure.zip :as z :refer [zipper]])
+  (:import clojure.lang.IObj))
 
 (def ^:dynamic *debug-rules* false)
 
@@ -365,7 +366,11 @@
           result (if (list? result) (reverse result) result)]
       [(if (= result datum)
          datum
-         result)
+         (if (meta result)
+           result
+           (if (instance? IObj result)
+             (with-meta result (meta datum))
+             result)))
        env])
     [datum env]))
 

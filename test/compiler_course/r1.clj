@@ -84,7 +84,7 @@
                 (rule '((?:as op (| + - if)) ??->x* ?->x)
                       (success
                        (subm (?op ??x* ?x) (get-type x))))
-                (rule '((?:as op (| < eq?)) ??->x* ?->x)
+                (rule '((?:as op (| < eq? not)) ??->x* ?->x)
                       (success
                        (subm (?op ??x* ?x) {:type (tag true)})))
                 (rule '(read) (success (subm (read) {:type (tag 1)})))
@@ -153,12 +153,19 @@
                       (wrap 'let nil nil
                             (sub (let ([?v ~(rco-exp e)])
                                    ~(rco-exp body)))))
+                ;; TODO: refactor this with hard-coded fn names and arities
                 (rule '((? op #{+ < eq?}) ?->a ?->b)
                       (wrap 'tmp+ a b (sub (?op ~(:value a) ~(:value b)))))
                 (rule '((? op #{- not}) ?->a)
                       (wrap 'tmp- a nil (sub (?op ~(:value a)))))
                 (rule '(read)
                       (wrap 'read nil nil '(read)))
+                (rule '(global-value ?name)
+                      (wrap name nil nil (:rule/datum %env)))
+                (rule '(vector-ref ?->v ?i)
+                      (wrap (symbol (str "vec+" i)) v nil (sub (vector-ref ~(:value v) ?i))))
+                (rule '(vector-set! ?->v ?i ?->e)
+                      (wrap (symbol (str "vec+" i)) v e (sub (vector-set! ~(:value v) ?i ~(:value e)))))
                 (rule '(not ?->e)
                       (wrap 'not e nil (sub (not ~(:value e)))))
                 (rule '(? x int?)
@@ -172,13 +179,22 @@
                                                 (rule '?_ (:exp %env)))))]
     (directed
      (rule-list (rule '((?:= let) ([?a ?->b]) ?->body))
-                (rule '((? op #{+ < eq?}) ?a ?b)
+                ;; TODO: refactor this with hard-coded fn names and arities
+                (rule '((? op #{vector-set!}) ?a ?b ?c)
+                      (let [a (rco-atom a)
+                            b (rco-atom b)
+                            c (rco-atom c)]
+                        ((:wrap a identity)
+                         ((:wrap b identity)
+                          ((:wrap c identity)
+                           (sub (?op ~(:value a) ~(:value b) ~(:value c))))))))
+                (rule '((? op #{+ < eq? vector-ref}) ?a ?b)
                       (let [a (rco-atom a)
                             b (rco-atom b)]
                         ((:wrap a identity)
                          ((:wrap b identity)
                           (sub (?op ~(:value a) ~(:value b)))))))
-                (rule '((? op #{- not}) ?a)
+                (rule '((? op #{- not global-value}) ?a)
                       (let [a (rco-atom a)]
                         ((:wrap a identity)
                          (sub (?op ~(:value a))))))
@@ -191,6 +207,7 @@
                       ;; pass can eliminate the not by swapping the then/else
                       ;; order. It could also be done here but I'd need to do
                       ;; more work here and it's already done there...
+                      ;; FIXME? what about (if (let ...) ...)?
                       (let [exp (preserve-not nots {:exp exp})]
                         (sub (if ?exp ?then ?else))))))))
 
@@ -316,8 +333,7 @@
            (sub (program [~@(:v p) ~@(mapcat :v (:vals (:b p)))]
                          ~blocks)))))
 
-;; TODO: optimize-jumps, update select instructions
-;; FIXME: do all blocks in explicate-* as continuation passing (not just the preds part)
+;; TODO? do all blocks in explicate-* as continuation passing (not just the preds part)
 
 ;; Select instructions: rewrite as data representing X86 assembly
 
@@ -349,66 +365,65 @@
 (def select-instructions*
   ;; TODO: split to assign and tail versions.. See hints here
   ;; https://iucompilercourse.github.io/IU-P423-P523-E313-E513-Fall-2020/lecture-Oct-6.html
-  ;; TODO: remember to select instructions on each block
-  (directed (rule-list! (rule '(program ?vars ?blocks)
-                              (let [blocks (reduce-kv (fn [blocks l b]
-                                                        (assoc blocks l (descend b)))
-                                                      {} blocks)]
-                                (sub (program ?vars ?blocks))))
-                        (rule '(block ?label ?vars ??->instrs)
-                              (sub (block ?label ?vars ~@(apply concat instrs))))
-                        (rule '(assign ?x (+ ?->a ?->b))
-                              (let [x (sub (v ?x))]
-                                (cond (= x b) (sub [(addq ?a ?b)])
-                                      (= x a) (sub [(addq ?b ?a)])
-                                      :else (sub [(movq ?a ?x)
-                                                  (addq ?b ?x)]))))
-                        (rule '(assign ?x (read))
-                              (let [x (sub (v ?x))]
-                                (sub [(callq read-int)
-                                      (movq (reg rax) ?x)])))
-                        (rule '(assign ?x (- ?->a))
-                              (let [x (sub (v ?x))]
-                                (if (= x a)
-                                  (sub [(negq ?x)])
-                                  (sub [(movq ?a ?x)
-                                        (negq ?x)]))))
-                        (rule '(assign ?x ((? op #{< eq?}) ?->a ?->b))
-                              (let [x (sub (v ?x))]
-                                (select-inst-cond (sub (?op ?a ?b)) {:v x})))
-                        (rule '(assign ?x (not ?->a))
-                              (let [x (sub (v ?x))]
-                                (select-inst-cond (sub (not ?a)) {:v x})))
-                        (rule '(assign ?x ?->a)
-                              (let [x (sub (v ?x))]
-                                (if (= x a)
-                                  []
-                                  (sub [(movq ?a ?x)]))))
-                        (rule '(return ?x)
-                              (concat (unv-rax
-                                       (descend (sub (assign (reg rax) ?x))))
-                                      ['(retq)]))
+  (directed (rule-list (rule '(program ?vars ?blocks)
+                             (let [blocks (reduce-kv (fn [blocks l b]
+                                                       (assoc blocks l (descend b)))
+                                                     {} blocks)]
+                               (sub (program ?vars ?blocks))))
+                       (rule '(block ?label ?vars ??->instrs)
+                             (sub (block ?label ?vars ~@(apply concat instrs))))
+                       (rule '(assign ?x (+ ?->a ?->b))
+                             (let [x (sub (v ?x))]
+                               (cond (= x b) (sub [(addq ?a ?b)])
+                                     (= x a) (sub [(addq ?b ?a)])
+                                     :else (sub [(movq ?a ?x)
+                                                 (addq ?b ?x)]))))
+                       (rule '(assign ?x (read))
+                             (let [x (sub (v ?x))]
+                               (sub [(callq read-int)
+                                     (movq (reg rax) ?x)])))
+                       (rule '(assign ?x (- ?->a))
+                             (let [x (sub (v ?x))]
+                               (if (= x a)
+                                 (sub [(negq ?x)])
+                                 (sub [(movq ?a ?x)
+                                       (negq ?x)]))))
+                       (rule '(assign ?x ((? op #{< eq?}) ?->a ?->b))
+                             (let [x (sub (v ?x))]
+                               (select-inst-cond (sub (?op ?a ?b)) {:v x})))
+                       (rule '(assign ?x (not ?->a))
+                             (let [x (sub (v ?x))]
+                               (select-inst-cond (sub (not ?a)) {:v x})))
+                       (rule '(assign ?x ?->a)
+                             (let [x (sub (v ?x))]
+                               (if (= x a)
+                                 []
+                                 (sub [(movq ?a ?x)]))))
+                       (rule '(return ?x)
+                             (concat (unv-rax
+                                      (descend (sub (assign (reg rax) ?x))))
+                                     ['(retq)]))
 
-                        (rule '(if ((? cmp #{< eq?}) ?->a ?->b) (goto ?then) (goto ?else))
-                              (sub [(cmpq ?b ?a)
-                                    (jump ?cmp ?then)
-                                    (jump true ?else)]))
+                       (rule '(if ((? cmp #{< eq?}) ?->a ?->b) (goto ?then) (goto ?else))
+                             (sub [(cmpq ?b ?a)
+                                   (jump ?cmp ?then)
+                                   (jump true ?else)]))
 
-                        (rule '(if ?->exp (goto ?then) (goto ?else))
-                              (concat
-                               (select-inst-cond exp {:v (sub (v ~(gennice 'tmp)))})
-                               ;; FIXME: shouldn't it compare to 0 and go else? Seems like
-                               ;; that would be a more expected semantic...
-                               (sub [(cmpq (int 1) (v tmp))
-                                     (jump eq? ?then)
-                                     (jump true ?else)])))
+                       (rule '(if ?->exp (goto ?then) (goto ?else))
+                             (concat
+                              (select-inst-cond exp {:v (sub (v ~(gennice 'tmp)))})
+                              ;; FIXME: shouldn't it compare to 0 and go else? Seems like
+                              ;; that would be a more expected semantic...
+                              (sub [(cmpq (int 1) (v tmp))
+                                    (jump eq? ?then)
+                                    (jump true ?else)])))
 
-                        (rule true '(int 1))
-                        (rule false '(int 0))
-                        (rule '(? i int?)
-                              (sub (int ?i)))
-                        (rule '(? v symbol?)
-                              (sub (v ?v))))))
+                       (rule true '(int 1))
+                       (rule false '(int 0))
+                       (rule '(? i int?)
+                             (sub (int ?i)))
+                       (rule '(? v symbol?)
+                             (sub (v ?v))))))
 
 (defn select-instructions [x]
   (select-instructions* x))
