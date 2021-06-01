@@ -1,37 +1,45 @@
 (ns compiler-course.r1-test
   (:require [compiler-course.r1-allocator :as a]
             [compiler-course.r1 :refer :all]
-            [matches :refer [valid? validate ok?]]
+            [matches :refer [valid? validate ok? sub subm]]
             [matches.types :refer [ok]]
             [compiler-course.dialects :as d]
-            [clojure.test :refer [deftest testing is are]]))
+            [clojure.test :refer [deftest testing is are]]
+            [clojure.walk :as walk]))
 
 (def passes
   (partition 2
              [#'identity #'d/R1
               #'uniqify #'d/R1
               #'shrink #'d/Shrunk
+              #'add-types [#'d/Shrunk shrunk-typed?]
               #'remove-complex-opera* #'d/Simplified
               #'explicate-control #'d/Explicit
               #'select-instructions #'d/Selected
-              #'allocate-registers #'d/Allocated
-              #'remove-jumps #'d/Allocated
+              #'allocate-registers #'d/RegAllocated
+              #'remove-jumps #'d/RegAllocated
               #'patch-instructions #'d/Patched
-              #'save-registers #'d/Patched+
-              #_#_
-              #'stringify #'d/Strings]))
+              #'save-registers #'d/Patched+]))
 
+(defn valid-asm? [s]
+  (string? s))
 
 (defn test-pipeline [form]
   (loop [form form [[pass dialect] & more] passes results []]
     (let [result (pass form)
+          [dialect valid2?] (if (vector? dialect)
+                              dialect [dialect (constantly ok)])
           results (conj results [pass (:name dialect) result])
-          v (validate @dialect result)]
-      (if (ok? v)
+          v (validate @dialect result)
+          v2 (valid2? result)]
+      (if (and (ok? v) (ok? v2))
         (if more
           (recur result more results)
-          v)
-        (conj results v)))))
+          (let [s (stringify result)]
+            (if (valid-asm? s)
+              v
+              s)))
+        (conj results v v2)))))
 
 (def iffy-program
   '(let ([x 1])
@@ -42,14 +50,30 @@
          (+ y 2)
          (+ y 10)))))
 
+(defn shrunk-typed? [form]
+  (let [untyped
+        (->> form
+             (tree-seq seqable? seq)
+             (remove (into #{} '[if eq? - + < let vector vector-ref vector-set!]))
+             (filter (partial valid? d/Shrunk))
+             (remove #(:type (meta %)))
+             (remove int?)
+             (remove boolean?))]
+    (if (empty? untyped)
+      ok
+      {:dialect 'Shrunk
+       :untyped (vec untyped)})))
+
 (def iffier-program
-  '(if (if (if (let ([z (> (+ 1 (- 1)) (+ 2 (- 2)))]) z)
-             (< x y)
-             (> x y))
-         (eq? (- x) (+ x (+ y 0)))
-         (eq? x 2))
-     (+ y 2)
-     (+ y 10)))
+  '(let ([x 9])
+     (let ([y 11])
+       (if (if (if (let ([z (> (+ 1 (- 1)) (+ 2 (- 2)))]) z)
+                 (< x y)
+                 (> x y))
+             (eq? (- x) (+ x (+ y 0)))
+             (eq? x 2))
+         (+ y 2)
+         (+ y 10)))))
 
 (deftest compile-iffy-programs
   (is (= ok (test-pipeline iffy-program)))
@@ -86,6 +110,15 @@
 
 (deftest compile-spilly-program
   (is (= ok (test-pipeline spilly-program))))
+
+(def veccy-program
+  '(let ([t (vector 40 true (vector 2))])
+     (if (vector-ref t 1)
+       (+ (vector-ref t 0)
+          (vector-ref (vector-ref t 2) 0))
+       44)))
+
+(test-pipeline veccy-program)
 
 (deftest various-programs
   (are [p] (= ok (test-pipeline p))
@@ -168,6 +201,21 @@
            (eq? x 2))
        (+ y 2)
        (+ y 10))))
+
+
+(deftest splatter-vec
+  (reset! niceid 0)
+  (is (= '(+
+           1
+           (let ([vec.1 1])
+             (let ([vec.2 2])
+               (let ([_ (if (< (+ (global-value free_ptr) 3)
+                               (global-value fromspace_end))
+                          (void) (collect 3))])
+                 (let ([vector.3 (allocate 2 (Vector Integer Integer))])
+                   (let ([_ (vector-set! vector.3 1 vec.2)])
+                     (let ([_ (vector-set! vector.3 0 vec.1)]) vector.3)))))))
+         (expose-allocation (add-types (sub (+ 1 (vector 1 2))))))))
 
 
 (comment

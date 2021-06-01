@@ -1,7 +1,7 @@
 (ns compiler-course.r1
   (:require [compiler-course.r1-allocator :refer [liveness to-graph allocate-registers*
                                                   var-locations with-allocated-registers]]
-            [matches :refer [descend directed on-subexpressions rule rule-list rule-list! sub success]]
+            [matches :refer [descend directed on-subexpressions rule rule-list rule-list! sub success subm rule-simplifier]]
             [matches.types :refer [child-rules]]
             [clojure.string :as str]))
 
@@ -51,7 +51,6 @@
                            (sub (let ([?t ?a])
                                   ~(expr t)))))]
     (on-subexpressions
-     ;; TODO: if I had a breadth-first version of on-subexpressions I could do (not (< ...)) => (>= ...)
      (rule-list (rule '(eq? ?same ?same)
                       (when (immutable-expr? same)
                         true))
@@ -66,6 +65,75 @@
                 (rule '(<= ?a ?b) (preserve-order 'le a b #(sub (not (< ?b ~%)))))
                 (rule '(> ?a ?b) (preserve-order 'gt a b #(sub (< ?b ~%))))
                 (rule '(>= ?a ?b) (sub (not (< ?a ?b))))))))
+
+(defn tag [n]
+  (cond (int? n) 'Integer
+        (boolean? n) 'Boolean))
+
+(def add-types
+  (letfn [(get-type [e]
+            (or (meta e) {:type (tag e)}))]
+    (directed
+     (rule-list (rule '((?:= let) ([?v ?->e]) ?b)
+                      (let [env (assoc-in %env [:type v] (get-type e))
+                            v (first (descend v env)) ;; to simplify checking
+                            b (first (descend b env))]
+                        (success (subm (let ([?v ?e]) ?b)
+                                       (get-type b))
+                                 env)))
+                (rule '((?:as op (| + - if)) ??->x* ?->x)
+                      (success
+                       (subm (?op ??x* ?x) (get-type x))))
+                (rule '((?:as op (| < eq?)) ??->x* ?->x)
+                      (success
+                       (subm (?op ??x* ?x) {:type (tag true)})))
+                (rule '(read) (success (subm (read) {:type (tag 1)})))
+                (rule '(void) (success (subm (void) {:type 'Void})))
+                (rule '(vector ??->e*)
+                      (success (subm (vector ??e*)
+                                     {:type (sub (Vector ~@(map (comp :type get-type) e*)))})))
+                (rule '(vector-ref ?->v ?->i)
+                      (success (subm (vector-ref ?v ?i)
+                                     {:type (nth (:type (meta v))
+                                                 (inc i))})))
+                (rule '(vector-set! ??->e)
+                      (success (subm (vector-set! ??e) {:type 'Void})))
+                (rule '(? s symbol?)
+                      (success (with-meta s (get-in %env [:type s]))))))))
+
+(def expose-allocation
+  (rule-simplifier
+   (rule '(vector ??e*)
+         (sub (vector> ~(:type (meta (:rule/datum %env))) [] ??e*)))
+   (rule '(vector> ?type ?names ?e ??e*)
+         (let [n (gennice 'vec)
+               ;; building names in reverse
+               names (conj names n)]
+           (sub (let ([?n ?e])
+                  (vector> ?type ?names ??e*)))))
+   (rule '(vector> ?type ?names)
+         (let [len (count names)
+               v (gennice 'vector)
+               bytes (inc len)]
+           (sub
+            (let ([_ (if (< (+ (global-value free_ptr) ?bytes)
+                            (global-value fromspace_end))
+                       (void)
+                       (collect ?bytes))])
+              (let ([?v (allocate ?len ?type)])
+                (vector< ?v ?names))))))
+   (rule '(vector< ?v [??n* ?n])
+         ;; using names in reverse, so n* count is the vector position
+         (let [idx (count n*)]
+           (sub (let ([_ (vector-set! ?v ?idx ?n)])
+                  (vector< ?v [??n*])))))
+   (rule '(vector< ?v [])
+         v)))
+
+(comment
+  (reset! niceid 0)
+  (expose-allocation (sub (+ 1 ~(subm (vector 1 2) {:type (sub (Vector ~(tag 1) ~(tag 1)))})))))
+
 
 ;; Remove complex operations
 
@@ -476,6 +544,7 @@
   (stringify* x))
 
 (def ->shrink (comp #'shrink #'uniqify))
+(def ->type (comp #'add-types #'->shrink))
 (def ->simple (comp #'remove-complex-opera* #'->shrink))
 (def ->flatten (comp #'explicate-control #'->simple))
 (def ->select (comp #'select-instructions #'->flatten))

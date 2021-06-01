@@ -12,18 +12,19 @@
              [v symbol?]
              [b boolean?]
              [cmp `cmp?])
+  (Type [type] Integer Boolean (Vector ??type) Void)
   (Exp [e]
        ?i ?v ?b
        (read)
-       (- ?e)
-       (+ ?e0 ?e1)
-       (let ([?v ?e]) ?e:body)
-       (- ?e0 ?e1)
-       (and ?e0 ?e1)
-       (or ?e0 ?e1)
-       (not ?e)
+       (- ?e) (+ ?e0 ?e1) (- ?e0 ?e1)
+       (and ?e0 ?e1) (or ?e0 ?e1) (not ?e)
        (?cmp ?e0 ?e1)
-       (if ?e ?e:then ?e:else)))
+       (let ([?v ?e]) ?e:body)
+       (if ?e ?e:then ?e:else)
+       (vector ??e*) (vector-length ?e)
+       (vector-ref ?e ?i) (vector-set! ?e0 ?i ?e1)
+       (void) (has-type ?e ?type)))
+
 
 (def-derived Shrunk R1
   (terminals - [cmp `cmp?])
@@ -35,8 +36,14 @@
        - (and ?e0 ?e1)
        - (or ?e0 ?e1)))
 
+(def-derived Alloc Shrunk
+  (terminals + [name symbol?])
+  (Exp [e]
+       + (collect ?i)
+       + (allocate ?i ?type)
+       + (global-value ?name)))
 
-(def-derived Simplified Shrunk
+(def-derived Simplified Alloc
   (Atom [atm]
         (read)
         ?i ?v ?b)
@@ -52,8 +59,12 @@
        (eq? ?atm0 ?atm1)
        (not ?atm)
        (let ([?v ?e]) ?e:body)
-       (if ?ne ?e:then ?e:else)))
+       (if ?ne ?e:then ?e:else)
+       (collect ?i)
+       (allocate ?i ?type)
+       (global-value ?name)))
 
+;; The book's C... language:
 (def-derived Explicit Simplified
   (terminals + [lbl symbol?])
   - Exp
@@ -105,6 +116,8 @@
         (jump ?jc ?lbl))
   ;; there is specific valid sequencing like cmp -> jump -> jump, but I'm not
   ;; sure how or if I can encode that here...
+  ;; TODO: attach additional validation rules to forms? Some could have rules
+  ;; like above attached but they don't fit at the expression level.
   (Tail [tail]
         (jump ?jc ?lbl)
         (retq))
@@ -114,7 +127,7 @@
            (program [??v*] (?:+map ?lbl* ?block*))))
 
 
-(def-derived Allocated Selected
+(def-derived RegAllocated Selected
   (Caller [caller] (reg (| rax rcx rdx rsi rdi r8 r9 r10 r11)))
   (Callee [callee] (reg (| rsp rbp rbx r12 r13 r14 r15)))
   (Loc [loc]
@@ -130,7 +143,7 @@
            (program (?:+map ?v* ?loc*)
                     [??block*])))
 
-(def-derived Patched Allocated
+(def-derived Patched RegAllocated
   (Stmt [stmt]
         - (movq ?arg0 ?arg1)
         + (movq ?arg0 (& ?arg1 (? arg1 not= ?arg0)))
@@ -147,12 +160,3 @@
            (program (?:+map ?v* ?loc*)
                     [??savereg*]
                     [??block*])))
-(unparse-dialect Patched)
-
-(def-derived Future Selected
-  (Arg [arg]
-       (stack ?i))
-  (CC [cc] e l le g ge) ;; really just e and l though?
-  (Instruction [instr]
-               (pushq ?arg)
-               (popq ?arg)))
