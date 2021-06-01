@@ -94,7 +94,8 @@
                                        :reserve-min-tail f/op (:length (meta m)))]))
                           [() (assoc comp-env :reserve-min-tail (len 0))]
                           (reverse pattern)))
-        {match-length :n variable-length? :v} (apply f/op (map (comp :length meta) matchers))]
+        {match-length :n variable-length? :v} (apply f/op (map (comp :length meta) matchers))
+        match-length (or match-length 0)]
     (with-meta
       (fn list-matcher [data dictionary ^Env env]
         (if (seq data)

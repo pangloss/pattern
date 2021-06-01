@@ -372,6 +372,10 @@
    (binding [*on-marked-insertion* f]
      (qsub* form))))
 
+(defmacro subm
+  ([form metadata]
+   `(with-meta (sub ~form) ~metadata)))
+
 (defn eval-spliced
   "Experimental. Uses [[spliced]] to transform regular lists, then uses eval to
   resolve spliced data. Doesn't resolve any data in the local scope."

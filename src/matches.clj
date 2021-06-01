@@ -17,6 +17,7 @@
               substitute)
              (matches.r3.rewrite
               sub
+              subm
               quo
               spliced
               eval-spliced)

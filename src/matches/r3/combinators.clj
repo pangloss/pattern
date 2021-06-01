@@ -461,7 +461,7 @@
 (defn rule-simplifier
   "Run a list of rule combinators repeatedly on all subexpressions until running
   them makes no further changes."
-  [rules]
+  [& rules]
   (vary-meta
-   (simplifier (rule-list rules))
+   (simplifier (apply rule-list rules))
    assoc-in [:rule :rule-type] ::rule-simplifier))
