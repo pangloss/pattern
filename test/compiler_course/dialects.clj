@@ -152,7 +152,6 @@
        ?callee
        (stack ?i))
   (Arg [arg]
-       - (v ?v)
        - (reg rax)
        - (reg r11)
        - (reg r15)
@@ -161,10 +160,15 @@
        + ?loc)
   - Program
   (Program [program]
-           (program (?:+map ?v* ?loc*)
+           (program (?:*map ?v* ?loc*)
                     [??block*])))
 
-(def-derived Patched RegAllocated
+(def-derived RemoveUnallocated RegAllocated
+  (Arg [arg]
+       - (v ?v))
+  (Program [program]))
+
+(def-derived Patched RemoveUnallocated
   (Stmt [stmt]
         - (movq ?arg0 ?arg1)
         + (movq ?arg0 (& ?arg1 (? arg1 not= ?arg0)))
@@ -173,11 +177,12 @@
   ;; Ensure Program is still the entrypoint
   (Program [program]))
 
+
 (def-derived Patched+ Patched
   - Program
   (SaveReg [savereg]
            (movq ?callee (stack* ?i)))
   (Program [program]
-           (program (?:+map ?v* ?loc*)
+           (program (?:*map ?v* ?loc*)
                     [??savereg*]
                     [??block*])))

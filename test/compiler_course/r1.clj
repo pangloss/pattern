@@ -115,7 +115,7 @@
          (let [len (count names)
                v (gennice 'vector)
                _ (gennice '_)
-               bytes (inc len)]
+               bytes (* 8 (inc len))]
            (sub
             (let ([?_ (if (< (+ (global-value free_ptr) ?bytes)
                              (global-value fromspace_end))
@@ -361,8 +361,8 @@
                        (rule '(assign ?->x (allocate ?len (Vector ??type*)))
                              (let [tag (make-tag len type*)]
                                (sub [(movq (global-value free_ptr) (reg r11))
-                                     (addq ~(* 8 (inc len)) (global-value free_ptr))
-                                     (movq ?tag (deref 0 r11)) ;; why use deref here??
+                                     (addq (int ~(* 8 (inc len))) (global-value free_ptr))
+                                     (movq (int ?tag) (deref 0 r11)) ;; why use deref here??
                                      (movq (reg r11) ?x)])))
                        (rule '(assign ?->x (collect ?->bytes))
                              (sub [(movq (reg r15) (reg rdi))
@@ -419,6 +419,13 @@
                    (with-allocated-registers {:loc var-locs}))]
     (sub (program ?var-locs ?blocks))))
 
+(def remove-unallocated
+  (on-subexpressions
+   (rule-list (rule '(movq ?arg0 (v ?v)) (success nil))
+              (rule '(block ?lbl ?v ??i*)
+                    (sub (block ?lbl ?v ~@(remove nil? i*)))))))
+
+
 (def remove-jumps
   (directed (rule-list (rule '(program ?var-locs [(?:* (& ?blocks ?->jumps))])
                              (let [blocks (reduce (fn [m [_ label :as b]]
@@ -468,8 +475,10 @@
        (map second)
        (apply max 0)))
 
-(def caller-saved-registers (into #{} '[rax rcx rdx rsi rdi r8 r9 r10 r11]))
-(def callee-saved-registers (into #{} '[rsp rbp rbx r12 r13 r14 r15]))
+;; TODO: do I need to make these unavailable to the reg allocator since they're
+;; used in select-instructions?
+(def caller-saved-registers (into #{} '[rax rcx rdx #_rsi #_rdi r8 r9 r10 #_r11]))
+(def callee-saved-registers (into #{} '[rsp rbp rbx r12 r13 r14 #_r15]))
 
 (defn save-registers* [var-locs]
   (->> (vals var-locs)
@@ -490,63 +499,72 @@
     (* 16 (max 1 (int (Math/ceil (/ stack-vars 2)))))))
 
 (def stringify*
-  (letfn [(fi [i*] (map #(str "    " % "\n") i*))]
-    (directed (rule-list! (rule '(program ?var-locs [??->save-regs] ?blocks)
-                                (let [offset (count save-regs)
-                                      blocks (apply str (map #(first (descend % {:stack-offset offset}))
-                                                             blocks))
-                                      size (stack-size offset var-locs)]
-                                  (str
-                                   ".globl main\n"
-                                   blocks
-                                   "main:\n"
-                                   "    pushq %rbp\n"
-                                   "    movq %rsp, %rbp\n"
-                                   (apply str (fi save-regs))
-                                   "    subq $" size ", %rsp\n"
+  (letfn [(fi [i*] (map (fn [x]
+                          (let [x (if (sequential? x) x [x])]
+                            (sub ["    " ??x])))
+                        i*))]
+    (directed (rule-list (rule '(program ?var-locs [??->save-regs] ?blocks)
+                               (let [offset (count save-regs)
+                                     blocks (apply concat (map #(first (descend % {:stack-offset offset}))
+                                                               blocks))
+                                     size (stack-size offset var-locs)]
+                                 (sub
+                                  [[".globl main"]
+                                   ~@blocks
+                                   ["main:"]
+                                   ["    pushq %rbp"]
+                                   ["    movq %rsp, %rbp"]
+                                   ~@(fi save-regs)
+                                   [~(str "    subq $" size ", %rsp")]
                                    ;; TODO: inline start
-                                   "    jmp start\n"
-                                   "conclusion:\n"
-                                   "    addq $" size ", %rsp\n"
-                                   "    popq %rbp\n"
-                                   "    retq\n")))
-                          (rule '(block ?label ?vars ??->i*)
-                                (apply str label ":\n" (fi i*)))
-                          (rule '(jump true ?label)
-                                (str "jmp " label))
-                          (rule '(jump < ?label)
-                                (str "jl " label))
-                          (rule '(jump eq? ?label)
-                                (str "je " label))
-                          (rule '(callq read-int)
-                                (str "callq read-int"))
-                          (rule '(int ?i)
-                                (str "$" i))
-                          (rule '(deref ?scale ?offset ?v)
-                                (str scale "(" offset ")(%" (name v) ")"))
-                          (rule '(deref ?offset ?v)
-                                (str offset "(%" (name v) ")"))
-                          (rule '(set ?op ?->y)
-                                (let [flag ('{< l eq? e} op)]
-                                  (str "set" flag " " y)))
-                          (rule '(reg ?r)
-                                (str "%" r))
-                          (rule '(byte-reg ?r)
-                                (str "%" r))
-                          (rule '(stack* ?i)
-                                (str (* -8 (inc i)) "(%rbp)"))
-                          (rule '(stack ?i)
-                                (str (* -8 (inc (+ (:stack-offset %env) i)))
-                                     "(%rbp)"))
-                          (rule '(retq)
-                                "jmp conclusion")
-                          (rule '(?x ?->a)
-                                (str (name x) " " a))
-                          (rule '(?x ?->a ?->b)
-                                (str (name x) " " a ", " b))))))
+                                   ["    jmp start"]
+                                   ["conclusion:"]
+                                   [~(str "    addq $" size ", %rsp")]
+                                   ["    popq %rbp"]
+                                   ["    retq"]])))
+                         (rule '(block ?label ?vars ??->i*)
+                               (list* [(str (name label) ":")]
+                                      (fi i*)))
+                         (rule '(jump true ?label)
+                               (list "jmp " (name label)))
+                         (rule '(jump < ?label)
+                               (list "jl " (name label)))
+                         (rule '(jump eq? ?label)
+                               (list "je " (name label)))
+                         (rule '(callq ?label)
+                               (list "callq " (name label)))
+                         (rule '(int ?i)
+                               (str "$" i))
+                         (rule '(deref ?scale ?offset ?v)
+                               (str scale "(" offset ")(%" (name v) ")"))
+                         (rule '(deref ?offset ?v)
+                               (str offset "(%" (name v) ")"))
+                         (rule '(set ?op ?->y)
+                               (let [flag ('{< l eq? e} op)]
+                                 (list "set" (str flag) " " y)))
+                         (rule '(reg ?r)
+                               (str "%" r))
+                         (rule '(byte-reg ?r)
+                               (str "%" r))
+                         (rule '(stack* ?i)
+                               (str (* -8 (inc i)) "(%rbp)"))
+                         (rule '(stack ?i)
+                               (str (* -8 (inc (+ (:stack-offset %env) i)))
+                                    "(%rbp)"))
+                         (rule '(global-value ?label)
+                               (str (name label) "(%rip)"))
+                         (rule '(retq)
+                               "jmp conclusion")
+                         (rule '(?x ?->a)
+                               (list (name x) " " a))
+                         (rule '(?x ?->a ?->b)
+                               (list (name x) " " a ", " b))))))
 
-(defn stringify [x]
-  (stringify* x))
+(defn stringify [p]
+  (stringify* p))
+
+(defn combine-strings [p]
+  (apply str (map #(apply str (conj % "\n")) p)))
 
 (def ->shrink (comp #'shrink #'uniqify))
 (def ->type (comp #'add-types #'->shrink))

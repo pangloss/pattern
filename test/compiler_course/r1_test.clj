@@ -18,12 +18,13 @@
               #'explicate-control #'d/Explicit
               #'select-instructions #'d/Selected
               #'allocate-registers #'d/RegAllocated
+              #'remove-unallocated #'d/RemoveUnallocated
               #'remove-jumps #'d/RegAllocated
               #'patch-instructions #'d/Patched
               #'save-registers #'d/Patched+]))
 
-(defn valid-asm? [s]
-  (string? s))
+(defn valid-asm? [p]
+  (every? #(every? string? %) p))
 
 (defn test-pipeline [form]
   (loop [form form [[pass dialect] & more] passes results []]
@@ -113,7 +114,6 @@
 (deftest compile-spilly-program
   (is (= ok (test-pipeline spilly-program))))
 
-#_
 (def veccy-program
   '(let ([t (vector 40 true (vector 2))])
      (if (vector-ref t 1)
@@ -121,25 +121,8 @@
           (vector-ref (vector-ref t 2) 0))
        44)))
 
-#_
 (deftest test-vecs
-  (test-pipeline veccy-program))
-
-(comment
-  (test-pipeline
-   '(let ([t (vector 40 true 2)])
-      (if (vector-ref t 1)
-        (+ (vector-ref t 0)
-           (vector-ref t 2))
-        44)))
-
-  (test-pipeline
-   '(let ([t (vector 40 true 2)])
-      (vector-ref t 1)))
-
-  (test-pipeline
-   '(vector 40)))
-
+  (is (= ok (test-pipeline veccy-program))))
 
 (deftest various-programs
   (are [p] (= ok (test-pipeline p))
@@ -149,10 +132,26 @@
          (let ([c true])
            (if a (if c 4 5) (if b 2 3)))))
 
-    #_
+    '(if (let ([x 1])
+           (eq? 2 1))
+       1 2)
+
+
     '(if (let ([x (void)])
            (eq? 2 1))
        1 2)
+
+
+    '(let ([t (vector 40 true 2)])
+       (if (vector-ref t 1)
+         (+ (vector-ref t 0)
+            (vector-ref t 2))
+         44))
+
+    '(let ([t (vector 40 true 2)])
+       (vector-ref t 1))
+
+    '(vector 40)
 
     '(if (eq? 1 (read)) 42 0)
 
@@ -160,16 +159,16 @@
        (let ([b false])
          (let ([c true])
            (let ([d true])
-              (let ([e false])
-                (let ([x true])
-                  (let ([y true])
-                    (if (if (if (eq? a a)
-                               (> a b)
-                               (> x y))
-                           true
-                           (eq? c 2))
-                       (+ d 2)
-                       (+ e 10)))))))))
+             (let ([e false])
+               (let ([x true])
+                 (let ([y true])
+                   (if (if (if (eq? a a)
+                             (> a b)
+                             (> x y))
+                         true
+                         (eq? c 2))
+                     (+ d 2)
+                     (+ e 10)))))))))
 
     '(let ([x 1111])
        (let ([y 2])
@@ -198,10 +197,10 @@
     '(let ([x 123])
        (let ([y 33])
          (if (if (< (- x) (+ x (+ y 2)))
-                (eq? (- x) (+ x (+ y 0)))
-                (eq? x 2))
-            (+ y 2)
-            (+ y 10))))
+               (eq? (- x) (+ x (+ y 0)))
+               (eq? x 2))
+           (+ y 2)
+           (+ y 10))))
 
     '(let ([a true]) (if a 1 2))
 
@@ -236,35 +235,13 @@
 
 (deftest splatter-vec
   (reset! niceid 0)
-  (is (= '(+
-           1
-           (let ([vec.1 1])
-             (let ([vec.2 2])
-               (let ([_ (if (< (+ (global-value free_ptr) 3)
-                               (global-value fromspace_end))
-                          (void) (collect 3))])
-                 (let ([vector.3 (allocate 2 (Vector Integer Integer))])
-                   (let ([_ (vector-set! vector.3 1 vec.2)])
-                     (let ([_ (vector-set! vector.3 0 vec.1)]) vector.3)))))))
+  (is (= '(+ 1
+             (let ([vec.1 1])
+               (let ([vec.2 2])
+                 (let ([_.4 (if (< (+ (global-value free_ptr) 24)
+                                   (global-value fromspace_end))
+                              (void) (collect 24))])
+                   (let ([vector.3 (allocate 2 (Vector Integer Integer))])
+                     (let ([_.5 (vector-set! vector.3 1 vec.2)])
+                       (let ([_.6 (vector-set! vector.3 0 vec.1)]) vector.3)))))))
          (expose-allocation (add-types (sub (+ 1 (vector 1 2))))))))
-
-
-(comment
-  (println
-   (stringify
-    (a/patch-instructions
-     (a/allocate-registers
-      (select-instructions
-       (explicate-control
-        (remove-complex-opera*
-         (shrink
-          (uniqify
-           '(let ([x 1])
-              (let ([y 2])
-                (if (if (if (> x y)
-                          (< x y)
-                          (> x y))
-                      (eq? (- x) (+ x (+ y 0)))
-                      (eq? x 2))
-                  (+ y 2)
-                  (+ y 10))))))))))))))

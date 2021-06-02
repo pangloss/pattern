@@ -315,7 +315,13 @@
                                      (let [dict (remove-terminals raw dict)]
                                        (if (every? #{ok} (vals dict))
                                          ok
-                                         (merge {:fail (:orig-expr expr)} dict)))))
+                                         (merge {:fail (:orig-expr expr)}
+                                                dict
+                                                {:meta (reduce-kv (fn [m k v]
+                                                                    (if (ok? v)
+                                                                      m
+                                                                      (assoc m k (meta v))))
+                                                                  {} dict)})))))
                                  (fn [x]
                                    ;; give the handler both the raw matches and the processed version for now
                                    (let [f (symbol-dict x)]
