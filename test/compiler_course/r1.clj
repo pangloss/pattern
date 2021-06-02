@@ -114,18 +114,20 @@
    (rule '(vector> ?type ?names)
          (let [len (count names)
                v (gennice 'vector)
+               _ (gennice '_)
                bytes (inc len)]
            (sub
-            (let ([_ (if (< (+ (global-value free_ptr) ?bytes)
-                            (global-value fromspace_end))
-                       (void)
-                       (collect ?bytes))])
+            (let ([?_ (if (< (+ (global-value free_ptr) ?bytes)
+                             (global-value fromspace_end))
+                        (void)
+                        (collect ?bytes))])
               (let ([?v (allocate ?len ?type)])
                 (vector< ?v ?names))))))
    (rule '(vector< ?v [??n* ?n])
          ;; using names in reverse, so n* count is the vector position
-         (let [idx (count n*)]
-           (sub (let ([_ (vector-set! ?v ?idx ?n)])
+         (let [idx (count n*)
+               _ (gennice '_)]
+           (sub (let ([?_ (vector-set! ?v ?idx ?n)])
                   (vector< ?v [??n*])))))
    (rule '(vector< ?v [])
          v)))
@@ -313,6 +315,18 @@
 (defn select-inst-cond [x env]
   (first (select-inst-cond* x env)))
 
+(defn make-tag [len type*]
+  (bit-or 1
+          (bit-shift-left len 1)
+          (bit-shift-left
+           (apply +
+                  (map-indexed (fn [i t]
+                                 (condp = t
+                                   'Vector (bit-shift-left 1 i)
+                                   0))
+                               type*))
+           7)))
+
 (def select-instructions*
   ;; TODO: split to assign and tail versions.. See hints here
   ;; https://iucompilercourse.github.io/IU-P423-P523-E313-E513-Fall-2020/lecture-Oct-6.html
@@ -323,34 +337,48 @@
                                (sub (program ?vars ?blocks))))
                        (rule '(block ?label ?vars ??->instrs)
                              (sub (block ?label ?vars ~@(apply concat instrs))))
-                       (rule '(assign ?x (+ ?->a ?->b))
-                             (let [x (sub (v ?x))]
-                               (cond (= x b) (sub [(addq ?a ?b)])
-                                     (= x a) (sub [(addq ?b ?a)])
-                                     :else (sub [(movq ?a ?x)
-                                                 (addq ?b ?x)]))))
-                       (rule '(assign ?x (read))
-                             (let [x (sub (v ?x))]
-                               (sub [(callq read-int)
-                                     (movq (reg rax) ?x)])))
-                       (rule '(assign ?x (- ?->a))
-                             (let [x (sub (v ?x))]
-                               (if (= x a)
-                                 (sub [(negq ?x)])
-                                 (sub [(movq ?a ?x)
-                                       (negq ?x)]))))
-                       (rule '(assign ?x ((? op #{< eq?}) ?->a ?->b))
-                             (let [x (sub (v ?x))]
-                               (select-inst-cond (sub (?op ?a ?b)) {:v x})))
-                       (rule '(assign ?x (not ?->a))
-                             (let [x (sub (v ?x))]
-                               (select-inst-cond (sub (not ?a)) {:v x})))
-                       (rule '(assign ?x ?->a)
-                             (let [x (sub (v ?x))]
-                               (if (= x a)
-                                 []
-                                 (sub [(movq ?a ?x)]))))
-                       (rule '(return ?x)
+                       (rule '(assign ?->x (+ ?->a ?->b))
+                             (cond (= x b) (sub [(addq ?a ?b)])
+                                   (= x a) (sub [(addq ?b ?a)])
+                                   :else (sub [(movq ?a ?x)
+                                               (addq ?b ?x)])))
+                       (rule '(assign ?->x (read))
+                             (sub [(callq read-int)
+                                   (movq (reg rax) ?x)]))
+                       (rule '(assign ?->x (vector-ref ?->vec ?i))
+                             (sub [(movq ?vec (reg r11))
+                                   (movq (deref 8 ~(inc i) r11) ?x)]))
+
+                       (rule '(assign ?->x (vector-set! ?->vec ?i ?->val))
+                             (sub [(movq ?vec (reg r11))
+                                   (movq ?val (deref 8 ~(inc i) r11))
+                                   (movq (int 0) ?x)]))
+
+                       (rule '(assign ?->x (allocate ?len (Vector ??type*)))
+                             (let [tag (make-tag len type*)]
+                               (sub [(movq (global-value free_ptr) (reg r11))
+                                     (addq ~(* 8 (inc len)) (global-value free_ptr))
+                                     (movq ?tag (deref 0 r11)) ;; why use deref here??
+                                     (movq (reg r11) ?x)])))
+                       (rule '(assign ?->x (collect ?->bytes))
+                             (sub [(movq (reg r15) (reg rdi))
+                                   (movq ?bytes (reg rsi))
+                                   (callq collect)]))
+
+                       (rule '(assign ?->x (- ?->a))
+                             (if (= x a)
+                               (sub [(negq ?x)])
+                               (sub [(movq ?a ?x)
+                                     (negq ?x)])))
+                       (rule '(assign ?->x ((? op #{< eq?}) ?->a ?->b))
+                             (select-inst-cond (sub (?op ?a ?b)) {:v x}))
+                       (rule '(assign ?->x (not ?->a))
+                             (select-inst-cond (sub (not ?a)) {:v x}))
+                       (rule '(assign ?->x ?->a)
+                             (if (= x a)
+                               []
+                               (sub [(movq ?a ?x)])))
+                       (rule '(return ?->x)
                              (concat (unv-rax
                                       (descend (sub (assign (reg rax) ?x))))
                                      ['(retq)]))
@@ -374,7 +402,8 @@
                        (rule '(? i int?)
                              (sub (int ?i)))
                        (rule '(? v symbol?)
-                             (sub (v ?v))))))
+                             (sub (v ?v)))
+                       (rule '(void) '(int 0)))))
 
 (defn select-instructions [x]
   (select-instructions* x))
@@ -491,8 +520,10 @@
                                 (str "callq read-int"))
                           (rule '(int ?i)
                                 (str "$" i))
-                          (rule '(deref ?v ?o)
-                                (str o "(%" (name v) ")"))
+                          (rule '(deref ?scale ?offset ?v)
+                                (str scale "(" offset ")(%" (name v) ")"))
+                          (rule '(deref ?offset ?v)
+                                (str offset "(%" (name v) ")"))
                           (rule '(set ?op ?->y)
                                 (let [flag ('{< l eq? e} op)]
                                   (str "set" flag " " y)))

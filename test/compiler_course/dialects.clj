@@ -111,11 +111,18 @@
   (ByteReg [bytereg] (byte-reg (| ah al bh bl ch cl dh dl)))
   (Arg [arg]
        (reg rax)
+       (reg r11)
+       (reg r15)
+       (reg rsi)
+       (reg rdi)
        (int ?i)
-       (v ?v))
+       (deref ?offset ?reg)
+       (deref ?scale ?offset ?reg)
+       (v ?v)
+       (global-value ?lbl))
   ;; this could get fancy and encode some of the restrictions
   (Stmt [stmt]
-        (callq read-int)
+        (callq ?lbl)
         (cmpq ?arg0 ?arg1)
         (movq ?arg0 ?arg1)
         (addq ?arg0 ?arg1)     ; (+ 1 2)
@@ -147,6 +154,10 @@
   (Arg [arg]
        - (v ?v)
        - (reg rax)
+       - (reg r11)
+       - (reg r15)
+       - (reg rsi)
+       - (reg rdi)
        + ?loc)
   - Program
   (Program [program]
