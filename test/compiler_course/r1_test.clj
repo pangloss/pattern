@@ -112,6 +112,7 @@
 (deftest compile-spilly-program
   (is (= ok (test-pipeline spilly-program))))
 
+#_
 (def veccy-program
   '(let ([t (vector 40 true (vector 2))])
      (if (vector-ref t 1)
@@ -119,29 +120,24 @@
           (vector-ref (vector-ref t 2) 0))
        44)))
 
-(test-pipeline veccy-program)
+#_
+(deftest test-vecs
+  (test-pipeline veccy-program))
 
-(test-pipeline
-  '(let ([t (vector 40 true 2)])
-     (if (vector-ref t 1)
-       (+ (vector-ref t 0)
-          (vector-ref t 2))
-       44)))
+(comment
+  (test-pipeline
+   '(let ([t (vector 40 true 2)])
+      (if (vector-ref t 1)
+        (+ (vector-ref t 0)
+           (vector-ref t 2))
+        44)))
 
-(test-pipeline
-  '(let ([t (vector 40 true 2)])
-     (vector-ref t 1)))
+  (test-pipeline
+   '(let ([t (vector 40 true 2)])
+      (vector-ref t 1)))
 
-(test-pipeline
-  '(vector 40))
-
-(->simple iffy-program)
-
-
-(->flatten
- '(if (let ([x (void)])
-        (eq? 2 1))
-    1 2))
+  (test-pipeline
+   '(vector 40)))
 
 
 (deftest various-programs
@@ -152,6 +148,7 @@
          (let ([c true])
            (if a (if c 4 5) (if b 2 3)))))
 
+    #_
     '(if (let ([x (void)])
            (eq? 2 1))
        1 2)
@@ -173,7 +170,7 @@
                        (+ d 2)
                        (+ e 10)))))))))
 
-    '(let ([x 1])
+    '(let ([x 1111])
        (let ([y 2])
          (if (if (if (> x y)
                    (< x y)

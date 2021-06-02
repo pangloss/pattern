@@ -77,6 +77,7 @@
         (not ?pred)
         (< ?atm0 ?atm1)
         (eq? ?atm0 ?atm1)
+        (vector-ref ?v ?i)
         (if ?pred (goto ?lbl:then) (goto ?lbl:else)))
   (Atom [atm]
         + (void)
@@ -85,8 +86,10 @@
        ?atm
        ?pred
        (+ ?atm0 ?atm1) (- ?atm)
-       (allocate ?i ?type)
-       (vector-set! ?v ?i ?v))
+       (vector-ref ?v ?i)
+       (vector-set! ?v ?i ?atm)
+       (collect ?i)
+       (allocate ?i ?type))
   (Stmt [stmt]
         ?e
         (assign ?v ?e))
