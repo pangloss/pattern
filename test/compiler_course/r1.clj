@@ -309,6 +309,10 @@
              (sub [(xorq (int 1) ?v)])
              (sub [(movq ?a ?v)
                    (xorgq (int 1) ?v)]))))
+   (rule '(vector-ref ?vec ?i)
+         (let [v (:v %env)]
+           (sub [(movq (v ?vec) (reg r11))
+                 (movq (deref 8 ~(inc i) r11) ?v)])))
    (rule '(v ?x)
          (sub [(movq (v ?x) ~(:v %env))]))))
 
@@ -390,9 +394,7 @@
 
                        (rule '(if ?->exp (goto ?then) (goto ?else))
                              (concat
-                              (select-inst-cond exp {:v (sub (v ~(gennice 'tmp)))})
-                              ;; FIXME: shouldn't it compare to 0 and go else? Seems like
-                              ;; that would be a more expected semantic...
+                              (select-inst-cond exp {:v (sub (v ~(gennice 'if)))})
                               (sub [(cmpq (int 1) (v tmp))
                                     (jump eq? ?then)
                                     (jump true ?else)])))

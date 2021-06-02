@@ -27,12 +27,13 @@
 
 (defn test-pipeline [form]
   (loop [form form [[pass dialect] & more] passes results []]
-    (let [result (pass form)
+    (let [result (try (pass form)
+                      (catch Exception e {:error e}))
           [dialect valid2?] (if (vector? dialect)
                               dialect [dialect (constantly ok)])
           results (conj results [pass (:name dialect) result])
-          v (validate @dialect result)
-          v2 (valid2? result)]
+          v (when-not (:error result) (validate @dialect result))
+          v2 (when-not (:error result) (valid2? result))]
       (if (and (ok? v) (ok? v2))
         (if more
           (recur result more results)
