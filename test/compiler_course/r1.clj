@@ -259,7 +259,6 @@
   (defn x-assign [v exp cont]
     (first (x-assign* exp {:var v :cont cont}))))
 
-
 (defn pred-block [{:keys [then else]} f]
   (let [then (assoc then :label (gennice 'then))
         else (assoc else :label (gennice 'else))]
@@ -302,7 +301,6 @@
            (x-assign v e body)))
    (rule '?x {:s [(sub (return ?x))]})))
 
-
 (defn explicate-control [p]
   (let [p (x-tail p)
         blocks (reduce-kv (fn [blocks l b]
@@ -317,8 +315,9 @@
 (def uncover-locals
   (directed
    (rule-list
-    (rule '(program ?vars (?:*map ?lbl ?->block*))
-          (apply merge-with #(or %1 %2) (filter map? block*)))
+    (rule '(program ?vars (& ?blocks (?:*map ?lbl ?->block*)))
+          (sub (program ~(apply merge-with #(or %1 %2) (filter map? block*))
+                        ?blocks)))
     (rule '(block ?lbl ?vars ??->i*)
           (apply merge-with #(or %1 %2) (filter map? i*)))
     (rule '(assign ?v ?e)
@@ -465,7 +464,7 @@
         [_ vars blocks] prog
         blocks (-> (vec (vals blocks))
                    (with-allocated-registers {:loc var-locs}))]
-    (sub (program ?var-locs ?blocks))))
+    (sub (program ?vars ?var-locs ?blocks))))
 
 ;; Remove unallocated vars (if a var is set but never used)
 ;; This is not part of the instructor's compiler but seems good/simple. It falls
@@ -481,7 +480,7 @@
 ;; Combine blocks when a jump is not needed
 
 (def remove-jumps
-  (directed (rule-list (rule '(program ?var-locs [(?:* (& ?blocks ?->jumps))])
+  (directed (rule-list (rule '(program ?vars ?var-locs [(?:* (& ?blocks ?->jumps))])
                              (let [blocks (reduce (fn [m [_ label :as b]]
                                                     (assoc m label b))
                                                   {} blocks)
@@ -505,7 +504,7 @@
                                                         (assoc to from))
                                                     blocks)))
                                               blocks linear-jumps)]
-                               (sub (program ?var-locs [~@(remove symbol? (vals blocks))]))))
+                               (sub (program ?vars ?var-locs [~@(remove symbol? (vals blocks))]))))
                        (rule '(block ?from ?vars ??i* (jump ?x ?to))
                              [from to])
                        (rule '(block ??x)
@@ -514,7 +513,7 @@
 ;; Remove copy to self, +/- 0 instructions
 
 (def patch-instructions
-  (directed (rule-list (rule '(program ?vars [??->blocks]))
+  (directed (rule-list (rule '(program ?vars ?var-locs [??->blocks]))
                        (rule '(block ?label ?vars ??->i*)
                              (sub (block ?label ?vars ~@(apply concat i*))))
                        (rule '(addq (int 0) ?a) [])
@@ -539,9 +538,9 @@
        vec))
 
 (def save-registers
-  (rule '(program ?var-locs ?blocks)
+  (rule '(program ?vars ?var-locs ?blocks)
         (let [save-regs (save-registers* var-locs)]
-          (sub (program ?var-locs ?save-regs ?blocks)))))
+          (sub (program ?vars ?var-locs ?save-regs ?blocks)))))
 
 ;; Stringify: Turn the data representing X86 assembly into actual assembly
 
@@ -560,7 +559,7 @@
                           (let [x (if (sequential? x) x [x])]
                             (sub ["    " ??x])))
                         i*))]
-    (directed (rule-list (rule '(program ?var-locs [??->save-regs] ?blocks)
+    (directed (rule-list (rule '(program ?vars ?var-locs [??->save-regs] ?blocks)
                                (let [offset (count save-regs)
                                      blocks (apply concat (map #(first (descend % {:stack-offset offset}))
                                                                blocks))

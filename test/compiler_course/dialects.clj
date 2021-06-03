@@ -101,6 +101,11 @@
   (Program [program]
            (program [??v*] (?:+map ?lbl* ?block*))))
 
+(def-derived Uncovered Explicit
+  - Program
+  (Program [program]
+           (program (?:*map ?v ?type) (?:+map ?lbl* ?block*))))
+
 (def jmp-cond #{true '< 'eq?})
 
 (def-dialect Selected
@@ -108,6 +113,7 @@
              [v symbol?]
              [i int?]
              [jc `jmp-cond])
+  (Type [type] Integer Boolean (Vector ??type) Void)
   (ByteReg [bytereg] (byte-reg (| ah al bh bl ch cl dh dl)))
   (Arg [arg]
        (reg rax)
@@ -141,7 +147,7 @@
   (Block [block]
          (block ?lbl [??v*] ??stmt* ?tail))
   (Program [program]
-           (program [??v*] (?:+map ?lbl* ?block*))))
+           (program (?:*map ?v ?type) (?:+map ?lbl* ?block*))))
 
 
 (def-derived RegAllocated Selected
@@ -160,7 +166,7 @@
        + ?loc)
   - Program
   (Program [program]
-           (program (?:*map ?v* ?loc*)
+           (program (?:*map ?v ?type) (?:*map ?v* ?loc*)
                     [??block*])))
 
 (def-derived RemoveUnallocated RegAllocated
@@ -183,6 +189,7 @@
   (SaveReg [savereg]
            (movq ?callee (stack* ?i)))
   (Program [program]
-           (program (?:*map ?v* ?loc*)
+           (program (?:*map ?v ?type)
+                    (?:*map ?v* ?loc*)
                     [??savereg*]
                     [??block*])))

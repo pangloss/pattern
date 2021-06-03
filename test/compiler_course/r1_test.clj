@@ -5,7 +5,7 @@
             [matches.types :refer [ok]]
             [compiler-course.dialects :as d]
             [clojure.test :refer [deftest testing is are]]
-            [clojure.walk :as walk]))
+            [clojure.walk :as walk]
 
 (def passes
   (partition 2
@@ -16,7 +16,7 @@
               #'expose-allocation #'d/Alloc
               #'remove-complex-opera* #'d/Simplified
               #'explicate-control #'d/Explicit
-              #'uncover-locals #'d/Explicit
+              #'uncover-locals #'d/Uncovered
               #'select-instructions #'d/Selected
               #'allocate-registers #'d/RegAllocated
               #'remove-unallocated #'d/RemoveUnallocated
@@ -54,8 +54,6 @@
          (+ y 2)
          (+ y 10)))))
 
-(->flatten iffy-program)
-
 (defn shrunk-typed? [form]
   (let [untyped
         (->> form
@@ -84,8 +82,6 @@
 (deftest compile-iffy-programs
   (is (= ok (test-pipeline iffy-program)))
   (is (= ok (test-pipeline iffier-program))))
-
-(->uncover iffier-program)
 
 (def spilly-program
   '(let ([x 1])
@@ -120,10 +116,10 @@
   (is (= ok (test-pipeline spilly-program))))
 
 (def veccy-program
-  '(let ([t (vector 40 true (vector 2))])
+  '(let ([t (vector 40 99 true (vector 2))])
      (if (vector-ref t 1)
        (+ (vector-ref t 0)
-          (vector-ref (vector-ref t 2) 0))
+          (vector-ref (vector-ref t 3) 0))
        44)))
 
 (deftest test-vecs
