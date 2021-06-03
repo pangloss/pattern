@@ -123,41 +123,35 @@
   (rule-simplifier
    (rule '(vector ??e*)
          (let [t (:type (m!))]
-           (subm (vector> ~t [] [??e*] [~@(rest t)])
-                 (t!))))
+           (sub (vector> ~t [] [??e*] [~@(rest t)]))))
    (rule '(vector> ?type ?names [?e ??e*] [?t ??t*])
          (let [n (gennice 'vec)
                ;; building names in reverse
                names (conj names n)]
-           (subm (let ([~(with-meta n {:type t}) ?e])
-                   (vector> ?type ?names [??e*] [??t*]))
-                 (m!))))
+           (sub (let ([~(with-meta n {:type t}) ?e])
+                  (vector> ?type ?names [??e*] [??t*])))))
    (rule '(vector> ?type ?names [] [])
          (let [len (count names)
                v (gennice 'vector)
                _ (with-meta (gennice '_) {:type 'Void})
                bytes (* 8 (inc len))]
-           (with-meta
-             (add-types
-              (sub
-               (let ([?_ (if (< (+ (global-value free_ptr) ?bytes)
-                                (global-value fromspace_end))
-                           (void)
-                           (collect ?bytes))])
-                 (let ([?v (allocate ?len ?type)])
-                   (vector< ?v ?names)))))
-             (m!))))
+           (add-types
+            (sub
+             (let ([?_ (if (< (+ (global-value free_ptr) ?bytes)
+                              (global-value fromspace_end))
+                         (void)
+                         (collect ?bytes))])
+               (let ([?v (allocate ?len ?type)])
+                 (vector< ?v ?names)))))))
    (rule '(vector< ?v [??n* ?n])
          ;; using names in reverse, so n* count is the vector position
          (let [idx (count n*)
                _ (with-meta (gennice '_) {:type 'Void})]
-           (with-meta
-             (add-types
-              (sub (let ([?_ (vector-set! ?v ?idx ?n)])
-                     (vector< ?v [??n*]))))
-             (m!))))
+           (add-types
+            (sub (let ([?_ (vector-set! ?v ?idx ?n)])
+                   (vector< ?v [??n*]))))))
    (rule '(vector< ?v [])
-         (with-meta v (m!)))))
+         v)))
 
 ;; Remove complex operations
 
