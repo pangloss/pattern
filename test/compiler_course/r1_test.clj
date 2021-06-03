@@ -5,7 +5,7 @@
             [matches.types :refer [ok]]
             [compiler-course.dialects :as d]
             [clojure.test :refer [deftest testing is are]]
-            [clojure.walk :as walk]
+            [clojure.walk :as walk]))
 
 (def passes
   (partition 2
