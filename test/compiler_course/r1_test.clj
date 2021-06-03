@@ -16,6 +16,7 @@
               #'expose-allocation #'d/Alloc
               #'remove-complex-opera* #'d/Simplified
               #'explicate-control #'d/Explicit
+              #'uncover-locals #'d/Explicit
               #'select-instructions #'d/Selected
               #'allocate-registers #'d/RegAllocated
               #'remove-unallocated #'d/RemoveUnallocated
@@ -53,6 +54,8 @@
          (+ y 2)
          (+ y 10)))))
 
+(->flatten iffy-program)
+
 (defn shrunk-typed? [form]
   (let [untyped
         (->> form
@@ -81,6 +84,8 @@
 (deftest compile-iffy-programs
   (is (= ok (test-pipeline iffy-program)))
   (is (= ok (test-pipeline iffier-program))))
+
+(->uncover iffier-program)
 
 (def spilly-program
   '(let ([x 1])

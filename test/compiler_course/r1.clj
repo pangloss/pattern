@@ -66,6 +66,8 @@
                 (rule '(> ?a ?b) (preserve-order 'gt a b #(sub (< ?b ~%))))
                 (rule '(>= ?a ?b) (sub (not (< ?a ?b))))))))
 
+;; Add type metadata to everything possible
+
 (defn tag [n]
   (cond (int? n) 'Integer
         (boolean? n) 'Boolean))
@@ -74,6 +76,9 @@
   (letfn [(get-type [e]
             (or (meta e) {:type (tag e)}))]
     (directed
+     ;; TODO: need a way to cleanly specify that I want the result meta merged with the input meta. Basically express:
+     ;;
+     ;; (success (with-meta ... (merge (meta (:rule/datum %env)) {... ...})))
      (rule-list (rule '((?:= let) ([?v ?->e]) ?b)
                       (let [env (assoc-in %env [:type v] (get-type e))
                             v (first (descend v env)) ;; to simplify checking
@@ -89,53 +94,70 @@
                        (subm (?op ??x* ?x) {:type (tag true)})))
                 (rule '(read) (success (subm (read) {:type (tag 1)})))
                 (rule '(void) (success (subm (void) {:type 'Void})))
+                (rule '(global-value ?l)
+                      (success (subm (global-value ?l) {:type 'Integer})))
+                (rule '(collect ?n)
+                      (success (subm (collect ?n) {:type 'Void})))
                 (rule '(vector ??->e*)
                       (success (subm (vector ??e*)
                                      {:type (sub (Vector ~@(map (comp :type get-type) e*)))})))
                 (rule '(vector-ref ?->v ?->i)
-                      (success (subm (vector-ref ?v ?i)
-                                     {:type (nth (:type (meta v))
-                                                 (inc i))})))
+                      (let [t (:type (meta v))]
+                        (if (and (sequential? t) (nth t (inc i) nil))
+                          (success (subm (vector-ref ?v ?i)
+                                         {:type (nth t (inc i))}))
+                          (sub (invalid-access (vector-ref ?v ?i) :type ?t)))))
                 (rule '(vector-set! ??->e)
                       (success (subm (vector-set! ??e) {:type 'Void})))
+                (rule '(allocate ?n ?t)
+                      (success (subm (allocate ?n ?t) {:type t})))
                 (rule '(? s symbol?)
                       (success (with-meta s (get-in %env [:type s]))))))))
+
+;; Expand the inner workings of (vector ...)
+
+(defmacro m! []
+  `(meta (:rule/datum ~'%env)))
 
 (def expose-allocation
   (rule-simplifier
    (rule '(vector ??e*)
-         (sub (vector> ~(:type (meta (:rule/datum %env))) [] ??e*)))
-   (rule '(vector> ?type ?names ?e ??e*)
+         (let [t (:type (m!))]
+           (subm (vector> ~t [] [??e*] [~@(rest t)])
+                 (t!))))
+   (rule '(vector> ?type ?names [?e ??e*] [?t ??t*])
          (let [n (gennice 'vec)
                ;; building names in reverse
                names (conj names n)]
-           (sub (let ([?n ?e])
-                  (vector> ?type ?names ??e*)))))
-   (rule '(vector> ?type ?names)
+           (subm (let ([~(with-meta n {:type t}) ?e])
+                   (vector> ?type ?names [??e*] [??t*]))
+                 (m!))))
+   (rule '(vector> ?type ?names [] [])
          (let [len (count names)
                v (gennice 'vector)
-               _ (gennice '_)
+               _ (with-meta (gennice '_) {:type 'Void})
                bytes (* 8 (inc len))]
-           (sub
-            (let ([?_ (if (< (+ (global-value free_ptr) ?bytes)
-                             (global-value fromspace_end))
-                        (void)
-                        (collect ?bytes))])
-              (let ([?v (allocate ?len ?type)])
-                (vector< ?v ?names))))))
+           (with-meta
+             (add-types
+              (sub
+               (let ([?_ (if (< (+ (global-value free_ptr) ?bytes)
+                                (global-value fromspace_end))
+                           (void)
+                           (collect ?bytes))])
+                 (let ([?v (allocate ?len ?type)])
+                   (vector< ?v ?names)))))
+             (m!))))
    (rule '(vector< ?v [??n* ?n])
          ;; using names in reverse, so n* count is the vector position
          (let [idx (count n*)
-               _ (gennice '_)]
-           (sub (let ([?_ (vector-set! ?v ?idx ?n)])
-                  (vector< ?v [??n*])))))
+               _ (with-meta (gennice '_) {:type 'Void})]
+           (with-meta
+             (add-types
+              (sub (let ([?_ (vector-set! ?v ?idx ?n)])
+                     (vector< ?v [??n*]))))
+             (m!))))
    (rule '(vector< ?v [])
-         v)))
-
-(comment
-  (reset! niceid 0)
-  (expose-allocation (sub (+ 1 ~(subm (vector 1 2) {:type (sub (Vector ~(tag 1) ~(tag 1)))})))))
-
+         (with-meta v (m!)))))
 
 ;; Remove complex operations
 
@@ -147,29 +169,37 @@
                      a (:wrap a identity)
                      b (:wrap b identity)]
                  {:wrap (fn [r]
+                          ;; TODO: pass in metadata for r?
                           (a (b (sub (let ([?t ?exp])
                                        ?r)))))
                   :value t}))]
     (directed
      (rule-list (rule '(let ([?v ?e]) ?body)
                       (wrap 'let nil nil
-                            (sub (let ([?v ~(rco-exp e)])
-                                   ~(rco-exp body)))))
+                            (subm (let ([?v ~(rco-exp e)])
+                                    ~(rco-exp body))
+                                  (m!))))
                 ;; TODO: refactor this with hard-coded fn names and arities
                 (rule '((? op #{+ < eq?}) ?->a ?->b)
-                      (wrap 'tmp+ a b (sub (?op ~(:value a) ~(:value b)))))
+                      (wrap 'tmp+ a b
+                            (subm (?op ~(:value a) ~(:value b)) (m!))))
                 (rule '((? op #{- not}) ?->a)
-                      (wrap 'tmp- a nil (sub (?op ~(:value a)))))
+                      (wrap 'tmp- a nil
+                            (subm (?op ~(:value a)) (m!))))
                 (rule '(read)
-                      (wrap 'read nil nil '(read)))
+                      (wrap 'read nil nil
+                            (with-meta '(read) {:type 'Integer})))
                 (rule '(global-value ?name)
                       (wrap name nil nil (:rule/datum %env)))
                 (rule '(vector-ref ?->v ?i)
-                      (wrap (symbol (str "vec+" i)) v nil (sub (vector-ref ~(:value v) ?i))))
+                      (wrap (symbol (str "vec+" i)) v nil
+                            (subm (vector-ref ~(:value v) ?i) (m!))))
                 (rule '(vector-set! ?->v ?i ?->e)
-                      (wrap (symbol (str "vec+" i)) v e (sub (vector-set! ~(:value v) ?i ~(:value e)))))
+                      (wrap (symbol (str "vec+" i)) v e
+                            (subm (vector-set! ~(:value v) ?i ~(:value e)) (m!))))
                 (rule '(not ?->e)
-                      (wrap 'not e nil (sub (not ~(:value e)))))
+                      (wrap 'not e nil
+                            (subm (not ~(:value e)) (m!))))
                 (rule '(? x int?)
                       {:value x})
                 (rule '?x
@@ -189,17 +219,17 @@
                         ((:wrap a identity)
                          ((:wrap b identity)
                           ((:wrap c identity)
-                           (sub (?op ~(:value a) ~(:value b) ~(:value c))))))))
+                           (subm (?op ~(:value a) ~(:value b) ~(:value c)) (m!)))))))
                 (rule '((? op #{+ < eq? vector-ref}) ?a ?b)
                       (let [a (rco-atom a)
                             b (rco-atom b)]
                         ((:wrap a identity)
                          ((:wrap b identity)
-                          (sub (?op ~(:value a) ~(:value b)))))))
+                          (subm (?op ~(:value a) ~(:value b)) (m!))))))
                 (rule '((? op #{- not global-value}) ?a)
                       (let [a (rco-atom a)]
                         ((:wrap a identity)
-                         (sub (?op ~(:value a))))))
+                         (subm (?op ~(:value a)) (m!)))))
                 (rule '(?:letrec [maybe-not (?:as nots
                                                   (?:fresh [nots]
                                                            (| (not $maybe-not)
@@ -211,7 +241,7 @@
                       ;; more work here and it's already done there...
                       ;; FIXME? what about (if (let ...) ...)?
                       (let [exp (preserve-not nots {:exp exp})]
-                        (sub (if ?exp ?then ?else))))))))
+                        (subm (if ?exp ?then ?else) (m!))))))))
 
 (defn remove-complex-opera* [p]
   (rco-exp p))
@@ -288,6 +318,22 @@
                           {} (assoc (:b p) 'start (assoc p :label 'start)))]
     (sub (program [~@(:v p)] ~blocks))))
 
+;; Uncover locals
+
+(def uncover-locals
+  (directed
+   (rule-list
+    (rule '(program ?vars (?:*map ?lbl ?->block*))
+          (apply merge-with #(or %1 %2) (filter map? block*)))
+    (rule '(block ?lbl ?vars ??->i*)
+          (apply merge-with #(or %1 %2) (filter map? i*)))
+    (rule '(assign ?v ?e)
+          (let [vt (:type (meta v))
+                et (:type (meta e))]
+            (if (and vt et (not= vt et))
+              {v {v vt e et}}
+              {v (or vt et)}))))))
+
 ;; Select instructions: rewrite as data representing X86 assembly
 
 (def unv-rax
@@ -323,12 +369,12 @@
   (bit-or 1
           (bit-shift-left len 1)
           (bit-shift-left
-           (apply +
-                  (map-indexed (fn [i t]
-                                 (condp = t
-                                   'Vector (bit-shift-left 1 i)
-                                   0))
-                               type*))
+           (reduce bit-or
+                   (map-indexed (fn [i t]
+                                  (condp = t
+                                    'Vector (bit-shift-left 1 i)
+                                    0))
+                                type*))
            7)))
 
 (def select-instructions*
@@ -359,12 +405,18 @@
                                    (movq (int 0) ?x)]))
 
                        (rule '(assign ?->x (allocate ?len (Vector ??type*)))
-                             (let [tag (make-tag len type*)]
-                               (sub [(movq (global-value free_ptr) (reg r11))
+                             (let [tag (make-tag len type*)
+                                   free (sub (v ~(gennice 'free)))]
+                               (sub [(movq (global-value free_ptr) ?free)
                                      (addq (int ~(* 8 (inc len))) (global-value free_ptr))
-                                     (movq (int ?tag) (deref 0 r11)) ;; why use deref here??
-                                     (movq (reg r11) ?x)])))
+                                     (movq ?free (reg rax))
+                                     (movq (int ?tag) (deref 0 rax)) ;; why use deref here??
+                                     (movq ?free ?x)])))
                        (rule '(assign ?->x (collect ?->bytes))
+                             ;; TODO: can I deal with the existence of these
+                             ;; registers in the allocator and not cause
+                             ;; clobbering without just removing them from the list of avail regs?
+                             ;; OOOH yes, these method calls need to interfere with the callee-save registers.
                              (sub [(movq (reg r15) (reg rdi))
                                    (movq ?bytes (reg rsi))
                                    (callq collect)]))
@@ -410,6 +462,8 @@
 (defn select-instructions [x]
   (select-instructions* x))
 
+;; Allocate registers (see r1-allocate ns)
+
 (defn allocate-registers [prog]
   (let [g (to-graph (liveness prog))
         g (allocate-registers* g)
@@ -419,12 +473,18 @@
                    (with-allocated-registers {:loc var-locs}))]
     (sub (program ?var-locs ?blocks))))
 
+;; Remove unallocated vars (if a var is set but never used)
+;; This is not part of the instructor's compiler but seems good/simple. It falls
+;; out because unused vars never get allocated to registers by my allocator so
+;; they stay as (v ...). This could easily be part of patch-instructions.
+
 (def remove-unallocated
   (on-subexpressions
    (rule-list (rule '(movq ?arg0 (v ?v)) (success nil))
               (rule '(block ?lbl ?v ??i*)
                     (sub (block ?lbl ?v ~@(remove nil? i*)))))))
 
+;; Combine blocks when a jump is not needed
 
 (def remove-jumps
   (directed (rule-list (rule '(program ?var-locs [(?:* (& ?blocks ?->jumps))])
@@ -457,23 +517,18 @@
                        (rule '(block ??x)
                              (success nil)))))
 
-
+;; Remove copy to self, +/- 0 instructions
 
 (def patch-instructions
   (directed (rule-list (rule '(program ?vars [??->blocks]))
                        (rule '(block ?label ?vars ??->i*)
                              (sub (block ?label ?vars ~@(apply concat i*))))
                        (rule '(addq (int 0) ?a) [])
+                       (rule '(subq (int 0) ?a) [])
                        (rule '(movq ?a ?a) [])
                        (rule '?x [x]))))
 
-;; Stringify: Turn the data representing X86 assembly into actual assembly
-
-(defn stack-var-max [var-locs]
-  (->> (vals var-locs)
-       (filter #(= 'stack (first %)))
-       (map second)
-       (apply max 0)))
+;; Capture callee-save registers on entry and restore them on exit
 
 ;; TODO: do I need to make these unavailable to the reg allocator since they're
 ;; used in select-instructions?
@@ -493,6 +548,14 @@
   (rule '(program ?var-locs ?blocks)
         (let [save-regs (save-registers* var-locs)]
           (sub (program ?var-locs ?save-regs ?blocks)))))
+
+;; Stringify: Turn the data representing X86 assembly into actual assembly
+
+(defn stack-var-max [var-locs]
+  (->> (vals var-locs)
+       (filter #(= 'stack (first %)))
+       (map second)
+       (apply max 0)))
 
 (defn stack-size [offset var-locs]
   (let [stack-vars (+ offset (stack-var-max var-locs))]
@@ -563,13 +626,18 @@
 (defn stringify [p]
   (stringify* p))
 
+;; Turn the list of strings into one big string
+
 (defn combine-strings [p]
   (apply str (map #(apply str (conj % "\n")) p)))
 
 (def ->shrink (comp #'shrink #'uniqify))
 (def ->type (comp #'add-types #'->shrink))
-(def ->simple (comp #'remove-complex-opera* #'->shrink))
+(def ->expose-alloc (comp #'expose-allocation #'->type))
+(def ->simple (comp #'remove-complex-opera* #'->expose-alloc))
 (def ->flatten (comp #'explicate-control #'->simple))
+(def ->uncover (comp #'uncover-locals #'->flatten))
+;; ...
 (def ->select (comp #'select-instructions #'->flatten))
 (def ->live (comp #'liveness #'->select))
 (def ->alloc (comp #'allocate-registers #'->select))
