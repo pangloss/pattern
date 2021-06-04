@@ -156,7 +156,8 @@
   (Loc [loc]
        ?caller
        ?callee
-       (stack ?i))
+       (stack ?i)
+       (heap ?i))
   (Arg [arg]
        - (reg rax)
        - (reg r11)

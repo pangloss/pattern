@@ -1,7 +1,8 @@
 (ns compiler-course.r1
   (:require [compiler-course.r1-allocator :refer [liveness to-graph allocate-registers*
+                                                  caller-saved-registers callee-saved-registers
                                                   var-locations with-allocated-registers]]
-            [matches :refer [descend directed on-subexpressions rule rule-list rule-list! sub success subm rule-simplifier]]
+            [matches :refer [descend directed on-subexpressions rule rule-list rule-list! sub success subm rule-simplifier matcher]]
             [matches.types :refer [child-rules]]
             [clojure.string :as str]))
 
@@ -242,7 +243,7 @@
 
 ;; Explicate expressions: remove nesting (aka flatten)
 
-(declare x-pred)
+(declare x-pred x-assign)
 
 (let [x-assign*
       (rule-list
@@ -460,11 +461,11 @@
 (defn allocate-registers [prog]
   (let [g (to-graph (liveness prog))
         g (allocate-registers* g)
-        var-locs (var-locations g)
-        [_ vars blocks] prog
+        [_ var-types blocks] prog
+        var-locs (var-locations var-types g)
         blocks (-> (vec (vals blocks))
                    (with-allocated-registers {:loc var-locs}))]
-    (sub (program ?vars ?var-locs ?blocks))))
+    (sub (program ?var-types ?var-locs ?blocks))))
 
 ;; Remove unallocated vars (if a var is set but never used)
 ;; This is not part of the instructor's compiler but seems good/simple. It falls
@@ -523,11 +524,6 @@
 
 ;; Capture callee-save registers on entry and restore them on exit
 
-;; TODO: do I need to make these unavailable to the reg allocator since they're
-;; used in select-instructions?
-(def caller-saved-registers (into #{} '[rax rcx rdx #_rsi #_rdi r8 r9 r10 #_r11]))
-(def callee-saved-registers (into #{} '[rsp rbp rbx r12 r13 r14 #_r15]))
-
 (defn save-registers* [var-locs]
   (->> (vals var-locs)
        (map second)
@@ -558,12 +554,31 @@
   (letfn [(fi [i*] (map (fn [x]
                           (let [x (if (sequential? x) x [x])]
                             (sub ["    " ??x])))
-                        i*))]
+                        i*))
+          (init-gc [root-stack-size heap-size root-spills]
+            (sub [(movq (int ?root-stack-size) (reg rdi))
+                  ;; TODO: how to distinguish "root stack" size and heap size?
+                  ;; heap must include all of the memory pointed to (or default start size?)
+                  ;; root-stack may also be a fixed size?
+                  ;; root-spills is the max number currently used??
+                  (movq (int ?heap-size) (reg rsi))
+                  (callq initialize)
+                  (movq (global-value rootstack_begin) (reg r15))
+                  ~@(map (fn [i]
+                           (sub (movq (int 0) (deref ?i r15))))
+                         (range root-stack-size))
+                  (addq (int ?root-spills) (reg r15))]))]
+
     (directed (rule-list (rule '(program ?vars ?var-locs [??->save-regs] ?blocks)
                                (let [offset (count save-regs)
                                      blocks (apply concat (map #(first (descend % {:stack-offset offset}))
                                                                blocks))
-                                     size (stack-size offset var-locs)]
+                                     size (stack-size offset var-locs)
+                                     heap-size (->> (vals var-locs)
+                                                    (keep (matcher '(heap ?h)))
+                                                    (map first)
+                                                    (apply max -1)
+                                                    inc)]
                                  (sub
                                   [[".globl main"]
                                    ~@blocks
@@ -572,49 +587,46 @@
                                    ["    movq %rsp, %rbp"]
                                    ~@(fi save-regs)
                                    [~(str "    subq $" size ", %rsp")]
-                                   ;; TODO: inline start
+                                   ~@(fi (map descend (init-gc heap-size
+                                                               heap-size
+                                                               heap-size)))
+                                   ;; TODO: inline start. This could be treated
+                                   ;; as a nearly empty regular block, existing
+                                   ;; from the beginning, then with instructions
+                                   ;; added to it at the end?
                                    ["    jmp start"]
                                    ["conclusion:"]
                                    [~(str "    addq $" size ", %rsp")]
                                    ["    popq %rbp"]
                                    ["    retq"]])))
+
                          (rule '(block ?label ?vars ??->i*)
                                (list* [(str (name label) ":")]
                                       (fi i*)))
-                         (rule '(jump true ?label)
-                               (list "jmp " (name label)))
-                         (rule '(jump < ?label)
-                               (list "jl " (name label)))
-                         (rule '(jump eq? ?label)
-                               (list "je " (name label)))
-                         (rule '(callq ?label)
-                               (list "callq " (name label)))
-                         (rule '(int ?i)
-                               (str "$" i))
-                         (rule '(deref ?scale ?offset ?v)
-                               (str scale "(" offset ")(%" (name v) ")"))
-                         (rule '(deref ?offset ?v)
-                               (str offset "(%" (name v) ")"))
-                         (rule '(set ?op ?->y)
-                               (let [flag ('{< l eq? e} op)]
-                                 (list "set" (str flag) " " y)))
-                         (rule '(reg ?r)
-                               (str "%" r))
-                         (rule '(byte-reg ?r)
-                               (str "%" r))
-                         (rule '(stack* ?i)
-                               (str (* -8 (inc i)) "(%rbp)"))
+
+                         (rule '(byte-reg ?r)              (str "%" r))
+                         (rule '(deref ?offset ?v)         (str offset "(%" (name v) ")"))
+                         (rule '(deref ?scale ?offset ?v)  (str scale "(" offset ")(%" (name v) ")"))
+                         (rule '(global-value ?label)      (str (name label) "(%rip)"))
+                         (rule '(int ?i)                   (str "$" i))
+                         (rule '(reg ?r)                   (str "%" r))
+                         (rule '(stack* ?i)                (str (* -8 (inc i)) "(%rbp)"))
                          (rule '(stack ?i)
                                (str (* -8 (inc (+ (:stack-offset %env) i)))
                                     "(%rbp)"))
-                         (rule '(global-value ?label)
-                               (str (name label) "(%rip)"))
-                         (rule '(retq)
-                               "jmp conclusion")
-                         (rule '(?x ?->a)
-                               (list (name x) " " a))
-                         (rule '(?x ?->a ?->b)
-                               (list (name x) " " a ", " b))))))
+                         (rule '(heap ?i)
+                               (str (* 8 (inc i)) "(%r15)"))
+
+                         (rule '(set ?op ?->y)
+                               (let [flag ('{< l eq? e} op)]
+                                 (list "set" (str flag) " " y)))
+                         (rule '(callq ?label)             (list "callq " (name label)))
+                         (rule '(jump < ?label)            (list "jl " (name label)))
+                         (rule '(jump eq? ?label)          (list "je " (name label)))
+                         (rule '(jump true ?label)         (list "jmp " (name label)))
+                         (rule '(retq) "jmp conclusion")
+                         (rule '(?x ?->a)                  (list (name x) " " a))
+                         (rule '(?x ?->a ?->b)             (list (name x) " " a ", " b))))))
 
 (defn stringify [p]
   (stringify* p))
@@ -631,14 +643,11 @@
 (def ->flatten (comp #'explicate-control #'->simple))
 (def ->uncover (comp #'uncover-locals #'->flatten))
 ;; ...
-(def ->select (comp #'select-instructions #'->flatten))
+(def ->select (comp #'select-instructions #'->uncover))
 (def ->live (comp #'liveness #'->select))
 (def ->alloc (comp #'allocate-registers #'->select))
-(def ->jump (comp #'remove-jumps #'->alloc))
+(def ->tidied (comp #'remove-unallocated #'->alloc))
+(def ->jump (comp #'remove-jumps #'->tidied))
 (def ->patch (comp #'patch-instructions #'->jump))
 (def ->reg (comp #'save-registers #'->patch))
-(def compile (comp println
-                   #'stringify #'->reg))
-(def ->compile (comp str/split-lines
-                     #(str/replace (with-out-str (println %)) #"\t" "    ")
-                     #'stringify #'->reg))
+(def ->str (comp #'stringify #'->reg))

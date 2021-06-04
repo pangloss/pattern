@@ -7,6 +7,8 @@
             [clojure.test :refer [deftest testing is are]]
             [clojure.walk :as walk]))
 
+(declare shrunk-typed?)
+
 (def passes
   (partition 2
              [#'identity #'d/R1
