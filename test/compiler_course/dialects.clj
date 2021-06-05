@@ -7,12 +7,18 @@
 
 (def cmp? #{'eq? '< '<= '> '>=})
 
+(def r1-keyword? (into cmp? '[define let if and or not void read + -
+                              vector vector-length vector-ref vector-set]))
+
 (def-dialect R1
   (terminals [i int?]
              [v symbol?]
              [b boolean?]
              [cmp `cmp?])
-  (Type [type] Integer Boolean (Vector ??type) Void)
+  (Type [type]
+        Integer Boolean (Vector ??type) Void
+        (??type* -> ?type))
+
   (Exp [e]
        ?i ?v ?b
        (read)
@@ -23,7 +29,26 @@
        (if ?e ?e:then ?e:else)
        (vector ??e*) (vector-length ?e)
        (vector-ref ?e ?i) (vector-set! ?e0 ?i ?e1)
-       (void) (has-type ?e ?type)))
+       (void)
+       (?e:f ??e:args))
+  (Define [d]
+    (define (?v:name (?:* [?v* ?type*])) ?type ?e))
+  (Program [p]
+           ;; Programs have mulitple top-level forms, so just contain them in a vector
+           ?e
+           [??d ?e]))
+
+(def-derived R1Fun R1
+  (Program [p]
+           - [??d ?e]
+           - ?e
+           + (program ??d*)))
+
+(def-derived RFunRef RFun
+  (Exp [e]
+       - (?e:f ??e:args)
+       + (apply ?e:f ??e:args)
+       + (funref ?v)))
 
 
 (def-derived Shrunk R1

@@ -2,6 +2,7 @@
   (:require [compiler-course.r1-allocator :refer [liveness to-graph allocate-registers*
                                                   caller-saved-registers callee-saved-registers
                                                   var-locations with-allocated-registers]]
+            [compiler-course.dialects :refer [r1-keyword?]]
             [matches :refer [descend directed on-subexpressions rule rule-list rule-list! sub success subm rule-simplifier matcher]]
             [matches.types :refer [child-rules]]
             [clojure.string :as str]))
@@ -17,19 +18,38 @@
 ;; Give every var a unique name
 
 (def uniqify*
-  (directed (rule-list [(rule '(let ([?x ?e]) ?body)
-                              (let [x' (gennice x)
-                                    env (assoc-in %env [:vars x] x')]
-                                (sub (let ([?x' ~(in e env)])
-                                       ~(in body env)))))
-                        (rule '(if ?->e ?->then ?->else))
-                        (rule '((? op symbol?) ?->a ?->b))
-                        (rule '((? op symbol?) ?->a))
-                        (rule '(? x symbol?) (get-in %env [:vars x]))])))
+  (directed (rule-list (rule '(define (?v (?:* [?v* ?t*])) ?t ?e)
+                             (let [[v'* env] (reduce (fn [[v'* env] x]
+                                                       (let [x' (gennice x)]
+                                                         [(conj v'* x') (assoc-in env [:vars x] x')]))
+                                                     [[] %env]
+                                                     v*)
+                                   e (in e env)]
+                               (sub (define (?v (?:* [?v'* ?t*])) ?t ?e))))
+                       (rule '((?:= let) ([?x ?e]) ?body)
+                             (let [x' (gennice x)
+                                   env (assoc-in %env [:vars x] x')]
+                               (sub (let ([?x' ~(in e env)])
+                                      ~(in body env)))))
+                       (rule '(if ?->e ?->then ?->else))
+                       (rule '((?-> f symbol?) ??->args))
+                       (rule '(? x symbol?) (get-in %env [:vars x])))))
+
+(def shrink-rfun*
+  (rule '[(?:* (define (?v ??args) ??more)) ?e]
+        (let [[defs env] (reduce (fn [[defs env] [v args more]]
+                                   (let [v' (gennice v)]
+                                     [(conj defs (sub (define (?v' ??args) ??more)))
+                                      (assoc-in env [:vars v] v')]))
+                                 [[] {}] (map vector v args more))
+              defs (mapv #(first (uniqify* % env)) defs)
+              main (first (uniqify* (sub (define (main) Integer ?e)) env))
+              defs (conj defs main)]
+          (sub (program ??defs)))))
 
 (defn uniqify [p]
   (reset! niceid 0)
-  (uniqify* p))
+  (shrink-rfun* p))
 
 ;; Shrink the number of instructions we need to support (by expanding to equivalent expressions)
 
@@ -46,7 +66,7 @@
 (defn immutable-expr? [exp]
   (= exp (immutable-expr?* exp)))
 
-(def shrink
+(def shrink*
   (let [preserve-order (fn [n a b expr]
                          (let [t (gennice n)]
                            (sub (let ([?t ?a])
@@ -65,7 +85,15 @@
                 ;; < is our canonical choice, so alter <= > >=
                 (rule '(<= ?a ?b) (preserve-order 'le a b #(sub (not (< ?b ~%)))))
                 (rule '(> ?a ?b) (preserve-order 'gt a b #(sub (< ?b ~%))))
-                (rule '(>= ?a ?b) (sub (not (< ?a ?b))))))))
+                (rule '(>= ?a ?b) (sub (not (< ?a ?b))))
+                (rule '(?f ??args)
+                      (when-not (r1-keyword? f)
+                        (sub (apply (funref ?f) ??args))))))))
+
+(def shrink
+  (directed (rule-list (rule '(program ??->d))
+                       (rule '(define ?def ?t ?e)
+                             (sub (define ?def ?t ~(shrink* e)))))))
 
 ;; Add type metadata to everything possible
 
@@ -73,17 +101,31 @@
   (cond (int? n) 'Integer
         (boolean? n) 'Boolean))
 
-(def add-types
+(def set-fn-type* (comp first (rule '(define (?n (?:* [?_ ?t*])) ?t ?_)
+                                    (assoc-in %env [:type n] {:type (sub (??t* -> ?t))}))))
+
+(def add-types ;; including reveal-functions here
   (letfn [(get-type [e]
             (or (meta e) {:type (tag e)}))]
     (directed
      ;; TODO: need a way to cleanly specify that I want the result meta merged with the input meta. Basically express:
      ;;
      ;; (success (with-meta ... (merge (meta (:rule/datum %env)) {... ...})))
-     (rule-list (rule '((?:= let) ([?v ?->e]) ?b)
+     (rule-list (rule '(program ??d*)
+                      (let [env
+                            (reduce (fn [env d] (set-fn-type* d env))
+                                    %env d*)
+                            d* (mapv #(in % env) d*)]
+                        (success (sub (program ??d*)))))
+                (rule '(define (?n (?:* [?v* ?t*])) ?t ?e)
+                      (let [env (reduce (fn [env [v t]]
+                                          (assoc-in env [:type v] {:type t}))
+                                        %env (map vector v* t*))]
+                        (sub (define (?n (?:* [?v* ?t*])) ?t ~(in e env)))))
+                (rule '((?:= let) ([?v ?->e]) ?b)
                       (let [env (assoc-in %env [:type v] (get-type e))
-                            v (first (descend v env)) ;; to simplify checking
-                            b (first (descend b env))]
+                            v (in v env) ;; to simplify checking
+                            b (in b env)]
                         (success (subm (let ([?v ?e]) ?b)
                                        (get-type b))
                                  env)))
@@ -93,6 +135,10 @@
                 (rule '((?:as op (| < eq? not)) ??->x* ?->x)
                       (success
                        (subm (?op ??x* ?x) {:type (tag true)})))
+                (rule '(apply (funref ?s) ??->args)
+                      (let [fr (subm (funref ?s) (get-in %env [:type s]))]
+                        (success (subm (apply ?fr ??args)
+                                       {:type (last (get-in %env [:type s :type]))}))))
                 (rule '(read) (success (subm (read) {:type (tag 1)})))
                 (rule '(void) (success (subm (void) {:type 'Void})))
                 (rule '(global-value ?l)
