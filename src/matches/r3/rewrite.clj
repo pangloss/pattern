@@ -278,6 +278,7 @@
 
                           ;; other
                           (rule '((?:literal ?:literal) ?value) `(list '~value))
+                          (rule '((?:literal ?:=) ?value) `(list '~value))
                           (rule '((?:literal ?:restartable) ?->value) value)
                           (rule '((?:literal ?:chain) ?->value ??_) value)
                           (rule '((?:literal ?:as) ?name ?value)
@@ -416,3 +417,13 @@
   (rule '(rule ?pattern ??body)
         (sub (rule ~(cleanup-rule-pattern pattern) ~@(map evaluate-structure body)))))
 (reset! r/rule-src #'rule-src)
+
+
+(def scheme-style
+  (on-subexpressions
+   (rule-list
+    (rule '[??before ?form (?:chain (? _ symbol?) name "...") ??after]
+          (sub [??before ((?:literal ?:*) ?form) ??after]))
+    (rule '(??before ?form (?:chain (? _ symbol?) name "...") ??after)
+          (sub (??before ((?:literal ?:*) ?form) ??after))))))
+(reset! r/scheme-style #'scheme-style)
