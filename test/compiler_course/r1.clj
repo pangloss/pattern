@@ -18,14 +18,14 @@
 ;; Give every var a unique name
 
 (def uniqify*
-  (directed (rule-list (rule '(define (?v (?:* [?v* ?t*])) ?t ?e)
+  (directed (rule-list (rule '(define (?v [?v* ?t*] ...) ?t ?e)
                              (let [[v'* env] (reduce (fn [[v'* env] x]
                                                        (let [x' (gennice x)]
                                                          [(conj v'* x') (assoc-in env [:vars x] x')]))
                                                      [[] %env]
                                                      v*)
                                    e (in e env)]
-                               (sub (define (?v (?:* [?v'* ?t*])) ?t ?e))))
+                               (sub (define (?v [?v'* ?t*] ...) ?t ?e))))
                        (rule '((?:= let) ([?x ?e]) ?body)
                              (let [x' (gennice x)
                                    env (assoc-in %env [:vars x] x')]
@@ -35,8 +35,9 @@
                        (rule '((?-> f symbol?) ??->args))
                        (rule '(? x symbol?) (get-in %env [:vars x])))))
 
+
 (def shrink-rfun*
-  (rule '[(?:* (define (?v ??args) ??more)) ?e]
+  (rule '[(define (?v ??args) ??more) ... ?e]
         (let [[defs env] (reduce (fn [[defs env] [v args more]]
                                    (let [v' (gennice v)]
                                      [(conj defs (sub (define (?v' ??args) ??more)))
@@ -101,7 +102,7 @@
   (cond (int? n) 'Integer
         (boolean? n) 'Boolean))
 
-(def set-fn-type* (comp first (rule '(define (?n (?:* [?_ ?t*])) ?t ?_)
+(def set-fn-type* (comp first (rule '(define (?n [?_ ?t*] ...) ?t ?_)
                                     (assoc-in %env [:type n] {:type (sub (??t* -> ?t))}))))
 
 (def add-types ;; including reveal-functions here
@@ -117,11 +118,11 @@
                                     %env d*)
                             d* (mapv #(in % env) d*)]
                         (success (sub (program ??d*)))))
-                (rule '(define (?n (?:* [?v* ?t*])) ?t ?e)
+                (rule '(define (?n [?v* ?t*] ...) ?t ?e)
                       (let [env (reduce (fn [env [v t]]
                                           (assoc-in env [:type v] {:type t}))
                                         %env (map vector v* t*))]
-                        (sub (define (?n (?:* [?v* ?t*])) ?t ~(in e env)))))
+                        (sub (define (?n [?v* ?t*] ...) ?t ~(in e env)))))
                 (rule '((?:= let) ([?v ?->e]) ?b)
                       (let [env (assoc-in %env [:type v] (get-type e))
                             v (in v env) ;; to simplify checking
@@ -527,7 +528,7 @@
 ;; Combine blocks when a jump is not needed
 
 (def remove-jumps
-  (directed (rule-list (rule '(program ?vars ?var-locs [(?:* (& ?blocks ?->jumps))])
+  (directed (rule-list (rule '(program ?vars ?var-locs [(& ?blocks ?->jumps) ...])
                              (let [blocks (reduce (fn [m [_ label :as b]]
                                                     (assoc m label b))
                                                   {} blocks)

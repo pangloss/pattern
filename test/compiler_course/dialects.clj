@@ -32,7 +32,7 @@
        (void)
        (?e:f ??e:args))
   (Define [d]
-    (define (?v:name (?:* [?v* ?type*])) ?type ?e))
+    (define (?v:name [?v* ?type*] ...) ?type ?e))
   (Program [p]
            ;; Programs have mulitple top-level forms, so just contain them in a vector
            ?e
@@ -44,14 +44,14 @@
            - ?e
            + (program ??d*)))
 
-(def-derived RFunRef RFun
+(def-derived RFunRef R1Fun
   (Exp [e]
        - (?e:f ??e:args)
        + (apply ?e:f ??e:args)
        + (funref ?v)))
 
 
-(def-derived Shrunk R1
+(def-derived Shrunk RFunRef
   (terminals - [cmp `cmp?])
   (Exp [e]
        - (- ?e0 ?e1)
@@ -87,7 +87,7 @@
        (let ([?v ?e]) ?e:body)
        (if ?ne ?e:then ?e:else)
        (vector-ref ?e ?i) (vector-set! ?e0 ?i ?e1)
-       (void) (has-type ?e ?type)
+       (void)
        (collect ?i)
        (allocate ?i ?type)
        (global-value ?name)))
@@ -114,17 +114,24 @@
        (vector-ref ?v ?i)
        (vector-set! ?v ?i ?atm)
        (collect ?i)
-       (allocate ?i ?type))
+       (allocate ?i ?type)
+       (funref ?lbl)
+       (call ?atm (??atm*)))
   (Stmt [stmt]
         ?e
         (assign ?v ?e))
   (Tail [tail]
         (if ?pred (goto ?lbl:then) (goto ?lbl:else))
+        (tailcall ?atm ??atm*)
         (return ?e))
   (Block [block]
          (block ?lbl [??v*] ??stmt* ?tail))
+  (Define [d]
+    (define ?lbl [?v* ?type*] ... ?type
+      ;; the book specifies an undefined ?info here, too...
+      (?:+map ?lbl* ?block*)))
   (Program [program]
-           (program [??v*] (?:+map ?lbl* ?block*))))
+           (program [??v*] [??d*])))
 
 (def-derived Uncovered Explicit
   - Program
@@ -150,6 +157,7 @@
        (deref ?offset ?reg)
        (deref ?scale ?offset ?reg)
        (v ?v)
+       (funref ?lbl)
        (global-value ?lbl))
   ;; this could get fancy and encode some of the restrictions
   (Stmt [stmt]
@@ -161,7 +169,10 @@
         (xorgq (int 1) ?arg)   ; (not 1)
         (set ?jc ?bytereg)     ; get cmp flag 1
         (movzbq ?bytereg ?arg) ; get cmp flag 2
-        (jump ?jc ?lbl))
+        (jump ?jc ?lbl)
+        (indirect-callq ?arg (int ?i))
+        (tailjmp ?arg (int ?i))
+        (leaq ?arg (& ?reg (reg ?_))))
   ;; there is specific valid sequencing like cmp -> jump -> jump, but I'm not
   ;; sure how or if I can encode that here...
   ;; TODO: attach additional validation rules to forms? Some could have rules
@@ -171,9 +182,10 @@
         (retq))
   (Block [block]
          (block ?lbl [??v*] ??stmt* ?tail))
+  (Define [d]
+    (define ?lbl ?type (?:*map ?lbl* ?block*)))
   (Program [program]
-           (program (?:*map ?v ?type) (?:+map ?lbl* ?block*))))
-
+           (program [??d])))
 
 (def-derived RegAllocated Selected
   (Caller [caller] (reg (| rax rcx rdx rsi rdi r8 r9 r10 r11)))
