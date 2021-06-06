@@ -36,7 +36,7 @@
                        (rule '(? x symbol?) (get-in %env [:vars x])))))
 
 
-(def shrink-rfun*
+(def uniqify-and-shrink-rfun*
   (rule '[(define (?v ??args) ??more) ... ?e]
         (let [[defs env] (reduce (fn [[defs env] [v args more]]
                                    (let [v' (gennice v)]
@@ -50,7 +50,7 @@
 
 (defn uniqify [p]
   (reset! niceid 0)
-  (shrink-rfun* p))
+  (uniqify-and-shrink-rfun* p))
 
 ;; Shrink the number of instructions we need to support (by expanding to equivalent expressions)
 
@@ -89,12 +89,29 @@
                 (rule '(>= ?a ?b) (sub (not (< ?a ?b))))
                 (rule '(?f ??args)
                       (when-not (r1-keyword? f)
-                        (sub (apply (funref ?f) ??args))))))))
+                        (sub (call (funref ?f) ??args))))))))
 
 (def shrink
   (directed (rule-list (rule '(program ??->d))
                        (rule '(define ?def ?t ?e)
                              (sub (define ?def ?t ~(shrink* e)))))))
+
+;; Functions must not have more than 6 args. Stuff the remaining in a vector.
+
+(def limit-functions
+  (on-subexpressions
+   (rule-list
+    (rule '(define (?n ??vars) ?rt ?exp)
+          (when (< 6 (count vars))
+            (let [[vars tail] (split-at 5 vars)
+                  tv (gennice 'arg-tail)
+                  tt (map second tail)
+                  exp (limit-fn-application* exp)]
+              (sub (define (?n ??vars [?tv (Vector ??tt)]) ?rt ?exp)))))
+    (rule '(call (funref ?f) ??args)
+          (when (< 6 (count args))
+            (let [[args tail] (split-at 5 args)]
+              (sub (call (funref ?f) ??args (vector ??tail)))))))))
 
 ;; Add type metadata to everything possible
 
@@ -102,8 +119,10 @@
   (cond (int? n) 'Integer
         (boolean? n) 'Boolean))
 
-(def set-fn-type* (comp first (rule '(define (?n [?_ ?t*] ...) ?t ?_)
-                                    (assoc-in %env [:type n] {:type (sub (??t* -> ?t))}))))
+(def set-fn-type*
+  (comp first
+        (rule '(define (?n [?_ ?t*] ...) ?t ?_)
+              (assoc-in %env [:type n] {:type (sub (??t* -> ?t))}))))
 
 (def add-types ;; including reveal-functions here
   (letfn [(get-type [e]
@@ -136,9 +155,9 @@
                 (rule '((?:as op (| < eq? not)) ??->x* ?->x)
                       (success
                        (subm (?op ??x* ?x) {:type (tag true)})))
-                (rule '(apply (funref ?s) ??->args)
+                (rule '(call (funref ?s) ??->args)
                       (let [fr (subm (funref ?s) (get-in %env [:type s]))]
-                        (success (subm (apply ?fr ??args)
+                        (success (subm (call ?fr ??args)
                                        {:type (last (get-in %env [:type s :type]))}))))
                 (rule '(read) (success (subm (read) {:type (tag 1)})))
                 (rule '(void) (success (subm (void) {:type 'Void})))
@@ -161,6 +180,26 @@
                       (success (subm (allocate ?n ?t) {:type t})))
                 (rule '(? s symbol?)
                       (success (with-meta s (get-in %env [:type s]))))))))
+
+
+(comment
+  (->type
+   '[(define (add [x Integer] [y Integer]) Integer
+       (+ x y))
+     (add 40 2)])
+
+  (map (juxt meta identity)
+       (remove r1-keyword?
+               (tree-seq sequential? seq
+                         (->type
+                          '[(define (map-vec [f (Integer -> Integer)]
+                                             [v (Vector Integer Integer)])
+                              (Vector Integer Integer)
+                              ;; TODO: I'm nut sure if this f should become (funref f) or (v f)...
+                              (vector (f (vector-ref v 0)) (f (vector-ref v 1))))
+                            (define (add1 [x Integer]) Integer (+ x 1))
+                            (vector-ref (map-vec add1 (vector 0 41)) 1)])))))
+
 
 ;; Expand the inner workings of (vector ...)
 
@@ -206,46 +245,62 @@
 (declare rco-exp)
 
 (def rco-atom
-  (let [wrap (fn wrap [name a b exp]
+  (let [wrap (fn wrap [name args exp]
                (let [t (gennice name)
-                     a (:wrap a identity)
-                     b (:wrap b identity)]
+                     w (reduce (fn [w arg]
+                                 (comp w (:wrap arg identity)))
+                               identity args)]
                  {:wrap (fn [r]
-                          ;; TODO: pass in metadata for r?
-                          (a (b (sub (let ([?t ?exp])
-                                       ?r)))))
+                          (w (sub (let ([?t ?exp])
+                                    ?r))))
                   :value t}))]
     (directed
      (rule-list (rule '(let ([?v ?e]) ?body)
-                      (wrap 'let nil nil
+                      (wrap 'let nil
                             (subm (let ([?v ~(rco-exp e)])
                                     ~(rco-exp body))
                                   (m!))))
-                ;; TODO: refactor this with hard-coded fn names and arities
-                (rule '((? op #{+ < eq?}) ?->a ?->b)
-                      (wrap 'tmp+ a b
-                            (subm (?op ~(:value a) ~(:value b)) (m!))))
-                (rule '((? op #{- not}) ?->a)
-                      (wrap 'tmp- a nil
-                            (subm (?op ~(:value a)) (m!))))
+                (rule '((? op #{+ < eq? - not}) ??->args)
+                      (wrap (symbol (str (name op) ".tmp")) args
+                            (subm (?op ~@(map :value args)) (m!))))
+                (rule '(call ??->guts)
+                      (wrap 'call guts (subm (call ~@(map :value guts)) (m!))))
                 (rule '(read)
-                      (wrap 'read nil nil
+                      (wrap 'read nil
                             (with-meta '(read) {:type 'Integer})))
                 (rule '(global-value ?name)
-                      (wrap name nil nil (:rule/datum %env)))
+                      (wrap name nil (:rule/datum %env)))
                 (rule '(vector-ref ?->v ?i)
-                      (wrap (symbol (str "vec+" i)) v nil
+                      (wrap (symbol (str "vec+" i)) [v]
                             (subm (vector-ref ~(:value v) ?i) (m!))))
                 (rule '(vector-set! ?->v ?i ?->e)
-                      (wrap (symbol (str "vec+" i)) v e
+                      (wrap (symbol (str "vec+" i)) [v e]
                             (subm (vector-set! ~(:value v) ?i ~(:value e)) (m!))))
+                (rule '(funref ?->f)
+                      (wrap 'funref [f]
+                            (subm (funref ~(:value f)) (m!))))
                 (rule '(not ?->e)
-                      (wrap 'not e nil
+                      (wrap 'not [e]
                             (subm (not ~(:value e)) (m!))))
                 (rule '(? x int?)
                       {:value x})
                 (rule '?x
                       {:value x})))))
+
+(defmacro rco-atoms [vars exp]
+  `(let [r# (reduce (fn [r# exp#]
+                      (let [x# (rco-atom exp#)
+                            wrap# (:wrap x#)
+                            r# (update r# :values conj (:value x#))]
+                        (if wrap#
+                          ;; compose in reverse
+                          (assoc r# :wrap (comp (:wrap r#) wrap#))
+                          r#)))
+                    {:wrap identity :values []} ~vars)
+         wrap# (:wrap r#)
+         ~vars (:values r#)]
+     (wrap# ~exp)))
+
 
 (def rco-exp
   (let [preserve-not (comp first
@@ -253,25 +308,12 @@
                                                 (rule '?_ (:exp %env)))))]
     (directed
      (rule-list (rule '((?:= let) ([?a ?->b]) ?->body))
-                ;; TODO: refactor this with hard-coded fn names and arities
-                (rule '((? op #{vector-set!}) ?a ?b ?c)
-                      (let [a (rco-atom a)
-                            b (rco-atom b)
-                            c (rco-atom c)]
-                        ((:wrap a identity)
-                         ((:wrap b identity)
-                          ((:wrap c identity)
-                           (subm (?op ~(:value a) ~(:value b) ~(:value c)) (m!)))))))
-                (rule '((? op #{+ < eq? vector-ref}) ?a ?b)
-                      (let [a (rco-atom a)
-                            b (rco-atom b)]
-                        ((:wrap a identity)
-                         ((:wrap b identity)
-                          (subm (?op ~(:value a) ~(:value b)) (m!))))))
-                (rule '((? op #{- not global-value}) ?a)
-                      (let [a (rco-atom a)]
-                        ((:wrap a identity)
-                         (subm (?op ~(:value a)) (m!)))))
+                (rule '((? op #{vector-set! + < eq? vector-ref - not global-value})
+                        ??args)
+                      (rco-atoms args (subm (?op ??args) (m!))))
+                (rule '(call ??guts)
+                      #dbg
+                      (rco-atoms guts (subm (call ??guts) (m!))))
                 (rule '(?:letrec [maybe-not (?:as nots
                                                   (?:fresh [nots]
                                                            (| (not $maybe-not)
@@ -284,6 +326,10 @@
                       ;; FIXME? what about (if (let ...) ...)?
                       (let [exp (preserve-not nots {:exp exp})]
                         (subm (if ?exp ?then ?else) (m!))))))))
+
+
+(comment
+  (rco-exp '(let ([a (+ (call (funref thing) 1 (+ 3 2)) (- 1))]) (+ (- 1) (- a)))))
 
 (defn remove-complex-opera* [p]
   (rco-exp p))
@@ -684,7 +730,8 @@
   (apply str (map #(apply str (conj % "\n")) p)))
 
 (def ->shrink (comp #'shrink #'uniqify))
-(def ->type (comp #'add-types #'->shrink))
+(def ->limit (comp #'limit-functions #'->shrink))
+(def ->type (comp #'add-types #'->limit))
 (def ->expose-alloc (comp #'expose-allocation #'->type))
 (def ->simple (comp #'remove-complex-opera* #'->expose-alloc))
 (def ->flatten (comp #'explicate-control #'->simple))
