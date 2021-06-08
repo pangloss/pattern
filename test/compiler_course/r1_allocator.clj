@@ -209,7 +209,7 @@
     (sub (reg ?reg))
     ;; NOTE this uses a naive algo that allocates both heap and stack for every
     ;; spilled var which I think simplifies the color selection step
-    (if (vect? t)
+    (if (heap? t)
       (sub (heap ~(- n (count registers))))
       (sub (stack ~(- n (count registers)))))))
 
