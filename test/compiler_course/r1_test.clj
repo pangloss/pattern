@@ -1,6 +1,6 @@
 (ns compiler-course.r1-test
   (:require [compiler-course.r1-allocator :as a]
-            [compiler-course.r1 :refer :all]
+            [compiler-course.r1 :as r1 :refer :all]
             [matches :refer [valid? validate ok? sub subm]]
             [matches.types :refer [ok]]
             [compiler-course.dialects :as d]
@@ -62,7 +62,7 @@
              (tree-seq seqable? seq)
              (remove (into #{} '[if eq? - + < let vector vector-ref vector-set! read not void]))
              (filter (partial valid? d/Shrunk))
-             (remove #(:type (meta %)))
+             (remove #(::r1/type (meta %)))
              (remove int?)
              (remove boolean?))]
     (if (empty? untyped)

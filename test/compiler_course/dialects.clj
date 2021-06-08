@@ -7,6 +7,9 @@
 
 (def cmp? #{'eq? '< '<= '> '>=})
 
+(def r1-keyword? (into cmp? '[define let if and or not void read + -
+                              vector vector-length vector-ref vector-set]))
+
 (def-dialect R1
   (terminals [i int?]
              [v symbol?]

@@ -76,13 +76,13 @@
 
 (def add-types
   (letfn [(get-type [e]
-            (or (meta e) {:type (tag e)}))]
+            (or (meta e) {::type (tag e)}))]
     (directed
      ;; TODO: need a way to cleanly specify that I want the result meta merged with the input meta. Basically express:
      ;;
      ;; (success (with-meta ... (merge (meta (:rule/datum %env)) {... ...})))
      (rule-list (rule '((?:= let) ([?v ?->e]) ?b)
-                      (let [env (assoc-in %env [:type v] (get-type e))
+                      (let [env (assoc-in %env [::type v] (get-type e))
                             v (in v env) ;; to simplify checking
                             b (in b env)]
                         (success (subm (let ([?v ?e]) ?b)
@@ -93,28 +93,28 @@
                        (subm (?op ??x* ?x) (get-type x))))
                 (rule '((?:as op (| < eq? not)) ??->x* ?->x)
                       (success
-                       (subm (?op ??x* ?x) {:type (tag true)})))
-                (rule '(read) (success (subm (read) {:type (tag 1)})))
-                (rule '(void) (success (subm (void) {:type 'Void})))
+                       (subm (?op ??x* ?x) {::type (tag true)})))
+                (rule '(read) (success (subm (read) {::type (tag 1)})))
+                (rule '(void) (success (subm (void) {::type 'Void})))
                 (rule '(global-value ?l)
-                      (success (subm (global-value ?l) {:type 'Integer})))
+                      (success (subm (global-value ?l) {::type 'Integer})))
                 (rule '(collect ?n)
-                      (success (subm (collect ?n) {:type 'Void})))
+                      (success (subm (collect ?n) {::type 'Void})))
                 (rule '(vector ??->e*)
                       (success (subm (vector ??e*)
-                                     {:type (sub (Vector ~@(map (comp :type get-type) e*)))})))
+                                     {::type (sub (Vector ~@(map (comp ::type get-type) e*)))})))
                 (rule '(vector-ref ?->v ?->i)
-                      (let [t (:type (meta v))]
+                      (let [t (::type (meta v))]
                         (if (and (sequential? t) (nth t (inc i) nil))
                           (success (subm (vector-ref ?v ?i)
-                                         {:type (nth t (inc i))}))
-                          (sub (invalid-access (vector-ref ?v ?i) :type ?t)))))
+                                         {::type (nth t (inc i))}))
+                          (sub (invalid-access (vector-ref ?v ?i) ::type ?t)))))
                 (rule '(vector-set! ??->e)
-                      (success (subm (vector-set! ??e) {:type 'Void})))
+                      (success (subm (vector-set! ??e) {::type 'Void})))
                 (rule '(allocate ?n ?t)
-                      (success (subm (allocate ?n ?t) {:type t})))
+                      (success (subm (allocate ?n ?t) {::type t})))
                 (rule '(? s symbol?)
-                      (success (with-meta s (get-in %env [:type s]))))))))
+                      (success (with-meta s (get-in %env [::type s]))))))))
 
 ;; Expand the inner workings of (vector ...)
 
@@ -124,18 +124,18 @@
 (def expose-allocation
   (rule-simplifier
    (rule '(vector ??e*)
-         (let [t (:type (m!))]
+         (let [t (::type (m!))]
            (sub (vector> ~t [] [??e*] [~@(rest t)]))))
    (rule '(vector> ?type ?names [?e ??e*] [?t ??t*])
          (let [n (gennice 'vec)
                ;; building names in reverse
                names (conj names n)]
-           (sub (let ([~(with-meta n {:type t}) ?e])
+           (sub (let ([~(with-meta n {::type t}) ?e])
                   (vector> ?type ?names [??e*] [??t*])))))
    (rule '(vector> ?type ?names [] [])
          (let [len (count names)
                v (gennice 'vector)
-               _ (with-meta (gennice '_) {:type 'Void})
+               _ (with-meta (gennice '_) {::type 'Void})
                bytes (* 8 (inc len))]
            (add-types
             (sub
@@ -148,7 +148,7 @@
    (rule '(vector< ?v [??n* ?n])
          ;; using names in reverse, so n* count is the vector position
          (let [idx (count n*)
-               _ (with-meta (gennice '_) {:type 'Void})]
+               _ (with-meta (gennice '_) {::type 'Void})]
            (add-types
             (sub (let ([?_ (vector-set! ?v ?idx ?n)])
                    (vector< ?v [??n*]))))))
@@ -180,7 +180,7 @@
                             (subm (?op ~@(map :value args)) (m!))))
                 (rule '(read)
                       (wrap 'read nil
-                            (with-meta '(read) {:type 'Integer})))
+                            (with-meta '(read) {::type 'Integer})))
                 (rule '(global-value ?name)
                       (wrap name nil (:rule/datum %env)))
                 (rule '(vector-ref ?->v ?i)
@@ -279,10 +279,9 @@
        (rule '(let ([?v ?e]) ?body)
              (let [body (x-pred body (:then %env) (:else %env))]
                (x-assign v e body)))
-       (rule '(? x list?)
-             (pred-block %env #(sub [(if ?x (goto ~%1) (goto ~%2))])))
+       (rule '(??items)
+             (pred-block %env #(sub [(if (??items) (goto ~%1) (goto ~%2))])))
        (rule '?x
-             ;; this may not be necessary since the lang is strictly type checked in theory.
              (x-pred (sub (eq? ?x true)) (:then %env) (:else %env))))]
   (defn x-pred [exp then else]
     (first (x-pred* exp {:then then :else else}))))
@@ -318,8 +317,8 @@
     (rule '(block ?lbl ?vars ??->i*)
           (apply merge-with #(or %1 %2) (filter map? i*)))
     (rule '(assign ?v ?e)
-          (let [vt (:type (meta v))
-                et (:type (meta e))]
+          (let [vt (::type (meta v))
+                et (::type (meta e))]
             (if (and vt et (not= vt et))
               {v {v vt e et}}
               {v (or vt et)}))))))
