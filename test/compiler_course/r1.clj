@@ -3,7 +3,9 @@
                                                   caller-saved-registers callee-saved-registers
                                                   var-locations with-allocated-registers]]
             [compiler-course.dialects :refer [r1-keyword?]]
-            [matches :refer [descend directed on-subexpressions rule rule-list rule-list! sub success subm rule-simplifier matcher]]
+            [matches :refer [descend directed on-subexpressions rule rule-list rule-list!
+                             sub success subm rule-simplifier matcher
+                             => dialects]]
             [matches.types :refer [child-rules]]
             [clojure.string :as str]))
 
@@ -18,15 +20,16 @@
 ;; Give every var a unique name
 
 (def uniqify*
-  (directed (rule-list [(rule '(let ([?x ?e]) ?body)
-                              (let [x' (gennice x)
-                                    env (assoc-in %env [:vars x] x')]
-                                (sub (let ([?x' ~(in e env)])
-                                       ~(in body env)))))
-                        (rule '(if ?->e ?->then ?->else))
-                        (rule '((? op symbol?) ?->a ?->b))
-                        (rule '((? op symbol?) ?->a))
-                        (rule '(? x symbol?) (get-in %env [:vars x]))])))
+  (dialects
+   (=> R1 R1)
+   (directed (rule-list [(rule '((?:= let) ([?v:x ?e]) ?e:body)
+                               (let [x' (gennice x)
+                                     env (assoc-in %env [:vars x] x')]
+                                 (sub (let ([?x' ~(in e env)])
+                                        ~(in body env)))))
+                         (rule '(if ?->e ?->e:then ?->e:else) (success))
+                         (rule '(?v ??->e:args) (success))
+                         (rule '?v (get-in %env [:vars v]))]))))
 
 (defn uniqify [p]
   (reset! niceid 0)
