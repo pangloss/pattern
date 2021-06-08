@@ -62,7 +62,7 @@
        (let ([?v ?e]) ?e:body)
        (if ?ne ?e:then ?e:else)
        (vector-ref ?e ?i) (vector-set! ?e0 ?i ?e1)
-       (void) (has-type ?e ?type)
+       (void)
        (collect ?i)
        (allocate ?i ?type)
        (global-value ?name)))
@@ -116,11 +116,7 @@
   (Type [type] Integer Boolean (Vector ??type) Void)
   (ByteReg [bytereg] (byte-reg (| ah al bh bl ch cl dh dl)))
   (Arg [arg]
-       (reg rax)
-       (reg r11)
-       (reg r15)
-       (reg rsi)
-       (reg rdi)
+       (reg (| rax r11 r15 rsi rdi))
        (int ?i)
        (deref ?offset ?reg)
        (deref ?scale ?offset ?reg)
@@ -159,11 +155,7 @@
        (stack ?i)
        (heap ?i))
   (Arg [arg]
-       - (reg rax)
-       - (reg r11)
-       - (reg r15)
-       - (reg rsi)
-       - (reg rdi)
+       - (reg (| rax r11 r15 rsi rdi))
        + ?loc)
   - Program
   (Program [program]

@@ -2,6 +2,7 @@
   (:require [compiler-course.r1-allocator :refer [liveness to-graph allocate-registers*
                                                   caller-saved-registers callee-saved-registers
                                                   var-locations with-allocated-registers]]
+            [compiler-course.dialects :refer [r1-keyword?]]
             [matches :refer [descend directed on-subexpressions rule rule-list rule-list! sub success subm rule-simplifier matcher]]
             [matches.types :refer [child-rules]]
             [clojure.string :as str]))
@@ -82,8 +83,8 @@
      ;; (success (with-meta ... (merge (meta (:rule/datum %env)) {... ...})))
      (rule-list (rule '((?:= let) ([?v ?->e]) ?b)
                       (let [env (assoc-in %env [:type v] (get-type e))
-                            v (first (descend v env)) ;; to simplify checking
-                            b (first (descend b env))]
+                            v (in v env) ;; to simplify checking
+                            b (in b env)]
                         (success (subm (let ([?v ?e]) ?b)
                                        (get-type b))
                                  env)))
@@ -159,46 +160,57 @@
 (declare rco-exp)
 
 (def rco-atom
-  (let [wrap (fn wrap [name a b exp]
+  (let [wrap (fn wrap [name args exp]
                (let [t (gennice name)
-                     a (:wrap a identity)
-                     b (:wrap b identity)]
+                     w (reduce (fn [w arg]
+                                 (comp w (:wrap arg identity)))
+                               identity args)]
                  {:wrap (fn [r]
-                          ;; TODO: pass in metadata for r?
-                          (a (b (sub (let ([?t ?exp])
-                                       ?r)))))
+                          (w (sub (let ([?t ?exp])
+                                    ?r))))
                   :value t}))]
     (directed
      (rule-list (rule '(let ([?v ?e]) ?body)
-                      (wrap 'let nil nil
+                      (wrap 'let nil
                             (subm (let ([?v ~(rco-exp e)])
                                     ~(rco-exp body))
                                   (m!))))
-                ;; TODO: refactor this with hard-coded fn names and arities
-                (rule '((? op #{+ < eq?}) ?->a ?->b)
-                      (wrap 'tmp+ a b
-                            (subm (?op ~(:value a) ~(:value b)) (m!))))
-                (rule '((? op #{- not}) ?->a)
-                      (wrap 'tmp- a nil
-                            (subm (?op ~(:value a)) (m!))))
+                (rule '((? op #{+ < eq? - not}) ??->args)
+                      (wrap (symbol (str (name op) ".tmp")) args
+                            (subm (?op ~@(map :value args)) (m!))))
                 (rule '(read)
-                      (wrap 'read nil nil
+                      (wrap 'read nil
                             (with-meta '(read) {:type 'Integer})))
                 (rule '(global-value ?name)
-                      (wrap name nil nil (:rule/datum %env)))
+                      (wrap name nil (:rule/datum %env)))
                 (rule '(vector-ref ?->v ?i)
-                      (wrap (symbol (str "vec+" i)) v nil
+                      (wrap (symbol (str "vec+" i)) [v]
                             (subm (vector-ref ~(:value v) ?i) (m!))))
                 (rule '(vector-set! ?->v ?i ?->e)
-                      (wrap (symbol (str "vec+" i)) v e
+                      (wrap (symbol (str "vec+" i)) [v e]
                             (subm (vector-set! ~(:value v) ?i ~(:value e)) (m!))))
                 (rule '(not ?->e)
-                      (wrap 'not e nil
+                      (wrap 'not [e]
                             (subm (not ~(:value e)) (m!))))
                 (rule '(? x int?)
                       {:value x})
                 (rule '?x
                       {:value x})))))
+
+(defmacro rco-atoms [vars exp]
+  `(let [r# (reduce (fn [r# exp#]
+                      (let [x# (rco-atom exp#)
+                            wrap# (:wrap x#)
+                            r# (update r# :values conj (:value x#))]
+                        (if wrap#
+                          ;; compose in reverse
+                          (assoc r# :wrap (comp (:wrap r#) wrap#))
+                          r#)))
+                    {:wrap identity :values []} ~vars)
+         wrap# (:wrap r#)
+         ~vars (:values r#)]
+     (wrap# ~exp)))
+
 
 (def rco-exp
   (let [preserve-not (comp first
@@ -206,25 +218,9 @@
                                                 (rule '?_ (:exp %env)))))]
     (directed
      (rule-list (rule '((?:= let) ([?a ?->b]) ?->body))
-                ;; TODO: refactor this with hard-coded fn names and arities
-                (rule '((? op #{vector-set!}) ?a ?b ?c)
-                      (let [a (rco-atom a)
-                            b (rco-atom b)
-                            c (rco-atom c)]
-                        ((:wrap a identity)
-                         ((:wrap b identity)
-                          ((:wrap c identity)
-                           (subm (?op ~(:value a) ~(:value b) ~(:value c)) (m!)))))))
-                (rule '((? op #{+ < eq? vector-ref}) ?a ?b)
-                      (let [a (rco-atom a)
-                            b (rco-atom b)]
-                        ((:wrap a identity)
-                         ((:wrap b identity)
-                          (subm (?op ~(:value a) ~(:value b)) (m!))))))
-                (rule '((? op #{- not global-value}) ?a)
-                      (let [a (rco-atom a)]
-                        ((:wrap a identity)
-                         (subm (?op ~(:value a)) (m!)))))
+                (rule '((? op #{vector-set! + < eq? vector-ref - not global-value})
+                        ??args)
+                      (rco-atoms args (subm (?op ??args) (m!))))
                 (rule '(?:letrec [maybe-not (?:as nots
                                                   (?:fresh [nots]
                                                            (| (not $maybe-not)
@@ -481,7 +477,7 @@
 ;; Combine blocks when a jump is not needed
 
 (def remove-jumps
-  (directed (rule-list (rule '(program ?vars ?var-locs [(?:* (& ?blocks ?->jumps))])
+  (directed (rule-list (rule '(program ?vars ?var-locs [(& ?blocks ?->jumps) ...])
                              (let [blocks (reduce (fn [m [_ label :as b]]
                                                     (assoc m label b))
                                                   {} blocks)

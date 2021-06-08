@@ -29,3 +29,26 @@ I think directed maybe needs to be able to search the input for an expression th
 - I think just simple tag wrapper s-exprs would be much more comprehensible and would be relatively easy to manage. The big problem is that it's not easy to tell if metadata is present inside structures, some types can't have metadata, and then behaviour just becomes confusing trying to match against this invisible aspect of data that is hard to control.
 ** Racket-like macro system.
 I think what I've created here is most of the Racket macro system and I furthermore think it'd be reasonably easy to implement the rest of it. For instance, couldn't hygene be trivially added to ~sub~? My pattern matching and substitution is already more powerful in most ways and only lacking a handful of pieces, mainly map and set syntax mapping
+* Ideas
+** dialect-case
+I'd like to be able to traverse down to a given form type automatically, so the following could be a complete example. A bit of magic to get the traversal to the right place, then no magic in the response, just a function.
+
+Question: how to deal with %env? Maybe I have a bit of magic looking for arity1 vs arity2, and also look explicitly for rules, and if found include them directly into the rule structure to enable further rule-combinator hyjinx.
+
+#+begin_src clojure
+(dialect-case Selected
+              Stmt (fn [s] (do-something-with-any-stmt s)))
+#+end_src
+** metadata
+Some utilities to attach metadata in the right places
+
+   #+begin_src clojure
+   (success (with-meta ... (merge (meta (:rule/datum %env)) {... ...})))
+   #+end_src
+
+** automatic :rule/history metadata
+On every rule result that captures the prev form in a vector and if there is already history, push the new prev form onto the end of the vector, so with multiple applications it could end up looking something like, ~:rule/history [(add 1 2) ((funref add.58) 1 2) ((funref add.58) (int 1) (int 2)) (addq (int 1) (int 2))]~
+- sometimes a rule results in a list of things that then get spliced into a parent form. Somehow capture that? Perhaps with a special rule form that is meant for returning spliced lists of results? Maybe add the metadata to the first form in the list? Or to each form in the list?
+- Maybe the metadata should be a graph? A graph could be nice but generally right now graph objects are very opaque structures so some work needs to go into making them more intuitive / informative.
+** DONE macro for scheme-style repeats using ~...~ . Even maybe just on rules.
+Actually ... is a semi-valid symbol! It can't be let-bound but can be defined with def, and ~'...~ is valid. Just do a simple transform: ~(def ?n [?arg ...] ?e ...)~ becomes ~(def ?n [(?:* ?arg)] (?:* ?e))~ or scheme-style ~(let ([?v ?e] ...) ?b)~ becomes ~(let ((?:* [?v ?e])) ?b)~ the scheme-style is definitely more readable, but less powerful.

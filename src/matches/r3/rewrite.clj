@@ -278,6 +278,7 @@
 
                           ;; other
                           (rule '((?:literal ?:literal) ?value) `(list '~value))
+                          (rule '((?:literal ?:=) ?value) `(list '~value))
                           (rule '((?:literal ?:restartable) ?->value) value)
                           (rule '((?:literal ?:chain) ?->value ??_) value)
                           (rule '((?:literal ?:as) ?name ?value)
@@ -339,9 +340,19 @@
 
 (def unwrap-quote (rule-name :unwrap-quote (rule `(~'quote ?x) x)))
 
+(def scheme-style
+  (on-subexpressions
+   (rule-list
+    (rule '[??before ?form (?:chain (? _ symbol?) name "...") ??after]
+          `[~@before (~'?:* ~form) ~@after])
+    (rule '(??before ?form (?:chain (? _ symbol?) name "...") ??after)
+          `(~@before (~'?:* ~form) ~@after)))))
+(reset! r/scheme-style #'scheme-style)
+
 (def qsub*
   (rule-name :qsub
-             (in-order [expand-pattern
+             (in-order [scheme-style
+                        expand-pattern
                         remove-symbol-namespaces
                         unwrap-list
                         simplify-expr

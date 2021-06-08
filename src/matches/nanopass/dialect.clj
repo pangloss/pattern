@@ -91,19 +91,13 @@
    `{:=>/from '~from :=>/to '~to :=> true :=>/type '~'===>}))
 
 (defn =>:from [=> default]
-  (if (:=> =>)
-    (:=>/from => default)
-    default))
+  (:=>/from => default))
 
 (defn =>:to [=> default]
-  (if (:=> =>)
-    (:=>/to => default)
-    default))
+  (:=>/to => default))
 
 (defn =>:type [=> default]
-  (if (:=> =>)
-    (:=>/type => default)
-    default))
+  (:=>/type => default))
 
 (defn tag-result
   "This is a rule combinator that attaches form metadata to the result if the
@@ -196,10 +190,11 @@
                           exprs)))
         (assoc :form? form?)
         (assoc :maybe-contains-forms maybe-contains-forms)
-        #_ ;; FIXME: these expr-level automatic predicators do seem awful. Is
-         ;; there ever a need for them? Don't we just recur rules into exprs? Maybe
-         ;; sometimes I'd want expr predicators but I think not usually. Anyway
-         ;; for now disabling them seems by far the best approach.
+        ;; You don't usually want forms to have predicate rules when present in
+        ;; a matcher, but for some of them it's useful, so for those we can add
+        ;; the :enforce flag which will cause a predicator to run (which
+        ;; actually matches the expressions in the form, not any metadata).
+        #_  ;; TODO
         (assoc :predicator
                ;; Predicator will add $ to the matcher-mode of these matchers to
                ;; indicate the name has attached metadata
@@ -368,7 +363,7 @@
 ;; boxed, we know that in advance... The same kind of pattern rewriting could be used to
 ;; do the unboxing right in the pattern.
 
-(defn- build-form [dialect form-name abbr ops exprs]
+(defn- build-form [dialect form-name abbr metadata flags ops exprs]
   (let [dialect-name (:name dialect)
         full-name [dialect-name form-name]
         form (merge (get-in dialect [:forms form-name]
@@ -381,6 +376,8 @@
                      :form? (fn form? [x]
                               (= full-name (get (meta x) ::form)))
                      :abbr abbr
+                     :metadata metadata
+                     :flags flags
                      :symbol? (match-abbr abbr)})]
     (-> dialect
         (assoc-in [:forms form-name]
@@ -437,12 +434,20 @@
                          (continue (remove-form dialect name)
                                    more))
 
-                   (rule '(?dialect (?name [?abbr] (?:* ?op* ?expr*)) ??more)
-                         (continue (build-form dialect name abbr op* expr*)
+                   (rule '(?dialect (?name [?abbr
+                                            (?:? (? metadata map?))
+                                            (?:* (? flags keyword?))]
+                                           (?:* ?op* ?expr*)) ??more)
+                         (continue (build-form dialect name abbr metadata flags
+                                               op* expr*)
                                    more))
 
-                   (rule '(?dialect (?name [?abbr] (?:* ?expr*)) ??more)
-                         (continue (build-form dialect name abbr (repeat '+) expr*)
+                   (rule '(?dialect (?name [?abbr
+                                            (?:? (? metadata map?))
+                                            (?:* (? flags keyword?))]
+                                           (?:* ?expr*)) ??more)
+                         (continue (build-form dialect name abbr metadata flags
+                                               (repeat '+) expr*)
                                    more))])))))
 
 (defn- resolve* [x]

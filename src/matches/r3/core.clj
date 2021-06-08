@@ -171,6 +171,7 @@
 (defonce spliced (atom identity))
 (defonce qsub* (atom identity))
 (defonce rule-src (atom identity))
+(defonce scheme-style (atom identity))
 
 (defmacro sub
   "Use the version in the matches.r3.rewrite namespace."
@@ -259,7 +260,7 @@
   ([pattern handler-body]
    (let [args (pattern-args pattern)
          matches (gensym 'matches)]
-     `(let [p# ~(@spliced pattern)]
+     `(let [p# ~(@spliced (@scheme-style pattern))]
         (make-rule p# (fn [~'%env ~matches]
                         ;; TODO: should env-args or regular args dominate? or should a conflict be an error?
                         ;; TODO: is the JVM smart about eliding unused bindings here or should I try
