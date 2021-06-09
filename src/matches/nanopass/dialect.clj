@@ -15,7 +15,8 @@
             [matches.types :refer [->MetaBox ->Ok ok?]]
             [genera :refer [defgenera defgen]]
             matches.matchers
-            [clojure.walk :as walk]))
+            [clojure.walk :as walk])
+  (:import clojure.lang.IObj))
 
 (defonce dialect-tree (atom (make-hierarchy)))
 (defonce all-dialects (atom {}))
@@ -67,7 +68,7 @@
 
 (defn tag [form-name x]
   ;; works with [dialect form-name] style form names
-  (if (instance? clojure.lang.IObj x)
+  (if (instance? IObj x)
     (let [form-name (form-tag form-name)]
       (vary-meta x assoc ::form form-name))
     x))
@@ -117,7 +118,7 @@
                (if (fn? result)
                  ;; FIXME: 99% sure this condition is not needed
                  (y result env n)
-                 (let [result (if (instance? clojure.lang.IObj result)
+                 (let [result (if (instance? IObj result)
                                 (vary-meta result assoc ::form form)
                                 result)]
                    (y result env n))))
@@ -565,9 +566,15 @@
   `(to-dialect* ~dialect (fn [] ~@body)))
 
 (defmacro dialects [=>dialects & body]
-  `(from-dialect (=>:from ~=>dialects nil)
-                 (to-dialect (=>:to ~=>dialects nil)
-                             ~@body)))
+  `(let [d# ~=>dialects]
+     (from-dialect
+      (=>:from d# nil)
+      (to-dialect
+       (=>:to d# nil)
+       (let [b# ~@body]
+         (cond (var? b#) (alter-meta! b# merge d#)
+               (instance? IObj b#) (vary-meta b# merge d#)
+               :else b#))))))
 
 (defn add-form-tags [{:keys [name exprs]} expr]
   ;; TODO: we want the terminal predicates but not the form ones here...
