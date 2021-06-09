@@ -671,6 +671,7 @@
                           (rule '(jump < ?lbl)            (list "jl " (name lbl)))
                           (rule '(jump eq? ?lbl)          (list "je " (name lbl)))
                           (rule '(jump true ?lbl)         (list "jmp " (name lbl)))
+                          (rule '(retq)                   ["jmp conclusion"])
                           (rule '(?x ?->a)                (list (name x) " " a))
                           (rule '(?x ?->a ?->b)           (list (name x) " " a ", " b)))))))
 
