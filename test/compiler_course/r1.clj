@@ -258,17 +258,19 @@
 (declare x-pred x-assign)
 
 (let [x-assign*
-      (rule-list
-       (rule '(if ?e ?then ?else)
-             (let [then (x-assign (:var %env) then (:cont %env))
-                   else (x-assign (:var %env) else (:cont %env))]
-               (x-pred e then else)))
-       (rule '((?:= let) ([?v ?e]) ?body)
-             (let [body (x-assign (:var %env) body (:cont %env))]
-               (x-assign v e body)))
-       (rule '?value (-> (:cont %env)
-                         (update :s (fn [s] (into [(sub (assign ~(:var %env) ?value))] s)))
-                         (update :v (fnil conj #{}) (:var %env)))))]
+      (dialects
+       (=> Simplified Explicit)
+       (rule-list
+        (rule '(if ?e ?then ?else)
+              (let [then (x-assign (:var %env) then (:cont %env))
+                    else (x-assign (:var %env) else (:cont %env))]
+                (x-pred e then else)))
+        (rule '((?:= let) ([?v ?e]) ?body)
+              (let [body (x-assign (:var %env) body (:cont %env))]
+                (x-assign v e body)))
+        (rule '?value (-> (:cont %env)
+                          (update :s (fn [s] (into [(sub (assign ~(:var %env) ?value))] s)))
+                          (update :v (fnil conj #{}) (:var %env))))))]
   (defn x-assign [v exp cont]
     (first (x-assign* exp {:var v :cont cont}))))
 
@@ -283,61 +285,71 @@
      :s (f (:label then) (:label else))}))
 
 (let [x-pred*
-      (rule-list
-       (rule '(if ?e ?then ?else)
-             (let [then (x-pred then (:then %env) (:else %env))
-                   else (x-pred else (:then %env) (:else %env))]
-               (x-pred e then else)))
-       (rule '(not ?e)
-             (x-pred e (:else %env) (:then %env)))
-       (rule true (:then %env))
-       (rule false (:else %env))
-       (rule '((?:= let) ([?v ?e]) ?body)
-             (let [body (x-pred body (:then %env) (:else %env))]
-               (x-assign v e body)))
-       (rule '(??items)
-             (pred-block %env #(sub [(if (??items) (goto ~%1) (goto ~%2))])))
-       (rule '?x
-             (x-pred (sub (eq? ?x true)) (:then %env) (:else %env))))]
+      (dialects
+       (=> Simplified Explicit)
+       (rule-list
+        (rule '(if ?e ?then ?else)
+              (let [then (x-pred then (:then %env) (:else %env))
+                    else (x-pred else (:then %env) (:else %env))]
+                (x-pred e then else)))
+        (rule '(not ?e)
+              (x-pred e (:else %env) (:then %env)))
+        (rule true (:then %env))
+        (rule false (:else %env))
+        (rule '((?:= let) ([?v ?e]) ?body)
+              (let [body (x-pred body (:then %env) (:else %env))]
+                (x-assign v e body)))
+        (rule '(??items)
+              (pred-block %env #(sub [(if (??items) (goto ~%1) (goto ~%2))])))
+        (rule '?x
+              (x-pred (sub (eq? ?x true)) (:then %env) (:else %env)))))]
   (defn x-pred [exp then else]
     (first (x-pred* exp {:then then :else else}))))
 
 (def x-tail
-  (rule-list
-   (rule '(if ?e ?then ?else)
-         (let [then (x-tail then)
-               else (x-tail else)]
-           (x-pred e then else)))
-   (rule '((?:= let) ([?v ?e]) ?body)
-         (let [body (x-tail body)]
-           (x-assign v e body)))
-   (rule '?x {:s [(sub (return ?x))]})))
+  (dialects
+   (=> Simplified Explicit)
+   (rule-list
+    (rule '(if ?e ?then ?else)
+          (let [then (x-tail then)
+                else (x-tail else)]
+            (x-pred e then else)))
+    (rule '((?:= let) ([?v ?e]) ?body)
+          (let [body (x-tail body)]
+            (x-assign v e body)))
+    (rule '?x {:s [(sub (return ?x))]}))))
 
-(defn explicate-control [p]
-  (let [p (x-tail p)
-        blocks (reduce-kv (fn [blocks l b]
-                            (assoc blocks l
-                                   (sub (block ?l [~@(sort (:v b))]
-                                               ~@(:s b)))))
-                          {} (assoc (:b p) 'start (assoc p :label 'start)))]
-    (sub (program [~@(:v p)] ~blocks))))
+(defn explicate-control
+  {:=>/from 'Simplified :=>/to 'Explicit}
+  [p]
+  (dialects
+   (=> Simplified Explicit)
+   (let [p (x-tail p)
+         blocks (reduce-kv (fn [blocks l b]
+                             (assoc blocks l
+                                    (sub (block ?l [~@(sort (:v b))]
+                                                ~@(:s b)))))
+                           {} (assoc (:b p) 'start (assoc p :label 'start)))]
+     (sub (program [~@(:v p)] ~blocks)))))
 
 ;; Uncover locals
 
 (def uncover-locals
-  (directed
-   (rule-list
-    (rule '(program ?vars (& ?blocks (?:*map ?lbl ?->block*)))
-          (sub (program ~(apply merge-with #(or %1 %2) (filter map? block*))
-                        ?blocks)))
-    (rule '(block ?lbl ?vars ??->i*)
-          (apply merge-with #(or %1 %2) (filter map? i*)))
-    (rule '(assign ?v ?e)
-          (let [vt (::type (meta v))
-                et (::type (meta e))]
-            (if (and vt et (not= vt et))
-              {v {v vt e et}}
-              {v (or vt et)}))))))
+  (dialects
+   (=> Explicit Uncovered)
+   (directed
+    (rule-list
+     (rule '(program ?vars (& ?blocks (?:*map ?lbl ?->block*)))
+           (sub (program ~(apply merge-with #(or %1 %2) (filter map? block*))
+                         ?blocks)))
+     (rule '(block ?lbl ?vars ??->stmt* ?tail)
+           (apply merge-with #(or %1 %2) (filter map? stmt*)))
+     (rule '(assign ?v ?e)
+           (let [vt (::type (meta v))
+                 et (::type (meta e))]
+             (if (and vt et (not= vt et))
+               {v {v vt e et}}
+               {v (or vt et)})))))))
 
 ;; Select instructions: rewrite as data representing X86 assembly
 
