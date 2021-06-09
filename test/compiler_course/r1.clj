@@ -360,26 +360,30 @@
   (on-subexpressions (rule '(v (reg rax)) '(reg rax))))
 
 (def select-inst-cond*
-  (rule-list!
-   (rule '((? op #{< eq?}) ?a ?b)
-         (let [v (:v %env)]
-           (sub [(cmpq ?b ?a)
-                 (set ?op (byte-reg al))
-                 (movzbq (byte-reg al) ?v)])))
-   (rule '(not ?->a)
-         (let [v (:v %env)]
-           (if (= v a)
-             (sub [(xorq (int 1) ?v)])
-             (sub [(movq ?a ?v)
-                   (xorgq (int 1) ?v)]))))
-   (rule '(vector-ref ?vec ?i)
-         (let [v (:v %env)]
-           (sub [(movq (v ?vec) (reg r11))
-                 (movq (deref 8 ~(inc i) r11) ?v)])))
-   (rule '(v ?x)
-         (sub [(movq (v ?x) ~(:v %env))]))))
+  (dialects
+   (=> Uncovered Selected)
+   (rule-list!
+    (rule '((? op #{< eq?}) ?e:a ?e:b)
+          (let [v (:v %env)]
+            (sub [(cmpq ?b ?a)
+                  (set ?op (byte-reg al))
+                  (movzbq (byte-reg al) ?v)])))
+    (rule '(not ?->e:a)
+          (let [v (:v %env)]
+            (if (= v a)
+              (sub [(xorq (int 1) ?v)])
+              (sub [(movq ?a ?v)
+                    (xorgq (int 1) ?v)]))))
+    (rule '(vector-ref ?vec ?i)
+          (let [v (:v %env)]
+            (sub [(movq (v ?vec) (reg r11))
+                  (movq (deref 8 ~(inc i) r11) ?v)])))
+    (rule '(v ?x)
+          (sub [(movq (v ?x) ~(:v %env))])))))
 
-(defn select-inst-cond [x env]
+(defn select-inst-cond
+  {:=>/from 'Uncovered :=>/to 'Selected}
+  [x env]
   (first (select-inst-cond* x env)))
 
 (defn make-tag [len type*]
@@ -397,86 +401,95 @@
 (def select-instructions*
   ;; TODO: split to assign and tail versions.. See hints here
   ;; https://iucompilercourse.github.io/IU-P423-P523-E313-E513-Fall-2020/lecture-Oct-6.html
-  (directed (rule-list (rule '(program ?vars ?blocks)
-                             (let [blocks (reduce-kv (fn [blocks l b]
-                                                       (assoc blocks l (descend b)))
-                                                     {} blocks)]
-                               (sub (program ?vars ?blocks))))
-                       (rule '(block ?label ?vars ??->instrs)
-                             (sub (block ?label ?vars ~@(apply concat instrs))))
-                       (rule '(assign ?->x (+ ?->a ?->b))
-                             (cond (= x b) (sub [(addq ?a ?b)])
-                                   (= x a) (sub [(addq ?b ?a)])
-                                   :else (sub [(movq ?a ?x)
-                                               (addq ?b ?x)])))
-                       (rule '(assign ?->x (read))
-                             (sub [(callq read-int)
-                                   (movq (reg rax) ?x)]))
-                       (rule '(assign ?->x (vector-ref ?->vec ?i))
-                             (sub [(movq ?vec (reg r11))
-                                   (movq (deref 8 ~(inc i) r11) ?x)]))
+  ;;
+  ;; NOTE: The (return ...) rule can cause (assign (reg rax) ...) to be run
+  ;; which violates the Uncovered language, so assign can't validate (assign ?v
+  ;; ...)  return (below) or with x as a symbol.
+  (dialects
+   (=> Uncovered Selected)
+   (directed (rule-list (rule '(program ?vars ?blocks)
+                              (let [blocks (reduce-kv (fn [blocks l b]
+                                                        (assoc blocks l (descend b)))
+                                                      {} blocks)]
+                                (sub (program ?vars ?blocks))))
+                        (rule '(block ?label ?vars ??->instrs)
+                              (sub (block ?label ?vars ~@(apply concat instrs))))
+                        (rule '(assign ?->any:x (+ ?->atm:a ?->atm:b))
+                              (cond (= x b) (sub [(addq ?a ?b)])
+                                    (= x a) (sub [(addq ?b ?a)])
+                                    :else (sub [(movq ?a ?x)
+                                                (addq ?b ?x)])))
+                        (rule '(assign ?->any:x (read))
+                              (sub [(callq read-int)
+                                    (movq (reg rax) ?x)]))
+                        (rule '(assign ?->any:x (vector-ref ?->v:vec ?i))
+                              (sub [(movq ?vec (reg r11))
+                                    (movq (deref 8 ~(inc i) r11) ?x)]))
 
-                       (rule '(assign ?->x (vector-set! ?->vec ?i ?->val))
-                             (sub [(movq ?vec (reg r11))
-                                   (movq ?val (deref 8 ~(inc i) r11))
-                                   (movq (int 0) ?x)]))
+                        (rule '(assign ?->any:x (vector-set! ?->v:vec ?i ?->atm:val))
+                              (sub [(movq ?vec (reg r11))
+                                    (movq ?val (deref 8 ~(inc i) r11))
+                                    (movq (int 0) ?x)]))
 
-                       (rule '(assign ?->x (allocate ?len (Vector ??type*)))
-                             (let [tag (make-tag len type*)
-                                   free (sub (v ~(gennice 'free)))]
-                               (sub [(movq (global-value free_ptr) ?free)
-                                     (addq (int ~(* 8 (inc len))) (global-value free_ptr))
-                                     (movq ?free (reg rax))
-                                     (movq (int ?tag) (deref 0 rax)) ;; why use deref here??
-                                     (movq ?free ?x)])))
-                       (rule '(assign ?->x (collect ?->bytes))
-                             ;; TODO: can I deal with the existence of these
-                             ;; registers in the allocator and not cause
-                             ;; clobbering without just removing them from the list of avail regs?
-                             ;; OOOH yes, these method calls need to interfere with the callee-save registers.
-                             (sub [(movq (reg r15) (reg rdi))
-                                   (movq ?bytes (reg rsi))
-                                   (callq collect)]))
+                        (rule '(assign ?->any:x (allocate ?i:len (Vector ??type*)))
+                              (let [tag (make-tag len type*)
+                                    free (sub (v ~(gennice 'free)))]
+                                (sub [(movq (global-value free_ptr) ?free)
+                                      (addq (int ~(* 8 (inc len))) (global-value free_ptr))
+                                      (movq ?free (reg rax))
+                                      (movq (int ?tag) (deref 0 rax)) ;; why use deref here??
+                                      (movq ?free ?x)])))
+                        (rule '(assign ?->any:x (collect ?->i:bytes))
+                              ;; TODO: can I deal with the existence of these
+                              ;; registers in the allocator and not cause
+                              ;; clobbering without just removing them from the list of avail regs?
+                              ;; OOOH yes, these method calls need to interfere with the callee-save registers.
+                              (sub [(movq (reg r15) (reg rdi))
+                                    (movq ?bytes (reg rsi))
+                                    (callq collect)]))
 
-                       (rule '(assign ?->x (- ?->a))
-                             (if (= x a)
-                               (sub [(negq ?x)])
-                               (sub [(movq ?a ?x)
-                                     (negq ?x)])))
-                       (rule '(assign ?->x ((? op #{< eq?}) ?->a ?->b))
-                             (select-inst-cond (sub (?op ?a ?b)) {:v x}))
-                       (rule '(assign ?->x (not ?->a))
-                             (select-inst-cond (sub (not ?a)) {:v x}))
-                       (rule '(assign ?->x ?->a)
-                             (if (= x a)
-                               []
-                               (sub [(movq ?a ?x)])))
-                       (rule '(return ?->x)
-                             (concat (unv-rax
-                                      (descend (sub (assign (reg rax) ?x))))
-                                     ['(retq)]))
+                        (rule '(assign ?->any:x (- ?->e:a))
+                              (if (= x a)
+                                (sub [(negq ?x)])
+                                (sub [(movq ?a ?x)
+                                      (negq ?x)])))
+                        (rule '(assign ?->any:x ((? op #{< eq?}) ?->atm:a ?->atm:b))
+                              (select-inst-cond (sub (?op ?a ?b)) {:v x}))
+                        (rule '(assign ?->any:x (not ?->pred:a))
+                              (select-inst-cond (sub (not ?a)) {:v x}))
+                        (rule '(assign ?->any:x ?->e:a)
+                              (if (= x a)
+                                []
+                                (sub [(movq ?a ?x)])))
+                        (rule '(return ?->e:x)
+                              (concat (unv-rax
+                                       ;; Will produce a vector of statements:
+                                       (descend (sub (assign (reg rax) ?x))))
+                                      ['(retq)]))
 
-                       (rule '(if ((? cmp #{< eq?}) ?->a ?->b) (goto ?then) (goto ?else))
-                             (sub [(cmpq ?b ?a)
-                                   (jump ?cmp ?then)
-                                   (jump true ?else)]))
+                        (rule '(if ((? cmp #{< eq?}) ?->atm:a ?->atm:b) (goto ?lbl:then) (goto ?lbl:else))
+                              (sub [(cmpq ?b ?a)
+                                    (jump ?cmp ?then)
+                                    (jump true ?else)]))
 
-                       (rule '(if ?->exp (goto ?then) (goto ?else))
-                             (concat
-                              (select-inst-cond exp {:v (sub (v ~(gennice 'if)))})
-                              (sub [(cmpq (int 1) (v tmp))
-                                    (jump eq? ?then)
-                                    (jump true ?else)])))
+                        (rule '(if ?->pred:exp (goto ?lbl:then) (goto ?lbl:else))
+                              (concat
+                               (select-inst-cond exp {:v (sub (v ~(gennice 'if)))})
+                               (sub [(cmpq (int 1) (v tmp))
+                                     (jump eq? ?then)
+                                     (jump true ?else)])))
 
-                       (rule true '(int 1))
-                       (rule false '(int 0))
-                       (rule '(? i int?)
-                             (sub (int ?i)))
-                       (rule '(? v symbol?)
-                             (sub (v ?v)))
-                       (rule '(void) '(int 0)))))
+                        (rule true '(int 1))
+                        (rule false '(int 0))
+                        (rule '?i
+                              (sub (int ?i)))
+                        (rule '?v
+                              (sub (v ?v)))
+                        (rule '(void) '(int 0))))))
 
-(defn select-instructions [x]
+(defn select-instructions
+  {:=>/from 'Uncovered :=>/to 'Selected}
+  [x]
   (select-instructions* x))
 
 ;; Allocate registers (see r1-allocate ns)
