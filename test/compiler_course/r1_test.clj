@@ -22,7 +22,7 @@
               #'select-instructions #'d/Selected
               #'allocate-registers #'d/RegAllocated
               #'remove-unallocated #'d/RemoveUnallocated
-              #'remove-jumps #'d/RegAllocated
+              #'remove-jumps #'d/RemoveUnallocated
               #'patch-instructions #'d/Patched
               #'save-registers #'d/Patched+]))
 
