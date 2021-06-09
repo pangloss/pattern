@@ -129,81 +129,85 @@
   `(meta (:rule/datum ~'%env)))
 
 (def expose-allocation
-  (rule-simplifier
-   (rule '(vector ??e*)
-         (let [t (::type (m!))]
-           (sub (vector> ~t [] [??e*] [~@(rest t)]))))
-   (rule '(vector> ?type ?names [?e ??e*] [?t ??t*])
-         (let [n (gennice 'vec)
-               ;; building names in reverse
-               names (conj names n)]
-           (sub (let ([~(with-meta n {::type t}) ?e])
-                  (vector> ?type ?names [??e*] [??t*])))))
-   (rule '(vector> ?type ?names [] [])
-         (let [len (count names)
-               ;; types will be inferred by add-types below.
-               v (gennice 'vector)
-               _ (gennice '_)
-               bytes (* 8 (inc len))]
-           (add-types
-            (sub
-             (let ([?_ (if (< (+ (global-value free_ptr) ?bytes)
-                              (global-value fromspace_end))
-                         (void)
-                         (collect ?bytes))])
-               (let ([?v (allocate ?len ?type)])
-                 (vector< ?v ?names)))))))
-   (rule '(vector< ?v [??n* ?n])
-         ;; using names in reverse, so n* count is the vector position
-         (let [idx (count n*)
-               _ (with-meta (gennice '_) {::type 'Void})]
-           (add-types
-            (sub (let ([?_ (vector-set! ?v ?idx ?n)])
-                   (vector< ?v [??n*]))))))
-   (rule '(vector< ?v [])
-         v)))
+  (dialects
+   (=> Shrunk Alloc)
+   (rule-simplifier
+    (rule '(vector ??e*)
+          (let [t (::type (m!))]
+            (sub (vector> ~t [] [??e*] [~@(rest t)]))))
+    (rule '(vector> ?type ?names [?e ??e*] [?t ??t*])
+          (let [n (gennice 'vec)
+                ;; building names in reverse
+                names (conj names n)]
+            (sub (let ([~(with-meta n {::type t}) ?e])
+                   (vector> ?type ?names [??e*] [??t*])))))
+    (rule '(vector> ?type ?names [] [])
+          (let [len (count names)
+                ;; types will be inferred by add-types below.
+                v (gennice 'vector)
+                _ (gennice '_)
+                bytes (* 8 (inc len))]
+            (add-types
+             (sub
+              (let ([?_ (if (< (+ (global-value free_ptr) ?bytes)
+                               (global-value fromspace_end))
+                          (void)
+                          (collect ?bytes))])
+                (let ([?v (allocate ?len ?type)])
+                  (vector< ?v ?names)))))))
+    (rule '(vector< ?v [??n* ?n])
+          ;; using names in reverse, so n* count is the vector position
+          (let [idx (count n*)
+                _ (with-meta (gennice '_) {::type 'Void})]
+            (add-types
+             (sub (let ([?_ (vector-set! ?v ?idx ?n)])
+                    (vector< ?v [??n*]))))))
+    (rule '(vector< ?v [])
+          v))))
 
-;; Remove complex operations
+;; Remove complex operators / operands
 
 (declare rco-exp)
 
 (def rco-atom
-  (let [wrap (fn wrap [name args exp]
-               (let [t (gennice name)
-                     w (reduce (fn [w arg]
-                                 (comp w (:wrap arg identity)))
-                               identity args)]
-                 {:wrap (fn [r]
-                          (w (sub (let ([?t ?exp])
-                                    ?r))))
-                  :value t}))]
-    (directed
-     (rule-list (rule '((?:= let) ([?v ?e]) ?body)
-                      (wrap 'let nil
-                            (subm (let ([?v ~(rco-exp e)])
-                                    ~(rco-exp body))
-                                  (m!))))
-                (rule '((? op #{+ < eq? - not}) ??->args)
-                      (wrap (symbol (str (name op) ".tmp")) args
-                            (subm (?op ~@(map :value args)) (m!))))
-                (rule '(read)
-                      (wrap 'read nil
-                            (with-meta '(read) {::type 'Integer})))
-                (rule '(global-value ?name)
-                      (wrap name nil (:rule/datum %env)))
-                (rule '(vector-ref ?->v ?i)
-                      (wrap (symbol (str "vec+" i)) [v]
-                            (subm (vector-ref ~(:value v) ?i) (m!))))
-                (rule '(vector-set! ?->v ?i ?->e)
-                      (wrap (symbol (str "vec+" i)) [v e]
-                            (subm (vector-set! ~(:value v) ?i ~(:value e)) (m!))))
-                (rule '(not ?->e)
-                      (wrap 'not [e]
-                            (subm (not ~(:value e)) (m!))))
-                (rule '(? x int?)
-                      {:value x})
-                (rule '?x
-                      {:value x})))))
+  (dialects
+   (=> Alloc Simplified)
+   (let [wrap (fn wrap [name args exp]
+                (let [t (gennice name)
+                      w (reduce (fn [w arg]
+                                  (comp w (:wrap arg identity)))
+                                identity args)]
+                  {:wrap (fn [r]
+                           (w (sub (let ([?t ?exp])
+                                     ?r))))
+                   :value t}))]
+     (directed
+      (rule-list (rule '((?:= let) ([?v ?e]) ?e:body)
+                       (wrap 'let nil
+                             (subm (let ([?v ~(rco-exp e)])
+                                     ~(rco-exp body))
+                                   (m!))))
+                 (rule '((? op #{+ < eq? - not}) ??->e:args)
+                       (wrap (symbol (str (name op) ".tmp")) args
+                             (subm (?op ~@(map :value args)) (m!))))
+                 (rule '(read)
+                       (wrap 'read nil
+                             (with-meta '(read) {::type 'Integer})))
+                 (rule '(global-value ?name)
+                       (wrap name nil (:rule/datum %env)))
+                 (rule '(vector-ref ?->e:v ?i)
+                       (wrap (symbol (str "vec+" i)) [v]
+                             (subm (vector-ref ~(:value v) ?i) (m!))))
+                 (rule '(vector-set! ?->e:v ?i ?->e)
+                       (wrap (symbol (str "vec+" i)) [v e]
+                             (subm (vector-set! ~(:value v) ?i ~(:value e)) (m!))))
+                 (rule '(not ?->e)
+                       (wrap 'not [e]
+                             (subm (not ~(:value e)) (m!))))
+                 (rule '?i
+                       {:value i})
+                 (rule '?other
+                       {:value other}))))))
 
 (defmacro rco-atoms [vars exp]
   `(let [r# (reduce (fn [r# exp#]
@@ -219,30 +223,34 @@
          ~vars (:values r#)]
      (wrap# ~exp)))
 
-
 (def rco-exp
-  (let [preserve-not (comp first
-                           (directed (rule-list (rule '(not ?->x))
-                                                (rule '?_ (:exp %env)))))]
-    (directed
-     (rule-list (rule '((?:= let) ([?a ?->b]) ?->body))
-                (rule '((? op #{vector-set! + < eq? vector-ref - not global-value})
-                        ??args)
-                      (rco-atoms args (subm (?op ??args) (m!))))
-                (rule '(?:letrec [maybe-not (?:as nots
-                                                  (?:fresh [nots]
-                                                           (| (not $maybe-not)
-                                                              ?->exp)))]
-                                 (if $maybe-not ?->then ?->else))
-                      ;; preserve the not in (if (not ...) ...) because a future
-                      ;; pass can eliminate the not by swapping the then/else
-                      ;; order. It could also be done here but I'd need to do
-                      ;; more work here and it's already done there...
-                      ;; FIXME? what about (if (let ...) ...)?
-                      (let [exp (preserve-not nots {:exp exp})]
-                        (subm (if ?exp ?then ?else) (m!))))))))
+  (dialects
+   (=> Alloc Simplified)
+   (let [preserve-not (comp first
+                            (directed (rule-list (rule '(not ?->e:x))
+                                                 (rule '?_ (:exp %env)))))]
+     (directed
+      (rule-list (rule '((?:= let) ([?v:a ?->e:b]) ?->e:body))
+                 (rule '((? op #{vector-set! + < eq? vector-ref - not global-value})
+                         ??e:args)
+                       (rco-atoms args (subm (?op ??args) (m!))))
+                 (rule '(?:letrec [maybe-not (?:as nots
+                                                   (?:fresh [nots]
+                                                            (| (not $maybe-not)
+                                                               ?->e:exp)))]
+                                  (if $maybe-not ?->e:then ?->e:else))
+                       ;; preserve the not in (if (not ...) ...) because a future
+                       ;; pass can eliminate the not by swapping the then/else
+                       ;; order. It could also be done here but I'd need to do
+                       ;; more work here and it's already done there...
+                       ;; FIXME? what about (if (let ...) ...)?
+                       (let [exp (preserve-not nots {:exp exp})]
+                         (subm (if ?exp ?then ?else) (m!)))))))))
 
-(defn remove-complex-opera* [p]
+(defn remove-complex-opera*
+  "Remove complex operators/operands by let binding them around any complex expression."
+  {:=>/from 'Alloc  :=>/to 'Simplified}
+  [p]
   (rco-exp p))
 
 ;; Explicate expressions: remove nesting (aka flatten)
