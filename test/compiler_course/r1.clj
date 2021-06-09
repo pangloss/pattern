@@ -494,7 +494,9 @@
 
 ;; Allocate registers (see r1-allocate ns)
 
-(defn allocate-registers [prog]
+(defn allocate-registers
+  {:=>/from 'Selected :=>/to 'RegAllocated}
+  [prog]
   (let [g (to-graph (liveness prog))
         g (allocate-registers* g)
         [_ var-types blocks] prog
@@ -509,10 +511,12 @@
 ;; they stay as (v ...). This could easily be part of patch-instructions.
 
 (def remove-unallocated
-  (on-subexpressions
-   (rule-list (rule '(movq ?arg0 (v ?v)) (success nil))
-              (rule '(block ?lbl ?v ??i*)
-                    (sub (block ?lbl ?v ~@(remove nil? i*)))))))
+  (dialects
+   (=> RegAllocated RemoveUnallocated)
+   (on-subexpressions
+    (rule-list (rule '(movq ?arg0 (v ?v)) (success nil))
+               (rule '(block ?lbl ?vars ??ins*)
+                     (sub (block ?lbl ?vars ~@(remove nil? ins*))))))))
 
 ;; Combine blocks when a jump is not needed
 
