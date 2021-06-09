@@ -51,25 +51,27 @@
   (= exp (immutable-expr?* exp)))
 
 (def shrink
-  (let [preserve-order (fn [n a b expr]
-                         (let [t (gennice n)]
-                           (sub (let ([?t ?a])
-                                  ~(expr t)))))]
-    (on-subexpressions
-     (rule-list (rule '(eq? ?same ?same)
-                      (when (immutable-expr? same)
-                        true))
-                (rule '(- ?a ?b) (sub (+ ?a (- ?b))))
-                (rule '(or ?a ?b) (sub (if ?a true ?b)))
-                (rule '(and ?a ?b) (sub (if ?a (if ?b true false) false)))
-                (rule '(if ?exp ?same ?same)
-                      (when (and (immutable-expr? exp)
-                                 (immutable-expr? same))
-                        (success same)))
-                ;; < is our canonical choice, so alter <= > >=
-                (rule '(<= ?a ?b) (preserve-order 'le a b #(sub (not (< ?b ~%)))))
-                (rule '(> ?a ?b) (preserve-order 'gt a b #(sub (< ?b ~%))))
-                (rule '(>= ?a ?b) (sub (not (< ?a ?b))))))))
+  (dialects
+   (=> R1 Shrunk)
+   (let [preserve-order (fn [n a b expr]
+                          (let [t (gennice n)]
+                            (sub (let ([?t ?a])
+                                   ~(expr t)))))]
+     (on-subexpressions
+      (rule-list (rule '(eq? ?same ?same)
+                       (when (immutable-expr? same)
+                         true))
+                 (rule '(- ?e:a ?e:b) (sub (+ ?a (- ?b))))
+                 (rule '(or ?e:a ?e:b) (sub (if ?a true ?b)))
+                 (rule '(and ?e:a ?e:b) (sub (if ?a (if ?b true false) false)))
+                 (rule '(if ?e:exp ?same ?same)
+                       (when (and (immutable-expr? exp)
+                                  (immutable-expr? same))
+                         (success same)))
+                 ;; < is our canonical choice, so alter <= > >=
+                 (rule '(<= ?e:a ?e:b) (preserve-order 'le a b #(sub (not (< ?b ~%)))))
+                 (rule '(> ?e:a ?e:b) (preserve-order 'gt a b #(sub (< ?b ~%))))
+                 (rule '(>= ?e:a ?e:b) (sub (not (< ?a ?b)))))))))
 
 ;; Add type metadata to everything possible
 
@@ -78,46 +80,48 @@
         (boolean? n) 'Boolean))
 
 (def add-types
-  (letfn [(get-type [e]
-            (or (meta e) {::type (tag e)}))]
-    (directed
-     ;; TODO: need a way to cleanly specify that I want the result meta merged with the input meta. Basically express:
-     ;;
-     ;; (success (with-meta ... (merge (meta (:rule/datum %env)) {... ...})))
-     (rule-list (rule '((?:= let) ([?v ?->e]) ?b)
-                      (let [env (assoc-in %env [::type v] (get-type e))
-                            v (in v env) ;; to simplify checking
-                            b (in b env)]
-                        (success (subm (let ([?v ?e]) ?b)
-                                       (get-type b))
-                                 env)))
-                (rule '((?:as op (| + - if)) ??->x* ?->x)
-                      (success
-                       (subm (?op ??x* ?x) (get-type x))))
-                (rule '((?:as op (| < eq? not)) ??->x* ?->x)
-                      (success
-                       (subm (?op ??x* ?x) {::type (tag true)})))
-                (rule '(read) (success (subm (read) {::type (tag 1)})))
-                (rule '(void) (success (subm (void) {::type 'Void})))
-                (rule '(global-value ?l)
-                      (success (subm (global-value ?l) {::type 'Integer})))
-                (rule '(collect ?n)
-                      (success (subm (collect ?n) {::type 'Void})))
-                (rule '(vector ??->e*)
-                      (success (subm (vector ??e*)
-                                     {::type (sub (Vector ~@(map (comp ::type get-type) e*)))})))
-                (rule '(vector-ref ?->v ?->i)
-                      (let [t (::type (meta v))]
-                        (if (and (sequential? t) (nth t (inc i) nil))
-                          (success (subm (vector-ref ?v ?i)
-                                         {::type (nth t (inc i))}))
-                          (sub (invalid-access (vector-ref ?v ?i) ::type ?t)))))
-                (rule '(vector-set! ??->e)
-                      (success (subm (vector-set! ??e) {::type 'Void})))
-                (rule '(allocate ?n ?t)
-                      (success (subm (allocate ?n ?t) {::type t})))
-                (rule '(? s symbol?)
-                      (success (with-meta s (get-in %env [::type s]))))))))
+  (dialects
+   (=> Shrunk Shrunk)
+   (letfn [(get-type [e]
+             (or (meta e) {::type (tag e)}))]
+     (directed
+      ;; TODO: need a way to cleanly specify that I want the result meta merged with the input meta. Basically express:
+      ;;
+      ;; (success (with-meta ... (merge (meta (:rule/datum %env)) {... ...})))
+      (rule-list (rule '((?:= let) ([?v ?->e]) ?e:b)
+                       (let [env (assoc-in %env [::type v] (get-type e))
+                             v (in v env) ;; to simplify checking
+                             b (in b env)]
+                         (success (subm (let ([?v ?e]) ?b)
+                                        (get-type b))
+                                  env)))
+                 (rule '((?:as op (| + - if)) ??->e:x* ?->e:x)
+                       (success
+                        (subm (?op ??x* ?x) (get-type x))))
+                 (rule '((?:as op (| < eq? not)) ??->e:x* ?->e:x)
+                       (success
+                        (subm (?op ??x* ?x) {::type (tag true)})))
+                 (rule '(read) (success (subm (read) {::type (tag 1)})))
+                 (rule '(void) (success (subm (void) {::type 'Void})))
+                 (rule '(global-value ?v:l)
+                       (success (subm (global-value ?l) {::type 'Integer})))
+                 (rule '(collect ?i)
+                       (success (subm (collect ?i) {::type 'Void})))
+                 (rule '(vector ??->e*)
+                       (success (subm (vector ??e*)
+                                      {::type (sub (Vector ~@(map (comp ::type get-type) e*)))})))
+                 (rule '(vector-ref ?->e:v ?->i)
+                       (let [t (::type (meta v))]
+                         (if (and (sequential? t) (nth t (inc i) nil))
+                           (success (subm (vector-ref ?v ?i)
+                                          {::type (nth t (inc i))}))
+                           (sub (invalid-access (vector-ref ?v ?i) ::type ?t)))))
+                 (rule '(vector-set! ??->e)
+                       (success (subm (vector-set! ??e) {::type 'Void})))
+                 (rule '(allocate ?e:v ?type:t)
+                       (success (subm (allocate ?v ?t) {::type t})))
+                 (rule '?v
+                       (success (with-meta v (get-in %env [::type v])))))))))
 
 ;; Expand the inner workings of (vector ...)
 
@@ -137,8 +141,9 @@
                   (vector> ?type ?names [??e*] [??t*])))))
    (rule '(vector> ?type ?names [] [])
          (let [len (count names)
+               ;; types will be inferred by add-types below.
                v (gennice 'vector)
-               _ (with-meta (gennice '_) {::type 'Void})
+               _ (gennice '_)
                bytes (* 8 (inc len))]
            (add-types
             (sub
@@ -173,7 +178,7 @@
                                     ?r))))
                   :value t}))]
     (directed
-     (rule-list (rule '(let ([?v ?e]) ?body)
+     (rule-list (rule '((?:= let) ([?v ?e]) ?body)
                       (wrap 'let nil
                             (subm (let ([?v ~(rco-exp e)])
                                     ~(rco-exp body))
@@ -250,7 +255,7 @@
              (let [then (x-assign (:var %env) then (:cont %env))
                    else (x-assign (:var %env) else (:cont %env))]
                (x-pred e then else)))
-       (rule '(let ([?v ?e]) ?body)
+       (rule '((?:= let) ([?v ?e]) ?body)
              (let [body (x-assign (:var %env) body (:cont %env))]
                (x-assign v e body)))
        (rule '?value (-> (:cont %env)
@@ -279,7 +284,7 @@
              (x-pred e (:else %env) (:then %env)))
        (rule true (:then %env))
        (rule false (:else %env))
-       (rule '(let ([?v ?e]) ?body)
+       (rule '((?:= let) ([?v ?e]) ?body)
              (let [body (x-pred body (:then %env) (:else %env))]
                (x-assign v e body)))
        (rule '(??items)
@@ -295,7 +300,7 @@
          (let [then (x-tail then)
                else (x-tail else)]
            (x-pred e then else)))
-   (rule '(let ([?v ?e]) ?body)
+   (rule '((?:= let) ([?v ?e]) ?body)
          (let [body (x-tail body)]
            (x-assign v e body)))
    (rule '?x {:s [(sub (return ?x))]})))
