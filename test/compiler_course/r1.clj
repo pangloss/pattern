@@ -675,7 +675,9 @@
                           (rule '(?x ?->a)                (list (name x) " " a))
                           (rule '(?x ?->a ?->b)           (list (name x) " " a ", " b)))))))
 
-(defn stringify [p]
+(defn stringify
+  {:=>/from 'Patched+}
+  [p]
   (stringify* p))
 
 ;; Turn the list of strings into one big string

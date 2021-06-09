@@ -2,7 +2,8 @@
   (:require [clojure.set :as set]
             [fermor.core :as f :refer [build-graph add-edges add-vertices both-e forked]]
             [fermor.core :as g]
-            [matches :refer [on-subexpressions rule rule-list sub matcher compile-pattern success]]))
+            [matches :refer [on-subexpressions rule rule-list sub matcher compile-pattern success
+                             dialects =>]]))
 
 (def registers '[rbx rcx rdx rsi rdi r8 r9 r10 r11 r12 r13 r14])
 (def register-indices (into {} (map vector registers (range 20))))
@@ -21,27 +22,28 @@
 (def liveness*
   "Capture currently-live variables in :live plus aggregate (as a collection of
   edge pairs) both interference in :i and the move graph in :m"
-  (comp first
-        (rule-list
-         (rule '((? _ ~move-instr?) (v ?a) (v ?d))
-               (let [live (-> (:live %env)
-                              (disj d)
-                              (conj a))]
-                 (-> %env
-                     (assoc :live live)
-                     (update :i concat (map vector (repeat d) (disj live a d)))
-                     (update :m conj [a d]))))
-         (rule '((? _ ~move-instr?) ?_ (v ?d))
-               (-> %env
-                   (update :live disj d)
-                   (update :i concat (map vector (repeat d) (disj (:live %env) d)))))
-         (rule '(callq ?label)
-               ;; A call to collect interferes with heap pointers in all registers
-               (success
+  (dialects
+   (=> Selected nil)
+   (comp first
+         (rule-list
+          (rule '((? _ ~move-instr?) (v ?v:a) (v ?v:d))
+                (let [live (-> (:live %env)
+                               (disj d)
+                               (conj a))]
+                  (-> %env
+                      (assoc :live live)
+                      (update :i concat (map vector (repeat d) (disj live a d)))
+                      (update :m conj [a d]))))
+          (rule '((? _ ~move-instr?) ?_ (v ?v:d))
+                (-> %env
+                    (update :live disj d)
+                    (update :i concat (map vector (repeat d) (disj (:live %env) d)))))
+          (rule '(callq ?lbl)
+                ;; A call to collect interferes with heap pointers in all registers
                 (let [regs caller-saved-registers
                       all-regs (map #(sub (reg ~%))
                                     (concat regs
-                                            (when (= 'collect label)
+                                            (when (= 'collect lbl)
                                               callee-saved-registers)))
                       regs (map #(sub (reg ~%)) regs)
                       edges (for [v (:live %env)
@@ -50,24 +52,26 @@
                                                regs)]
                                   reg regs]
                               [v reg])]
-                  (update %env :i concat edges))))
-         (rule '((? _ ~move-instr?) (v ?a) ?_)
-               (update %env :live conj a))
-         (rule '((? _ ~read-instr?) (v ?a) (v ?d))
-               (update %env :live conj a d))
-         (rule '((? _ ~read-instr?) ?_ (v ?a))
-               (update %env :live conj a))
-         (rule '((? _ ~read-instr?) (v ?a) ?_)
-               (update %env :live conj a))
-         (rule '((? _ ~read-instr?) (v ?a))
-               (update %env :live conj a)))))
+                  (update %env :i concat edges)))
+          (rule '((? _ ~move-instr?) (v ?v:a) ?_)
+                (update %env :live conj a))
+          (rule '((? _ ~read-instr?) (v ?v:a) (v ?v:d))
+                (update %env :live conj a d))
+          (rule '((? _ ~read-instr?) ?_ (v ?v:a))
+                (update %env :live conj a))
+          (rule '((? _ ~read-instr?) (v ?v:a) ?_)
+                (update %env :live conj a))
+          (rule '((? _ ~read-instr?) (v ?v:a))
+                (update %env :live conj a))))))
 
 (def control-flow
-  (rule-list
-   (rule '(block ?label ?vars ??i* (jump ?a ?then) (jump ?b ?else))
-         (sub [[?label ?then]
-               [?label ?else]]))
-   (rule '?_ [])))
+  (dialects
+   (=> Selected nil)
+   (rule-list
+    (rule '(block ?lbl ?vars ??stmt* (jump ?a ?then) (jump ?b ?else))
+          (sub [[?lbl ?then]
+                [?lbl ?else]]))
+    (rule '?_ []))))
 
 (defn block-liveness
   "In the book this is both 'uncover-live' and 'build-inter' plus the bonus
@@ -122,23 +126,27 @@
 (def program-liveness*
   "In the book this is both 'uncover-live' and 'build-inter' plus the bonus
   exercise of building the move graph."
-  (rule '(program ?var-types ?blocks)
-        (let [edges (mapcat control-flow (vals blocks))
-              main (-> (build-graph)
-                       (add-edges :to edges)
-                       forked
-                       (g/get-vertex 'start))
-              main (block-liveness main
-                                   {:i [] :m [] :steps () :live #{} :types var-types}
-                                   (atom {})
-                                   blocks)
-              liveness (assoc (:blocks main) 'start (dissoc main :blocks))]
-          (reduce-kv (fn [liveness label block]
-                       (assoc-in liveness [label :block] block))
-                  liveness
-                  blocks))))
+  (dialects
+   (=> Selected nil)
+   (rule '(program ?var-types ?blocks)
+         (let [edges (mapcat control-flow (vals blocks))
+               main (-> (build-graph)
+                        (add-edges :to edges)
+                        forked
+                        (g/get-vertex 'start))
+               main (block-liveness main
+                                    {:i [] :m [] :steps () :live #{} :types var-types}
+                                    (atom {})
+                                    blocks)
+               liveness (assoc (:blocks main) 'start (dissoc main :blocks))]
+           (reduce-kv (fn [liveness label block]
+                        (assoc-in liveness [label :block] block))
+                      liveness
+                      blocks)))))
 
-(defn liveness [p]
+(defn liveness
+  {:=>/from 'Selected}
+  [p]
   (program-liveness* p))
 
 (defn to-graph [liveness]
