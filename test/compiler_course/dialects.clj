@@ -1,9 +1,9 @@
 (ns compiler-course.dialects
   (:require [matches.nanopass.dialect :as d
-             :refer [=> ==> ===> define-dialect derive-dialect unparse-dialect
-                     validate valid?]
-             :rename {define-dialect def-dialect
-                      derive-dialect def-derived}]))
+             :refer [=> ==> ===> def-dialect def-derived unparse-dialect
+                     validate valid?]]
+            [matches.types :refer [ok]]
+            [matches :refer [matcher]]))
 
 (def cmp? #{'eq? '< '<= '> '>=})
 
@@ -15,7 +15,11 @@
              [v symbol?]
              [b boolean?]
              [cmp `cmp?])
-  (Type [type] Integer Boolean (Vector ??type) Void)
+  (Type [type :enforce]
+        (?:letrec [simple (| Integer Boolean Void)
+                   compound (Vector (?:* (| $simple $compound)))]
+                  (| $simple
+                     $compound)))
   (Exp [e]
        ?i ?v ?b
        (read)
@@ -94,7 +98,6 @@
        (collect ?i)
        (allocate ?i ?type))
   (Stmt [stmt]
-        ?e
         (assign ?v ?e))
   (Tail [tail]
         (if ?pred (goto ?lbl:then) (goto ?lbl:else))
