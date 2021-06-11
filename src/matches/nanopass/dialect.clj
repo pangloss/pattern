@@ -155,6 +155,7 @@
       ;; dialect finalization to incorporate it.
       (assoc fe :maybe-is-form expr))))
 
+;; FIXME: when finalizing Simplified Exp, there is not atm predicator
 (defn finalize-expr [expr predicators]
   (reduce (fn [expr [k f]]
             (if f
@@ -361,6 +362,11 @@
                                    (finalize-form dialect form (dialect-predicators dialect))))
                           {} forms)))
         tas (terminal-abbrs dialect)
+        ;; FIXME: why finalize all of the forms and then do this? Finalize them in topo order and
+        ;; add predicators as I go. Topo order should include possible preds within expressions (at least
+        ;; if they are marked :explicit.
+        ;; FIXME: enforce topo order (no cycles) for any forms that have the
+        ;; :enforce flag including all expr pattern attrs.
         dialect (add-is-form-predicates dialect)
         dialect (compile-metadata-patterns dialect)
         dialect (assoc dialect :predicators (dialect-predicators dialect))
