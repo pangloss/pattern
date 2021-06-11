@@ -81,7 +81,7 @@
 
 (def add-types
   (dialects
-   (=> Shrunk Shrunk)
+   (=> Shrunk Typed)
    (letfn [(get-type [e]
              (or (meta e) {::type (tag e)}))]
      (directed
@@ -130,7 +130,7 @@
 
 (def expose-allocation
   (dialects
-   (=> Shrunk Alloc)
+   (=> Typed Alloc)
    (rule-simplifier
     (rule '(vector ??e*)
           (let [t (::type (m!))]
@@ -301,8 +301,8 @@
                 (x-assign v e body)))
         (rule '(??items)
               (pred-block %env #(sub [(if (??items) (goto ~%1) (goto ~%2))])))
-        (rule '?x
-              (x-pred (sub (eq? ?x true)) (:then %env) (:else %env)))))]
+        (rule '?other
+              (x-pred (sub (eq? ?other true)) (:then %env) (:else %env)))))]
   (defn x-pred [exp then else]
     (first (x-pred* exp {:then then :else else}))))
 
@@ -317,7 +317,7 @@
     (rule '((?:= let) ([?v ?e]) ?body)
           (let [body (x-tail body)]
             (x-assign v e body)))
-    (rule '?x {:s [(sub (return ?x))]}))))
+    (rule '?other {:s [(sub (return ?other))]}))))
 
 (defn explicate-control
   {:=>/from 'Simplified :=>/to 'Explicit}

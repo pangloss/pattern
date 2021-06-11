@@ -34,13 +34,16 @@
 
 (def-derived Shrunk R1
   (terminals - [cmp `cmp?])
-  (Exp [e {:compiler-course.r1/type ?type}]
+  (Exp [e]
        - (- ?e0 ?e1)
        - (?cmp ?e0 ?e1)
        + (< ?e0 ?e1)
        + (eq? ?e0 ?e1)
        - (and ?e0 ?e1)
        - (or ?e0 ?e1)))
+
+(def-derived Typed Shrunk ;; dead end dialect :)
+  (Exp [e {:compiler-course.r1/type ?type}]))
 
 (def-derived Alloc Shrunk
   (terminals + [name symbol?])

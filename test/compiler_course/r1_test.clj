@@ -14,7 +14,7 @@
              [#'identity #'d/R1
               #'uniqify #'d/R1
               #'shrink #'d/Shrunk
-              #'add-types [#'d/Shrunk #'shrunk-typed?]
+              #'add-types #'d/Typed
               #'expose-allocation #'d/Alloc
               #'remove-complex-opera* #'d/Simplified
               #'explicate-control #'d/Explicit
@@ -36,16 +36,15 @@
           [dialect valid2?] (if (vector? dialect)
                               dialect [dialect (constantly ok)])
           results (conj results [pass (:name dialect) result])
-          v (when-not (:error result) (validate @dialect result))
-          v2 (when-not (:error result) (valid2? result))]
-      (if (and (ok? v) (ok? v2))
+          v (when-not (:error result) (validate @dialect result))]
+      (if (and (ok? v))
         (if more
           (recur result more results)
           (let [s (stringify result)]
             (if (valid-asm? s)
               v
               s)))
-        (conj results v v2)))))
+        (conj results v)))))
 
 (def iffy-program
   '(let ([x 1])
