@@ -481,12 +481,11 @@
                         (vals (:terminals dialect))))
     ~@(when (:enter dialect)
         [`(~'enter ~(:enter dialect))])
-    ~@(map (fn [{:keys [name abbr exprs flags has-metadata]}]
-             (let [etc (remove nil? (cons has-metadata (seq flags)))]
+    ~@(map (fn [{:keys [name abbr exprs flags metadata-pattern]}]
+             (let [etc (remove nil? (cons metadata-pattern (seq flags)))]
                `(~name [~abbr ~@etc]
                  ~@(map :orig-expr exprs))))
            (vals (:forms dialect)))))
-
 
 (defn ^:no-doc run-derive-dialect [name parent-dialect decls]
   (let [parent-dialect (resolve* parent-dialect)
