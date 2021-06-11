@@ -3,7 +3,7 @@
                                                   caller-saved-registers callee-saved-registers
                                                   var-locations with-allocated-registers]]
             [compiler-course.dialects :refer [r1-keyword?]]
-            [matches.nanopass.dialect :refer [all-dialects =>:to]]
+            [matches.nanopass.dialect :refer [all-dialects =>:to show-parse]]
             [matches :refer [descend directed on-subexpressions rule rule-list rule-list!
                              sub success subm rule-simplifier matcher
                              => dialects validate ok ok?]]
@@ -22,21 +22,44 @@
 
 (def uniqify*
   (dialects
-   (=> R1 R1)
-   (directed (rule-list [(rule '((?:= let) ([?v:x ?e]) ?e:body)
+   (=> R1 R1Fun)
+   (directed (rule-list [(rule '(define (?v [?v* ?type*] ...) ?type ?e)
+                               (let [[v'* env] (reduce (fn [[v'* env] x]
+                                                         (let [x' (gennice x)]
+                                                           [(conj v'* x') (assoc-in env [:vars x] x')]))
+                                                       [[] %env]
+                                                       v*)
+                                     e (in e env)]
+                                 (sub (define (?v [?v'* ?type*] ...) ?type ?e))))
+                         (rule '((?:= let) ([?v:x ?e]) ?e:body)
                                (let [x' (gennice x)
                                      env (assoc-in %env [:vars x] x')]
                                  (sub (let ([?x' ~(in e env)])
                                         ~(in body env)))))
-                         (rule '(if ?->e ?->e:then ?->e:else) (success))
-                         (rule '(?v ??->e:args) (success))
+                         (rule '(if ?->e ?->e:then ?->e:else))
+                         (rule '(?->e:f ??->e:args))
                          (rule '?v (get-in %env [:vars v]))]))))
 
+(def uniqify-and-shrink-rfun*
+  (rule '[(define (?v ??argdef*) ??more) ... ?e]
+        (let [[defs env] (reduce (fn [[defs env] [v argdef* more]]
+                                   (let [v' (gennice v)]
+                                     [(conj defs (sub (define (?v' ??argdef*) ??more)))
+                                      (assoc-in env [:vars v] v')]))
+                                 [[] {}] (map vector v argdef* more))
+              defs (mapv #(first (uniqify* % env)) defs)
+              main (first (uniqify* (sub (define (main) Integer ?e)) env))
+              defs (conj defs main)]
+          (sub (program ??defs)))))
+
 (defn uniqify
-  {:=>/from 'R1 :=>/to 'R1}
+  {:=>/from 'R1 :=>/to 'R1Fun}
   [p]
   (reset! niceid 0)
-  (uniqify* p))
+  (uniqify-and-shrink-rfun* p))
+
+(comment
+  (uniqify '[(define (a [x Integer]) Integer 123) (a 1)]))
 
 ;; Shrink the number of instructions we need to support (by expanding to equivalent expressions)
 
@@ -55,26 +78,45 @@
 
 (def shrink
   (dialects
-   (=> R1 Shrunk)
+   (=> R1Fun Shrunk)
    (let [preserve-order (fn [n a b expr]
                           (let [t (gennice n)]
                             (sub (let ([?t ?a])
                                    ~(expr t)))))]
-     (on-subexpressions
-      (rule-list (rule '(eq? ?same ?same)
-                       (when (immutable-expr? same)
-                         true))
-                 (rule '(- ?e:a ?e:b) (sub (+ ?a (- ?b))))
-                 (rule '(or ?e:a ?e:b) (sub (if ?a true ?b)))
-                 (rule '(and ?e:a ?e:b) (sub (if ?a (if ?b true false) false)))
-                 (rule '(if ?e:exp ?same ?same)
-                       (when (and (immutable-expr? exp)
-                                  (immutable-expr? same))
-                         (success same)))
-                 ;; < is our canonical choice, so alter <= > >=
-                 (rule '(<= ?e:a ?e:b) (preserve-order 'le a b #(sub (not (< ?b ~%)))))
-                 (rule '(> ?e:a ?e:b) (preserve-order 'gt a b #(sub (< ?b ~%))))
-                 (rule '(>= ?e:a ?e:b) (sub (not (< ?a ?b)))))))))
+     (directed
+      (rule-list
+       (rule '(program ??->define))
+       (rule '(define ?form ?type ?->e:body))
+       (rule '(eq? ?->same ?->same)
+             (if (immutable-expr? same)
+               true
+               (sub (eq? ?same ?same))))
+       (rule '(- ?->e:a ?->e:b) (sub (+ ?a (- ?b))))
+       (rule '(or ?->e:a ?->e:b) (sub (if ?a true ?b)))
+       (rule '(and ?->e:a ?->e:b) (sub (if ?a (if ?b true false) false)))
+       (rule '(if ?->e:exp ?->same ?->same)
+             (if (and (immutable-expr? exp)
+                      (immutable-expr? same))
+               (success same)
+               (sub (if ?exp ?same ?same))))
+       ;; < is our canonical choice, so alter <= > >=
+       (rule '(<= ?->e:a ?->e:b)
+             (preserve-order 'le a b #(sub (not (< ?b ~%)))))
+       (rule '(> ?->e:a ?->e:b)
+             (preserve-order 'gt a b #(sub (< ?b ~%))))
+       (rule '(>= ?->e:a ?->e:b)
+             (sub (not (< ?a ?b))))
+       (rule '(| (read)
+                 (- ?->e) (+ ?->e0 ?->e1)
+                 (not ?->e)
+                 (?cmp ?->e0 ?->e1)
+                 ((?:= let) ([?v ?->e]) ?->e:body)
+                 (vector ??->e*) (vector-length ?->e)
+                 (vector-ref ?->e ?i) (vector-set! ?->e0 ?i ?->e1)
+                 (void)))
+       (rule '(?->e:f ??->e:args)
+             ;;(when-not (r1-keyword? f)
+             (sub (call (funref ?f) ??args))))))))
 
 ;; Add type metadata to everything possible
 

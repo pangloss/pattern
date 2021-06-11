@@ -310,7 +310,9 @@
                                       dict dict))
         validator
         (on-mutual
-         (:last-form dialect)
+         (if-let [e (:entry dialect)]
+           (get-in dialect [:forms e :name])
+           (:last-form dialect))
          (into {}
                (for [form (vals (:forms dialect))
                      :let [has-meta (:match-metadata form)]]
@@ -437,9 +439,7 @@
   (update dialect :forms dissoc name))
 
 (defn- set-entry [dialect name]
-  (if (:entry dialect)
-    (throw (ex-info "Only one program entry point is allowed" {:entry name}))
-    (assoc dialect :entry name)))
+  (assoc dialect :entry name))
 
 (def ^:private derive-dialect*
   (with-predicates {'dialect map?

@@ -33,8 +33,9 @@
        (vector-ref ?e ?i) (vector-set! ?e0 ?i ?e1)
        (void)
        (& (?e:f ??e:args) (? _ seq?))) ;; FIXME: this list should not unify with a vector... but it does if I don't add the (? _ seq?) rule.
+  (ArgDef [argdef] [?v ?type])
   (Define [define]
-    (define (?v:name (?:* [?v* ?type*])) ?type ?e))
+    (define (?v:name ??argdef*) ?type ?e))
   (Program [p]
            ;; Programs have mulitple top-level forms, so just contain them in a vector
            ?e
@@ -42,18 +43,10 @@
   (entry Program))
 
 (def-derived R1Fun R1
-  (Program [p]
-           - [??define ?e]
-           - ?e
-           + (program ??define*)))
+  - Program
+  (Program [p] (program ??define*)))
 
-(def-derived RFunRef R1Fun
-  (Exp [e]
-       - (& (?e:f ??e:args) (? _ seq?))
-       + (call (funref ?e:f) ??e:args)
-       + (funref ?v)))
-
-(def-derived Shrunk RFunRef
+(def-derived Shrunk R1Fun
   (terminals - [cmp `cmp?])
   (Exp [e]
        - (- ?e0 ?e1)
@@ -61,7 +54,10 @@
        + (< ?e0 ?e1)
        + (eq? ?e0 ?e1)
        - (and ?e0 ?e1)
-       - (or ?e0 ?e1)))
+       - (or ?e0 ?e1)
+       - (& (?e:f ??e:args) (? _ seq?))
+       + (call (funref ?e:f) ??e:args)
+       + (funref ?v)))
 
 (def-derived Typed Shrunk ;; dead end dialect :)
   (Exp [e {:compiler-course.r1/type ?type}]))
@@ -135,8 +131,9 @@
         (return ?e))
   (Block [block]
          (block ?lbl [??v*] ??stmt* ?tail))
+  (ArgDef [argdef] [?v ?type])
   (Define [d]
-    (define ?lbl [?v* ?type*] ... ?type
+    (define ?lbl [??argdef] ?type
       ;; the book specifies an undefined ?info here, too...
       (?:+map ?lbl* ?block*)))
   (Program [program]
@@ -189,6 +186,7 @@
   (Block [block]
          (block ?lbl [??v*] ??stmt* ?tail))
   (Define [define]
+    ;; argdefs go away?
     (define ?lbl ?type (?:*map ?lbl* ?block*)))
   (Program [program]
            (program (?:*map ?v ?type) (?:+map ?lbl* ?define*)))
