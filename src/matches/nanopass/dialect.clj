@@ -286,23 +286,27 @@
                                               :form-name name}))
                              {} (vals (:forms dialect)))
         terminals (vals (:terminals dialect))
+        terminals (when terminals (zipmap (map :abbr terminals) terminals))
         terminal? (if terminals
-                    (apply some-fn (map :predicate terminals))
+                    (fn [abbr v]
+                      (when-let [{:keys [predicate]} (terminals abbr)]
+                        (predicate v)))
                     (constantly false))
         ok (->Ok)
         ;; TODO: how do I deal with matchers that are just normal loose
         ;; matchers, not binding any particular language form?
         remove-terminals (fn [raw dict]
                            (reduce-kv (fn [dict k v]
-                                        (if (= '? (:type (raw k)))
-                                          (if (terminal? v)
-                                            (assoc dict k ok)
-                                            dict)
-                                          (assoc dict k
-                                                 (if (every? #(or (= ok %) (terminal? %))
-                                                             v)
-                                                   ok
-                                                   v))))
+                                        (let [abbr (:abbr (raw k))]
+                                          (if (= '? (:type (raw k)))
+                                            (if (terminal? abbr v)
+                                              (assoc dict k ok)
+                                              dict)
+                                            (assoc dict k
+                                                   (if (every? #(or (= ok %) (terminal? abbr %))
+                                                               v)
+                                                     ok
+                                                     v)))))
                                       dict dict))
         validator
         (on-mutual
@@ -321,35 +325,47 @@
                                  (if (= '? t)
                                    (fn [env raw dict]
                                      ;; For ?e exprs, let the rule fall through if not success
-                                     (let [dict (remove-terminals raw dict)]
-                                       (when (every? #{ok} (vals dict))
-                                         ok)))
+                                     (if (:raw env)
+                                       (merge {:orig (:orig-expr expr)}
+                                              dict)
+                                       (let [dict (remove-terminals raw dict)]
+                                         (when (every? #{ok} (vals dict))
+                                           ok))))
                                    (fn [env raw dict]
-                                     (let [dict (remove-terminals raw dict)]
-                                       (if (every? #{ok} (vals dict))
-                                         ok
-                                         (merge {:fail (:orig-expr expr)}
-                                                dict
-                                                {:meta (reduce-kv (fn [m k v]
-                                                                    (if (ok? v)
-                                                                      m
-                                                                      (assoc m k (meta v))))
-                                                                  {} dict)})))))
+                                     (if (:raw env)
+                                       (merge {:orig (:orig-expr expr)}
+                                              dict
+                                              {:meta (reduce-kv (fn [m k v]
+                                                                  (assoc m k (meta v)))
+                                                                {} dict)})
+                                       (let [dict (remove-terminals raw dict)]
+                                         (if (every? #{ok} (vals dict))
+                                           ok
+                                           (merge {:fail (:orig-expr expr)}
+                                                  dict
+                                                  {:meta (reduce-kv (fn [m k v]
+                                                                      (if (ok? v)
+                                                                        m
+                                                                        (assoc m k (meta v))))
+                                                                    {} dict)}))))))
                                  (fn [x]
                                    ;; give the handler both the raw matches and the processed version for now
                                    (let [f (symbol-dict x)]
                                      (fn [m] [m (f m)])))
                                  {}))))])))]
     (with-meta
-      (fn dialect-checker [expr]
-        (let [result (validator expr)
-              result (if (= expr result)
-                       {:fail (:name dialect) :expr expr :meta (meta expr)}
-                       result)]
-          (if (map? result)
-            (merge {:dialect (:name dialect)}
-                   result)
-            result)))
+      (fn dialect-checker
+        ([expr]
+         (dialect-checker expr {}))
+        ([expr env]
+         (let [result (first (validator expr env))
+               result (if (= expr result)
+                        {:fail (:name dialect) :expr expr :meta (meta expr)}
+                        result)]
+           (if (map? result)
+             (merge {:dialect (:name dialect)}
+                    result)
+             result))))
       (meta validator))))
 
 (defn finalize-dialect [dialect]
@@ -636,3 +652,6 @@
 
 (defn valid? [dialect expr]
   ((:valid? dialect) expr))
+
+(defn show-parse [dialect expr]
+  ((:validate dialect) expr {:raw true}))

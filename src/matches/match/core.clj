@@ -212,7 +212,7 @@
 (def re-prefix-name #"(\w[^:]*):(\w.*)")
 
 (defgen matcher-prefix [matcher-form?] [var]
-  (let [n (name (nth var 1))
+  (let [n (name (nth var 1 ""))
         [_ prefix] (re-matches re-prefix-name n)]
     prefix))
 
@@ -314,28 +314,30 @@
       (when (not= ::none val)
         (assoc r :value val)))))
 
-(defn extend-dict [name value type dict env]
+(defn extend-dict [name value type abbr dict env]
   (let [name (var-key name env)]
     (if (or (nil? name) (= '_ name))
       dict
-      (assoc dict name {:name name :value value :type type}))))
+      (assoc dict name {:name name :value value :type type :abbr abbr}))))
 
 (defn sequence-extend-dict
   "Special version of extend-dict installed in the env when processing a sequence."
-  [name value type dict env]
+  [name value type abbr dict env]
   (let [name (var-key name env)]
     (if (or (nil? name) (= '_ name))
       dict
       (letfn [(add-to-var [m]
                 (if m
-                  (update m :value
-                          (fn [v]
-                            (if (and (seqable? (:value m))
-                                     (= (count (:value m))
-                                        (.repetition env)))
-                              (conj v value)
-                              v)))
-                  {:name name :value [value] :type type}))]
+                  (-> m
+                      (update :value
+                              (fn [v]
+                                (if (and (seqable? (:value m))
+                                         (= (count (:value m))
+                                            (.repetition env)))
+                                  (conj v value)
+                                  v)))
+                      (assoc :abbr abbr))
+                  {:name name :value [value] :type type :abbr abbr}))]
         (update dict name add-to-var)))))
 
 (defn all-names [match-procedure]

@@ -60,8 +60,9 @@
 (defn var-abbr [prefix n]
   (if prefix
     (symbol prefix)
-    (when-let [[_ abbr :as x] (re-matches #"[^?\w]*(\w+?)[*+0123456789]*" (name n))]
-      (symbol abbr))))
+    (when n
+      (when-let [[_ abbr :as x] (re-matches #"[^?\w]*(\w+?)[*+0123456789]*" (name n))]
+        (symbol abbr)))))
 
 (defn make-abbr-predicator
   "Create a function that when applied to a pattern, will add the given

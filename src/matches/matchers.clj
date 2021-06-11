@@ -161,7 +161,9 @@
   "
   [variable comp-env]
   (let [[sat-mode sat?] (var-restriction variable comp-env)
-        name (var-name variable)]
+        name (var-name variable)
+        prefix (matcher-prefix variable)
+        abbr (var-abbr prefix name)]
     (with-meta
       (fn element-matcher [data dictionary ^Env env]
         (if (seq data)
@@ -171,19 +173,16 @@
                 (if (= v datum)
                   ((.succeed env) dictionary 1)
                   (on-failure :mismatch variable dictionary env 1 data datum))
-                ((.succeed env) ((.store env) name datum '? dictionary env) 1))
+                ((.succeed env) ((.store env) name datum '? abbr dictionary env) 1))
               (on-failure :unsat variable dictionary env 1 data datum)))
           (on-failure :missing variable dictionary env 0 data nil)))
       (if (or (nil? name) (= '_ name))
         {:length (len 1)}
-        (let [prefix (matcher-prefix variable)
-              abbr (var-abbr prefix name)]
-          {:var-names [name]
-           :var-modes {name (matcher-mode variable)}
-           :var-prefixes {name (if prefix [prefix] [])}
-           :var-abbrs {name (if abbr [abbr] [])}
-           :length (len 1)})))))
-
+        {:var-names [name]
+         :var-modes {name (matcher-mode variable)}
+         :var-prefixes {name (if prefix [prefix] [])}
+         :var-abbrs {name (if abbr [abbr] [])}
+         :length (len 1)}))))
 
 (defn- segment-equal? [orig-data value ok pattern dictionary env]
   (if (seqable? value)
@@ -220,6 +219,8 @@
         force-greedy (not (:v reserve-min-tail)) ;; no later list matchers are variable-sized.
         reserved-tail (or (:n reserve-min-tail) 0)
         name (var-name variable)
+        prefix (matcher-prefix variable)
+        abbr (var-abbr prefix name)
         [loop-start loop-continue? loop-next update-datum]
         (if (or force-greedy (matcher-mode? variable "!"))
           [identity (fn [i n] (<= 0 i)) dec
@@ -240,17 +241,15 @@
             (loop [i (loop-start n) datum (vec (take i data))]
               (when (loop-continue? i n)
                 (or (and (sat? dictionary datum)
-                         ((.succeed env) ((.store env) name datum '?? dictionary env) i))
+                         ((.succeed env) ((.store env) name datum '?? abbr dictionary env) i))
                     (recur (loop-next i) (update-datum datum data n))))))))
       (if (or (nil? name) (= '_ name))
         {:length (var-len 0)}
-        (let [prefix (matcher-prefix variable)
-              abbr (var-abbr prefix name)]
-          {:var-names [name]
-           :var-modes {name (matcher-mode variable)}
-           :var-prefixes {name (if prefix [prefix] [])}
-           :var-abbrs {name (if abbr [abbr] [])}
-           :length (var-len 0)})))))
+        {:var-names [name]
+         :var-modes {name (matcher-mode variable)}
+         :var-prefixes {name (if prefix [prefix] [])}
+         :var-abbrs {name (if abbr [abbr] [])}
+         :length (var-len 0)}))))
 
 
 (defn- match-as
