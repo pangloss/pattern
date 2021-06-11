@@ -16,7 +16,7 @@
             [genera :refer [defgenera defgen]]
             matches.matchers
             [clojure.walk :as walk])
-  (:import clojure.lang.IObj))
+  (:import (clojure.lang IObj IMeta)))
 
 (defonce dialect-tree (atom (make-hierarchy)))
 (defonce all-dialects (atom {}))
@@ -253,6 +253,37 @@
             dialect
             exprs-with-form-predicates)))
 
+(defn- compile-metadata-patterns [{:keys [predicators forms] :as dialect}]
+  (let [predmap (zipmap (map :abbr predicators) predicators)
+        predmap (merge (into {} (map (fn [{:keys [abbr form?]}]
+                                       [abbr (make-abbr-predicator abbr form?)])
+                                     (vals forms)))
+                       predmap)
+        preds (vals predmap)]
+    (reduce (fn [dialect [name {:keys [metadata-pattern abbr] :as form}]]
+              (if metadata-pattern
+                (let [pattern `(?:map ~@(apply concat metadata-pattern))
+                      pattern (apply-replacements pattern preds)]
+                  (assoc-in dialect [:forms name :match-metadata]
+                            (compile-pattern pattern)))
+                dialect))
+            dialect
+            forms)))
+
+(defn meta? [x]
+  (instance? IMeta x))
+
+(defn not-meta? [x]
+  (not (meta? x)))
+
+(defn expr-matcher-with-meta [matcher match-meta]
+  (if match-meta
+    (compile-pattern `(& ~matcher
+                         (?:all-fresh
+                          (| (? _ ~not-meta?)
+                             (?:chain ?_ meta ~match-meta)))))
+    matcher))
+
 
 (defn make-checker [dialect]
   (let [form-abbrs (set (map :abbr (vals (:forms dialect))))
@@ -283,7 +314,8 @@
         (on-mutual
          (:last-form dialect)
          (into {}
-               (for [form (vals (:forms dialect))]
+               (for [form (vals (:forms dialect))
+                     :let [has-meta (:match-metadata form)]]
                  [(:name form)
                   (directed
                    {:descend {:abbr form-abbrs}
@@ -291,7 +323,7 @@
                    (rule-list
                     (for [expr (:exprs form)
                           :let [t (matcher-type-for-dispatch (:expr expr))]]
-                      (make-rule (:match expr)
+                      (make-rule (expr-matcher-with-meta (:match expr) has-meta)
                                  (if (= '? t)
                                    (fn [env raw dict]
                                      ;; For ?e exprs, let the rule fall through if not success
@@ -318,7 +350,7 @@
       (fn dialect-checker [expr]
         (let [result (validator expr)
               result (if (= expr result)
-                       {:fail (:name dialect) :expr expr}
+                       {:fail (:name dialect) :expr expr :meta (meta expr)}
                        result)]
           (if (map? result)
             (merge {:dialect (:name dialect)}
@@ -337,6 +369,7 @@
                           {} forms)))
         tas (terminal-abbrs dialect)
         dialect (add-is-form-predicates dialect)
+        dialect (compile-metadata-patterns dialect)
         dialect (assoc dialect :predicators (dialect-predicators dialect))
         _ (when-let [abbr (some tas (map :abbr (vals (:forms dialect))))]
             (throw (ex-info "The same abbr is used for both a terminal and a form" {:abbr abbr})))
@@ -369,7 +402,7 @@
                               (= full-name (get (meta x) ::form)))
                      :abbr abbr
                      :flags (set flags)
-                     :has-metadata metadata
+                     :metadata-pattern metadata
                      :symbol? (match-abbr abbr)})]
     (-> dialect
         (assoc-in [:forms form-name]
@@ -455,9 +488,10 @@
                         (vals (:terminals dialect))))
     ~@(when (:enter dialect)
         [`(~'enter ~(:enter dialect))])
-    ~@(map (fn [{:keys [name abbr exprs]}]
-             `(~name [~abbr]
-               ~@(map :orig-expr exprs)))
+    ~@(map (fn [{:keys [name abbr exprs flags has-metadata]}]
+             (let [etc (remove nil? (cons has-metadata (seq flags)))]
+               `(~name [~abbr ~@etc]
+                 ~@(map :orig-expr exprs))))
            (vals (:forms dialect)))))
 
 

@@ -32,10 +32,9 @@
        (vector-ref ?e ?i) (vector-set! ?e0 ?i ?e1)
        (void) (has-type ?e ?type)))
 
-
 (def-derived Shrunk R1
   (terminals - [cmp `cmp?])
-  (Exp [e]
+  (Exp [e {:compiler-course.r1/type ?type}]
        - (- ?e0 ?e1)
        - (?cmp ?e0 ?e1)
        + (< ?e0 ?e1)
