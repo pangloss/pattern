@@ -420,7 +420,7 @@
 (defmethod compile-pattern* :default [pattern comp-env]
   (throw (ex-info "Unknown matcher type" {:pattern pattern})))
 
-(defn- new-env
+(defn new-env
   [succeed]
   (map->Env {:succeed succeed
              :var-path {}
