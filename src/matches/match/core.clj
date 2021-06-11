@@ -156,6 +156,7 @@
 (defgen= matcher-type [simple-ref?] '?:ref)
 (defgen= matcher-type [compiled-matcher?] :compiled-matcher)
 (defgen= matcher-type [compiled*-matcher?] :compiled*-matcher)
+(defgen= matcher-type [fn?] :plain-function)
 
 (defgenera= matcher-mode 1
   "Return the mode portion of the matcher, which is a string of any

@@ -70,6 +70,12 @@
   [m comp-env]
   m)
 
+(defn- match-plain-function
+  "If a plain function is inserted into a pattern, treat it as the function in
+  an anonymous matcher with a restriction function."
+  [f comp-env]
+  (compile-pattern* (list '? '_ f) comp-env))
+
 
 (defn- match-list
   "Match a list or vector. If the first symbol with in the list is ?:seq, allows
@@ -901,6 +907,7 @@
 (register-matcher '?:= match-literal {:aliases ['?:literal]})
 (register-matcher :compiled-matcher match-compiled)
 (register-matcher :compiled*-matcher match-compiled*)
+(register-matcher :plain-function #'match-plain-function)
 (register-matcher '? #'match-element {:named? true})
 (register-matcher '?? #'match-segment {:named? true})
 (register-matcher '?:map match-map)
