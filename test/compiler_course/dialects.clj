@@ -53,8 +53,12 @@
        + (allocate ?i ?type)
        + (global-value ?name)))
 
+;; FIXME: for some reason setting ?atm to be enforced causes downstream tests to fail. Not sure why...
+;; - It doesn't change the output of the simplified pass
+;; - the failing data seems valid, but the data doesn't validate.
+;; - perhaps this is a bug within the checker?
 (def-derived Simplified Alloc
-  (Atom [atm]
+  (Atom [atm #_:enforce]
         (read)
         ?i ?v ?b)
   - Exp
@@ -81,14 +85,15 @@
   (terminals + [lbl symbol?])
   - Exp
   - NotExp
-  (Pred [pred]
+  (Pred [pred :enforce]
         ?b
+        ?v
         (not ?pred)
         (< ?atm0 ?atm1)
         (eq? ?atm0 ?atm1)
         (vector-ref ?v ?i)
         (if ?pred (goto ?lbl:then) (goto ?lbl:else)))
-  (Atom [atm]
+  (Atom [atm :enforce]
         + (void)
         + (global-value ?name))
   (Exp [e]
@@ -107,7 +112,8 @@
   (Block [block]
          (block ?lbl [??v*] ??stmt* ?tail))
   (Program [program]
-           (program [??v*] (?:+map ?lbl* ?block*))))
+           (program [??v*] (?:+map ?lbl* ?block*)))
+  (entry Program))
 
 (def-derived Uncovered Explicit
   - Program
@@ -121,8 +127,8 @@
              [v symbol?]
              [i int?]
              [jc `jmp-cond])
-  (Type [type] Integer Boolean (Vector ??type) Void)
-  (ByteReg [bytereg] (byte-reg (| ah al bh bl ch cl dh dl)))
+  (Type [type :enforce] Integer Boolean (Vector ??type) Void)
+  (ByteReg [bytereg :enforce] (byte-reg (| ah al bh bl ch cl dh dl)))
   (Arg [arg]
        (reg (| rax r11 r15 rsi rdi))
        (int ?i)
@@ -151,12 +157,13 @@
   (Block [block]
          (block ?lbl [??v*] ??stmt* ?tail))
   (Program [program]
-           (program (?:*map ?v ?type) (?:+map ?lbl* ?block*))))
+           (program (?:*map ?v ?type) (?:+map ?lbl* ?block*)))
+  (entry Program))
 
 
 (def-derived RegAllocated Selected
-  (Caller [caller] (reg (| rax rcx rdx rsi rdi r8 r9 r10 r11)))
-  (Callee [callee] (reg (| rsp rbp rbx r12 r13 r14 r15)))
+  (Caller [caller :enforce] (reg (| rax rcx rdx rsi rdi r8 r9 r10 r11)))
+  (Callee [callee :enforce] (reg (| rsp rbp rbx r12 r13 r14 r15)))
   (Loc [loc]
        ?caller
        ?callee
