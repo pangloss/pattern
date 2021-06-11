@@ -16,10 +16,11 @@
              [b boolean?]
              [cmp `cmp?])
   (Type [type :enforce]
-        (?:letrec [simple (| Integer Boolean Void)
-                   compound (Vector (?:* (| $simple $compound)))]
-                  (| $simple
-                     $compound)))
+        (?:letrec [simple   (| Integer Boolean Void)
+                   compound (Vector (?:* $type))
+                   function ((?:* $type) -> $type)
+                   type     (| $simple $compound $function)]
+          $type))
   (Exp [e]
        ?i ?v ?b
        (read)
@@ -30,9 +31,29 @@
        (if ?e ?e:then ?e:else)
        (vector ??e*) (vector-length ?e)
        (vector-ref ?e ?i) (vector-set! ?e0 ?i ?e1)
-       (void) (has-type ?e ?type)))
+       (void)
+       (& (?e:f ??e:args) (? _ seq?))) ;; FIXME: this list should not unify with a vector... but it does if I don't add the (? _ seq?) rule.
+  (Define [define]
+    (define (?v:name (?:* [?v* ?type*])) ?type ?e))
+  (Program [p]
+           ;; Programs have mulitple top-level forms, so just contain them in a vector
+           ?e
+           [??define* ?e])
+  (entry Program))
 
-(def-derived Shrunk R1
+(def-derived R1Fun R1
+  (Program [p]
+           - [??define ?e]
+           - ?e
+           + (program ??define*)))
+
+(def-derived RFunRef R1Fun
+  (Exp [e]
+       - (& (?e:f ??e:args) (? _ seq?))
+       + (call (funref ?e:f) ??e:args)
+       + (funref ?v)))
+
+(def-derived Shrunk RFunRef
   (terminals - [cmp `cmp?])
   (Exp [e]
        - (- ?e0 ?e1)
@@ -103,17 +124,23 @@
        (vector-ref ?v ?i)
        (vector-set! ?v ?i ?atm)
        (collect ?i)
-       (allocate ?i ?type))
+       (allocate ?i ?type)
+       (funref ?lbl)
+       (call ?atm ??atm*))
   (Stmt [stmt]
         (assign ?v ?e))
   (Tail [tail]
         (if ?pred (goto ?lbl:then) (goto ?lbl:else))
+        (tailcall ?atm ??atm*)
         (return ?e))
   (Block [block]
          (block ?lbl [??v*] ??stmt* ?tail))
+  (Define [d]
+    (define ?lbl [?v* ?type*] ... ?type
+      ;; the book specifies an undefined ?info here, too...
+      (?:+map ?lbl* ?block*)))
   (Program [program]
-           (program [??v*] (?:+map ?lbl* ?block*)))
-  (entry Program))
+           (program [??v*] (?:+map ?lbl* ?block*))))
 
 (def-derived Uncovered Explicit
   - Program
@@ -148,7 +175,10 @@
         (xorgq (int 1) ?arg)   ; (not 1)
         (set ?jc ?bytereg)     ; get cmp flag 1
         (movzbq ?bytereg ?arg) ; get cmp flag 2
-        (jump ?jc ?lbl))
+        (jump ?jc ?lbl)
+        (indirect-callq ?arg (int ?i))
+        (tailjmp ?arg (int ?i))
+        (leaq ?arg (& ?reg (reg ?_))))
   ;; there is specific valid sequencing like cmp -> jump -> jump, but I'm not
   ;; sure how or if I can encode that here...
   ;; TODO: attach additional validation rules to forms? Some could have rules
@@ -158,8 +188,10 @@
         (retq))
   (Block [block]
          (block ?lbl [??v*] ??stmt* ?tail))
+  (Define [define]
+    (define ?lbl ?type (?:*map ?lbl* ?block*)))
   (Program [program]
-           (program (?:*map ?v ?type) (?:+map ?lbl* ?block*)))
+           (program (?:*map ?v ?type) (?:+map ?lbl* ?define*)))
   (entry Program))
 
 
