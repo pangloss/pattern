@@ -513,15 +513,15 @@
                                       (?:all-fresh [?b (?:all-fresh [?b ?c])])
                                       (?:all-fresh [?b (?:all-fresh [?b ?c])])
                                       ?c))]
-    (is (= '{a {:name a, :value 1, :type ?},
-             b {:name b, :value 2, :type ?},
-             [0 b] {:name [0 b], :value 3, :type ?},
-             [0 0 b] {:name [0 0 b], :value 4, :type ?},
-             [0 0 c] {:name [0 0 c], :value 5, :type ?},
-             [1 b] {:name [1 b], :value 6, :type ?},
-             [1 0 b] {:name [1 0 b], :value 7, :type ?},
-             [1 0 c] {:name [1 0 c], :value 8, :type ?},
-             c {:name c, :value 9, :type ?}}
+    (is (= '{a {:name a, :value 1, :type ? :abbr a},
+             b {:name b, :value 2, :type ? :abbr b},
+             [0 b] {:name [0 b], :value 3, :type ? :abbr b},
+             [0 0 b] {:name [0 0 b], :value 4, :type ? :abbr b},
+             [0 0 c] {:name [0 0 c], :value 5, :type ? :abbr c},
+             [1 b] {:name [1 b], :value 6, :type ? :abbr b},
+             [1 0 b] {:name [1 0 b], :value 7, :type ? :abbr b},
+             [1 0 c] {:name [1 0 c], :value 8, :type ? :abbr c},
+             c {:name c, :value 9, :type ? :abbr c}}
            (run-matcher matcher
                         '(1 2
                             [3 [4 5]]
@@ -529,15 +529,15 @@
                             9)
                         identity)))
 
-    (is (= '{a {:name a, :value 1, :type ?},
-             b {:name b, :value 2, :type ?},
-             [0 b] {:name [0 b], :value 3, :type ?},
-             [0 0 b] {:name [0 0 b], :value 4, :type ?},
-             [0 0 c] {:name [0 0 c], :value 5, :type ?},
-             [1 b] {:name [1 b], :value 3, :type ?},
-             [1 0 b] {:name [1 0 b], :value 4, :type ?},
-             [1 0 c] {:name [1 0 c], :value 5, :type ?},
-             c {:name c, :value 6, :type ?}}
+    (is (= '{a {:name a, :value 1, :type ? :abbr a},
+             b {:name b, :value 2, :type ? :abbr b},
+             [0 b] {:name [0 b], :value 3, :type ? :abbr b},
+             [0 0 b] {:name [0 0 b], :value 4, :type ? :abbr b},
+             [0 0 c] {:name [0 0 c], :value 5, :type ? :abbr c},
+             [1 b] {:name [1 b], :value 3, :type ? :abbr b},
+             [1 0 b] {:name [1 0 b], :value 4, :type ? :abbr b},
+             [1 0 c] {:name [1 0 c], :value 5, :type ? :abbr c},
+             c {:name c, :value 6, :type ? :abbr c}}
            (run-matcher matcher
                         '(1 2
                             [3 [4 5]]
