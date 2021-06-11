@@ -12,11 +12,10 @@
                                               match-abbr
                                               make-abbr-predicator]]
             [matches.nanopass.kahn :refer [kahn-sort]]
-            [matches.types :refer [->MetaBox ->Ok ok?]]
+            [matches.types :refer [->MetaBox ->Ok ok? obj? not-meta?]]
             [genera :refer [defgenera defgen]]
             matches.matchers
-            [clojure.walk :as walk])
-  (:import (clojure.lang IObj IMeta)))
+            [clojure.walk :as walk]))
 
 (defonce dialect-tree (atom (make-hierarchy)))
 (defonce all-dialects (atom {}))
@@ -71,7 +70,7 @@
 
 (defn tag [form-name x]
   ;; works with [dialect form-name] style form names
-  (if (instance? IObj x)
+  (if (obj? x)
     (let [form-name (form-tag form-name)]
       (vary-meta x assoc ::form form-name))
     x))
@@ -121,7 +120,7 @@
                (if (fn? result)
                  ;; FIXME: 99% sure this condition is not needed
                  (y result env n)
-                 (let [result (if (instance? IObj result)
+                 (let [result (if (obj? result)
                                 (vary-meta result assoc ::form form)
                                 result)]
                    (y result env n))))
@@ -269,12 +268,6 @@
                 dialect))
             dialect
             forms)))
-
-(defn meta? [x]
-  (instance? IMeta x))
-
-(defn not-meta? [x]
-  (not (meta? x)))
 
 (defn expr-matcher-with-meta [matcher match-meta]
   (if match-meta
@@ -607,7 +600,7 @@
        (let [b# ~@body
              d# (select-keys d# [:=>/from :=>/to])]
          (cond (var? b#) (alter-meta! b# merge d#)
-               (instance? IObj b#) (vary-meta b# merge d#)
+               (obj? b#) (vary-meta b# merge d#)
                :else b#))))))
 
 (defn add-form-tags [{:keys [name exprs]} expr]

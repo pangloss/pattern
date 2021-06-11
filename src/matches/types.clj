@@ -1,5 +1,6 @@
 (ns matches.types
-  (:require [clojure.pprint :refer [simple-dispatch]]))
+  (:require [clojure.pprint :refer [simple-dispatch]])
+  (:import (clojure.lang IObj IMeta)))
 
 (defrecord Success [x])
 (defrecord SuccessEnv [x env])
@@ -66,3 +67,12 @@
 
 (defmethod simple-dispatch Ok [ok]
   (print-method ok *out*))
+
+(defn obj? [x]
+  (instance? IObj x))
+
+(defn meta? [x]
+  (instance? IMeta x))
+
+(defn not-meta? [x]
+  (not (meta? x)))

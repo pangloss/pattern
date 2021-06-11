@@ -407,8 +407,8 @@
   (with-meta
     (fn the-next-scope [data dictionary ^Env env]
       (let [path-length (count (.scopes env))]
-        (if (< path-length (count @(.scope_path env)))
-          (swap! (.scope_path env) update path-length inc)
+        (if (< path-length (dec (count @(.scope_path env))))
+          (swap! (.scope_path env) update (dec path-length) inc)
           (swap! (.scope_path env) conj 0))
         (let [path (subvec @(.scope_path env) 0 path-length)
               new-scope (make-new-scope (last (.scopes env)) path)

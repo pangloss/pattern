@@ -876,6 +876,8 @@
                                    scope
                                    (:var-names (meta matcher)))))
      assoc :var-names [])))
+
+
 (defn- match-restartable
   "This construct does not define a matcher, but marks the pattern that it
   directly wraps as restartable, meaning that if it fails to match it will use
