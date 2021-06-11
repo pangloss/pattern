@@ -7,45 +7,6 @@
             [clojure.test :refer [deftest testing is are]]
             [clojure.walk :as walk]))
 
-(declare shrunk-typed?)
-
-(def passes
-  (partition 2
-             [#'identity #'d/R1
-              #'uniqify #'d/R1
-              #'shrink #'d/Shrunk
-              #'add-types #'d/Typed
-              #'expose-allocation #'d/Alloc
-              #'remove-complex-opera* #'d/Simplified
-              #'explicate-control #'d/Explicit
-              #'uncover-locals #'d/Uncovered
-              #'select-instructions #'d/Selected
-              #'allocate-registers #'d/RegAllocated
-              #'remove-unallocated #'d/RemoveUnallocated
-              #'remove-jumps #'d/RemoveUnallocated
-              #'patch-instructions #'d/Patched
-              #'save-registers #'d/Patched+]))
-
-(defn valid-asm? [p]
-  (every? #(every? string? %) p))
-
-(defn test-pipeline [form]
-  (loop [form form [[pass dialect] & more] passes results []]
-    (let [result (try (pass form)
-                      (catch Exception e {:error e}))
-          [dialect valid2?] (if (vector? dialect)
-                              dialect [dialect (constantly ok)])
-          results (conj results [pass (:name dialect) result])
-          v (when-not (:error result) (validate @dialect result))]
-      (if (and (ok? v))
-        (if more
-          (recur result more results)
-          (let [s (stringify result)]
-            (if (valid-asm? s)
-              v
-              s)))
-        (conj results v)))))
-
 (def iffy-program
   '(let ([x 1])
      (let ([y 2])
@@ -54,20 +15,6 @@
              (eq? x 2))
          (+ y 2)
          (+ y 10)))))
-
-(defn shrunk-typed? [form]
-  (let [untyped
-        (->> form
-             (tree-seq seqable? seq)
-             (remove (into #{} '[if eq? - + < let vector vector-ref vector-set! read not void]))
-             (filter (partial valid? d/Shrunk))
-             (remove #(::r1/type (meta %)))
-             (remove int?)
-             (remove boolean?))]
-    (if (empty? untyped)
-      ok
-      {:dialect 'Shrunk
-       :untyped (vec untyped)})))
 
 (def iffier-program
   '(let ([x 9])

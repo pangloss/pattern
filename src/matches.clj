@@ -44,7 +44,7 @@
               tag-result tag
               unparse-dialect
               valid? validate)
-             (matches.types ok?)
+             (matches.types ok ok?)
              (matches.nanopass.pass
               defpass
               let-rulefn))

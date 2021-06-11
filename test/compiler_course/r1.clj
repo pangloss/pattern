@@ -3,9 +3,10 @@
                                                   caller-saved-registers callee-saved-registers
                                                   var-locations with-allocated-registers]]
             [compiler-course.dialects :refer [r1-keyword?]]
+            [matches.nanopass.dialect :refer [all-dialects =>:to]]
             [matches :refer [descend directed on-subexpressions rule rule-list rule-list!
                              sub success subm rule-simplifier matcher
-                             => dialects]]
+                             => dialects validate ok ok?]]
             [matches.types :refer [child-rules]]
             [clojure.string :as str]))
 
@@ -31,7 +32,9 @@
                          (rule '(?v ??->e:args) (success))
                          (rule '?v (get-in %env [:vars v]))]))))
 
-(defn uniqify [p]
+(defn uniqify
+  {:=>/from 'R1 :=>/to 'R1}
+  [p]
   (reset! niceid 0)
   (uniqify* p))
 
@@ -700,3 +703,48 @@
 (def ->patch (comp #'patch-instructions #'->jump))
 (def ->reg (comp #'save-registers #'->patch))
 (def ->str (comp #'stringify #'->reg))
+
+(def passes
+  [#'uniqify
+   #'shrink
+   #'add-types
+   #'expose-allocation
+   #'remove-complex-opera*
+   #'explicate-control
+   #'uncover-locals
+   #'select-instructions
+   #'allocate-registers
+   #'remove-unallocated
+   #'remove-jumps
+   #'patch-instructions
+   #'save-registers])
+
+(defn valid-asm? [p]
+  (every? #(every? string? %) p))
+
+;; TODO: adopt this or something similar into nanopass.
+(defn tester [start-dialect passes finalize valid-output?]
+  (fn [form]
+    (loop [form form [pass & more] (cons identity passes) results []]
+      (let [dialect (if (= identity pass)
+                      start-dialect
+                      (or (=>:to (meta pass) nil)
+                          (=>:to (meta @pass) nil)))
+            dialect (if (symbol? dialect)
+                      (@all-dialects dialect)
+                      dialect)
+            result (try (pass form)
+                        (catch Exception e {:error e}))
+            results (conj results [pass (:name dialect) result])
+            v (when dialect
+                (when-not (:error result) (validate dialect result)))]
+        (if (or (and (ok? v)) (not dialect))
+          (if more
+            (recur result more results)
+            (let [s (finalize result)]
+              (if (valid-output? s)
+                v
+                s)))
+          (conj results v))))))
+
+(def test-pipeline (tester 'R1 passes stringify valid-asm?))
