@@ -832,13 +832,44 @@
         matcher (compile-pattern* form comp-env)]
     (assert (every? symbol? fresh))
     (assert (every? #(= :value (matcher-type %)) fresh))
-    (next-scope matcher (fn [scope path]
-                          (reduce (fn [scope name]
-                                    (assoc scope name path))
-                                  scope
-                                  fresh)))))
+    (vary-meta
+     (next-scope matcher (fn [scope path]
+                           (reduce (fn [scope name]
+                                     (assoc scope name path))
+                                   scope
+                                   fresh)))
+     update :var-names #(remove (set fresh) %))))
 
 
+(defn- match-all-fresh
+  "This allows composition of patterns which are not meant to unify with each
+  other.
+
+      (def other-pattern (compile-pattern '(?b ?c)))
+      (def your-pattern (compile-pattern `(?a ?b (?:all-fresh ~other-pattern))))
+
+  Without using all-fresh above, the above would only match if both instances of
+  ?b unify, but with all-fresh, they would be treated separately inside and
+  outside of the all-fresh form.
+
+      (your-pattern '(1 2 (3 4))) ;;=> {:a 1 :b 2}
+
+  The caveat is that the unifications within the ?:all-fresh block will not be
+  included in the standard matcher results, but they can be accessed via
+
+      (run-matcher your-pattern '(1 2 (3 4)) identity)
+
+  which runs the matcher returning the raw internal results dictionary including
+  matches that exist within nested scopes."
+  [[_ pattern] comp-env]
+  (let [matcher (compile-pattern* pattern comp-env)]
+    (vary-meta
+     (next-scope matcher (fn [scope path]
+                           (reduce (fn [scope name]
+                                     (assoc scope name path))
+                                   scope
+                                   (:var-names (meta matcher)))))
+     assoc :var-names [])))
 (defn- match-restartable
   "This construct does not define a matcher, but marks the pattern that it
   directly wraps as restartable, meaning that if it fails to match it will use
@@ -888,7 +919,8 @@
 (register-matcher '?:when #'match-when)
 (register-matcher '?:letrec match-letrec)
 (register-matcher '?:ref match-ref {:named? true})
-(register-matcher '?:fresh match-fresh)
+(register-matcher '?:fresh #'match-fresh)
+(register-matcher '?:all-fresh #'match-all-fresh)
 (register-matcher '?:restartable match-restartable)
 (register-matcher '?:re-matches #'match-regex)
 (register-matcher '?:re-seq #'match-regex)
