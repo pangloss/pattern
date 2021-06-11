@@ -380,7 +380,7 @@
     (rule '(vector-ref ?vec ?i)
           (let [v (:v %env)]
             (sub [(movq (v ?vec) (reg r11))
-                  (movq (deref 8 ~(inc i) r11) ?v)])))
+                  (movq (deref 8 ~(inc i) (reg r11)) ?v)])))
     (rule '(v ?x)
           (sub [(movq (v ?x) ~(:v %env))])))))
 
@@ -427,11 +427,11 @@
                                     (movq (reg rax) ?x)]))
                         (rule '(assign ?->any:x (vector-ref ?->v:vec ?i))
                               (sub [(movq ?vec (reg r11))
-                                    (movq (deref 8 ~(inc i) r11) ?x)]))
+                                    (movq (deref 8 ~(inc i) (reg r11)) ?x)]))
 
                         (rule '(assign ?->any:x (vector-set! ?->v:vec ?i ?->atm:val))
                               (sub [(movq ?vec (reg r11))
-                                    (movq ?val (deref 8 ~(inc i) r11))
+                                    (movq ?val (deref 8 ~(inc i) (reg r11)))
                                     (movq (int 0) ?x)]))
 
                         (rule '(assign ?->any:x (allocate ?i:len (Vector ??type*)))
@@ -440,7 +440,7 @@
                                 (sub [(movq (global-value free_ptr) ?free)
                                       (addq (int ~(* 8 (inc len))) (global-value free_ptr))
                                       (movq ?free (reg rax))
-                                      (movq (int ?tag) (deref 0 rax)) ;; why use deref here??
+                                      (movq (int ?tag) (deref 0 (reg rax))) ;; why use deref here??
                                       (movq ?free ?x)])))
                         (rule '(assign ?->any:x (collect ?->i:bytes))
                               ;; TODO: can I deal with the existence of these
@@ -616,7 +616,7 @@
                    (callq initialize)
                    (movq (global-value rootstack_begin) (reg r15))
                    ~@(map (fn [i]
-                            (sub (movq (int 0) (deref ?i r15))))
+                            (sub (movq (int 0) (deref ?i (reg r15)))))
                           (range root-stack-size))
                    (addq (int ?root-spills) (reg r15))]))]
 
@@ -656,8 +656,8 @@
                                        (fi all*)))
 
                           (rule '(byte-reg ?r)                  (str "%" r))
-                          (rule '(deref ?i:offset ?v)           (str offset "(%" (name v) ")"))
-                          (rule '(deref ?i:scale ?i:offset ?v)  (str scale "(" offset ")(%" (name v) ")"))
+                          (rule '(deref ?i:offset (reg ?v))           (str offset "(%" (name v) ")"))
+                          (rule '(deref ?i:scale ?i:offset (reg ?v))  (str scale "(" offset ")(%" (name v) ")"))
                           (rule '(global-value ?lbl)            (str (name lbl) "(%rip)"))
                           (rule '(int ?i)                       (str "$" i))
                           (rule '(reg ?r)                       (str "%" r))

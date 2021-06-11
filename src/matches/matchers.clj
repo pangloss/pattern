@@ -282,7 +282,7 @@
                                             (if (= v datum)
                                               ((.succeed env) dict n)
                                               (on-failure :mismatch as-pattern dictionary env n data datum))
-                                            ((.succeed env) ((.store env) name datum '?:as dict env) n))
+                                            ((.succeed env) ((.store env) name datum '?:as nil dict env) n))
                                           (on-failure :unsat as-pattern dictionary env n data datum))))))))
       (merge-with f/op
                   {:var-names [name]

@@ -129,11 +129,13 @@
              [jc `jmp-cond])
   (Type [type :enforce] Integer Boolean (Vector ??type) Void)
   (ByteReg [bytereg :enforce] (byte-reg (| ah al bh bl ch cl dh dl)))
+  (Reg [reg]
+       (reg (| rax r11 r15 rsi rdi)))
   (Arg [arg]
-       (reg (| rax r11 r15 rsi rdi))
+       ?reg
        (int ?i)
-       (deref ?offset ?reg)
-       (deref ?scale ?offset ?reg)
+       (deref ?i:offset ?reg)
+       (deref ?i:scale ?i:offset ?reg)
        (v ?v)
        (global-value ?lbl))
   ;; this could get fancy and encode some of the restrictions
@@ -164,13 +166,15 @@
 (def-derived RegAllocated Selected
   (Caller [caller :enforce] (reg (| rax rcx rdx rsi rdi r8 r9 r10 r11)))
   (Callee [callee :enforce] (reg (| rsp rbp rbx r12 r13 r14 r15)))
+  - Reg
+  (Reg [reg] ?caller ?callee)
   (Loc [loc]
        ?caller
        ?callee
        (stack ?i)
        (heap ?i))
   (Arg [arg]
-       - (reg (| rax r11 r15 rsi rdi))
+       - ?reg
        + ?loc)
   - Program
   (Program [program]
