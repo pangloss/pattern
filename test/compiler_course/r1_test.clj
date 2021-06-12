@@ -73,6 +73,19 @@
 (deftest test-vecs
   (is (= ok (test-pipeline veccy-program))))
 
+(def fprogram
+  '[(define (z [a Integer] [b Integer] [c Integer] [d Integer] [e Integer]
+               [f Integer] [g Integer] [h Integer] [i Integer] [j Integer]) Integer
+      (let ([j 1])
+        (vector (z 1 2 3 4 5 6 7 0 0 0)
+                (z a b c d e f g h i j)
+                123)))
+    (let ([j 1])
+      (z j j j j j j j j j j))])
+
+(deftest test-f
+  (is (= ok (test-pipeline fprogram))))
+
 (deftest various-programs
   (are [p] (= ok (test-pipeline p))
 

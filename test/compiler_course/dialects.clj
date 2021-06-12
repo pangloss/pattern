@@ -130,13 +130,13 @@
        (vector-set! ?v ?i ?atm)
        (collect ?i)
        (allocate ?i ?type)
-       ;; calls become (let ([x (funref f)]) (call x ..))
+       ;; calls become (let ([x (funref f)]) (call x ..)) ... or tailcall
        (funref ?lbl) (call ?v ??atm*))
   (Stmt [stmt]
         (assign ?v ?e))
   (Tail [tail]
         (if ?pred (goto ?lbl:then) (goto ?lbl:else))
-        (tailcall ?atm ??atm*)
+        (tailcall ?v ??atm*)
         (return ?e))
   (Block [block]
          (block ?lbl [??v*] ??stmt* ?tail))
@@ -164,10 +164,16 @@
              [v symbol?]
              [i int?]
              [jc `jmp-cond])
-  (Type [type :enforce] Integer Boolean (Vector ??type) Void)
+  (Type [type :enforce]
+        (?:letrec [simple   (| Integer Boolean Void)
+                   compound (Vector (?:* $type))
+                   function ((?:* $type) -> $type)
+                   type     (| $simple $compound $function)]
+          $type))
   (ByteReg [bytereg :enforce] (byte-reg (| ah al bh bl ch cl dh dl)))
   (Reg [reg]
-       (reg (| rax r11 r15 rsi rdi)))
+       (reg (| rdi rsi rdx rcx r8 r9)) ;; fn arg regs
+       (reg (| rax r11 r15 rsi rdi)))  ;; used in various places
   (Arg [arg]
        ?reg
        (int ?i)
@@ -187,14 +193,14 @@
         (movzbq ?bytereg ?arg) ; get cmp flag 2
         (jump ?jc ?lbl)
         (indirect-callq ?arg (int ?i))
-        (tailjmp ?arg (int ?i))
-        (leaq ?arg (& ?reg (reg ?_))))
+        (leaq (funref ?v) ?arg))
   ;; there is specific valid sequencing like cmp -> jump -> jump, but I'm not
   ;; sure how or if I can encode that here...
   ;; TODO: attach additional validation rules to forms? Some could have rules
   ;; like above attached but they don't fit at the expression level.
   (Tail [tail]
         (jump ?jc ?lbl)
+        (tailjmp ?v)
         (retq))
   (Block [block]
          (block ?lbl [??v*] ??stmt* ?tail))
@@ -214,8 +220,7 @@
   - Reg
   (Reg [reg] ?caller ?callee)
   (Loc [loc]
-       ?caller
-       ?callee
+       ?reg
        (stack ?i)
        (heap ?i))
   (Arg [arg]
