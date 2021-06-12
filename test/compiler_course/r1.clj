@@ -261,42 +261,48 @@
 (def expose-allocation
   (dialects
    ;; TODO: use AllocTyped and fix missing types (rule-simplifier bug?)
-   (=> Typed Alloc)
+   (=> Typed AllocTyped)
    (rule-simplifier
     (rule '(vector ??e*)
           (let [t (::type (m!))]
             (subm (vector> ~t [] [??e*] [~@(rest t)]) (m!))))
     (rule '(vector> ?type ?names [?e ??e*] [?t ??t*])
-          (let [n (gennice 'vec)
+          (let [n (with-meta (gennice 'entry) {::type t})
                 ;; building names in reverse
+                m (m!)
                 names (conj names n)]
-            (subm (let ([~(with-meta n {::type t}) ?e])
-                    (vector> ?type ?names [??e*] [??t*]))
-                  (m!))))
+            (subm (let ([?n ?e])
+                    ~(subm (vector> ?type ?names [??e*] [??t*]) m))
+                  m)))
     (rule '(vector> ?type ?names [] [])
           (let [len (count names)
                 ;; types will be inferred by add-types below.
-                v (gennice 'vector)
+                m (m!)
+                v (with-meta (gennice 'vector) m)
                 _ (gennice '_)
                 bytes (* 8 (inc len))]
-            (add-types
-             (sub
-              (let ([?_ (if (< (+ (global-value free_ptr) ?bytes)
-                               (global-value fromspace_end))
-                          (void)
-                          (collect ?bytes))])
-                (let ([?v (allocate ?len ?type)])
-                  (vector< ?v ?names)))))))
+            (subm
+             (let ([?_ ~(add-types
+                         (sub (if (< (+ (global-value free_ptr) ?bytes)
+                                     (global-value fromspace_end))
+                                (void)
+                                (collect ?bytes))))])
+               ~(subm
+                 (let ([?v ~(subm (allocate ?len ?type) m)])
+                   ~(subm (vector< ?v ?names) m))
+                 m))
+             m)))
     (rule '(vector< ?v [??n* ?n])
           ;; using names in reverse, so n* count is the vector position
           (let [idx (count n*)
+                m (m!)
                 _ (with-meta (gennice '_) {::type 'Void})]
-            (add-types
-             (subm (let ([?_ (vector-set! ?v ?idx ?n)])
-                     (vector< ?v [??n*]))
-                   (m!)))))
+            (subm (let ([?_ ~(subm (vector-set! ?v ?idx ?n)
+                                   {::type 'Void})])
+                    ~(subm (vector< ?v [??n*]) m))
+                  m)))
     (rule '(vector< ?v [])
-          v))))
+          (with-meta v (m!))))))
 
 ;; Remove complex operators / operands
 

@@ -185,12 +185,12 @@
 (deftest splatter-vec
   (reset! niceid 0)
   (is (= '(+ 1
-             (let ([vec.1 1])
-               (let ([vec.2 2])
+             (let ([entry.1 1])
+               (let ([entry.2 2])
                  (let ([_.4 (if (< (+ (global-value free_ptr) 24)
                                    (global-value fromspace_end))
                               (void) (collect 24))])
                    (let ([vector.3 (allocate 2 (Vector Integer Integer))])
-                     (let ([_.5 (vector-set! vector.3 1 vec.2)])
-                       (let ([_.6 (vector-set! vector.3 0 vec.1)]) vector.3)))))))
+                     (let ([_.5 (vector-set! vector.3 1 entry.2)])
+                       (let ([_.6 (vector-set! vector.3 0 entry.1)]) vector.3)))))))
          (expose-allocation (add-types (sub (+ 1 (vector 1 2))))))))
