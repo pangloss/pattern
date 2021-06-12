@@ -198,11 +198,13 @@
         (retq))
   (Block [block]
          (block ?lbl [??v*] ??stmt* ?tail))
+  ;; FIXME: think about if this changes?
+  (DefInfo [d]
+    [?lbl [??argdef*] ?type])
   (Define [define]
-    ;; argdefs go away?
-    (define ?lbl ?type (?:*map ?lbl* ?block*)))
+    (define ?d (?:*map ?v ?type) (?:*map ?lbl* ?block*)))
   (Program [program]
-           (program (?:*map ?v ?type) (?:+map ?lbl* ?define*)))
+           (program ??define*))
   (entry Program))
 
 
@@ -219,32 +221,32 @@
   (Arg [arg]
        - ?reg
        + ?loc)
-  - Program
-  (Program [program]
-           (program (?:*map ?v ?type) (?:*map ?v* ?loc*)
-                    [??block*])))
+  - Define
+  (Define [define]
+    (define ?d
+      (?:*map ?v ?type)
+      (?:*map ?v* ?loc*)
+      [??block*])))
 
 (def-derived RemoveUnallocated RegAllocated
   (Arg [arg]
-       - (v ?v))
-  (Program [program]))
+       - (v ?v)))
 
 (def-derived Patched RemoveUnallocated
   (Stmt [stmt]
         - (movq ?arg0 ?arg1)
         + (movq ?arg0 (& ?arg1 (? arg1 not= ?arg0)))
         - (addq ?arg0 ?arg1)
-        + (addq (& ?arg0 (? arg0 not= (int 0))) ?arg1))
-  ;; Ensure Program is still the entrypoint
-  (Program [program]))
+        + (addq (& ?arg0 (? arg0 not= (int 0))) ?arg1)))
 
 
 (def-derived Patched+ Patched
-  - Program
   (SaveReg [savereg]
            (movq ?callee (stack* ?i)))
-  (Program [program]
-           (program (?:*map ?v ?type)
-                    (?:*map ?v* ?loc*)
-                    [??savereg*]
-                    [??block*])))
+  - Define
+  (Define [define]
+    (define ?d
+      (?:*map ?v ?type)
+      (?:*map ?v* ?loc*)
+      [??savereg*]
+      [??block*])))

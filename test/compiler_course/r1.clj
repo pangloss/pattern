@@ -554,11 +554,12 @@
   ;; ...)  return (below) or with x as a symbol.
   (dialects
    (=> Uncovered Selected)
-   (directed (rule-list (rule '(program ?vars ?blocks)
+   (directed (rule-list (rule '(program ??->define*))
+                        (rule '(define ?d ?vars ?blocks)
                               (let [blocks (reduce-kv (fn [blocks l b]
                                                         (assoc blocks l (descend b)))
                                                       {} blocks)]
-                                (sub (program ?vars ?blocks))))
+                                (sub (define ?d ?vars ?blocks))))
                         (rule '(block ?label ?vars ??->instrs)
                               (sub (block ?label ?vars ~@(apply concat instrs))))
                         (rule '(assign ?->any:x (+ ?->atm:a ?->atm:b))
@@ -641,16 +642,20 @@
 
 ;; Allocate registers (see r1-allocate ns)
 
-(defn allocate-registers
-  {:=>/from 'Selected :=>/to 'RegAllocated}
-  [prog]
-  (let [g (to-graph (liveness prog))
+(defn allocate-fn-registers*
+  [define]
+  (let [g (to-graph (liveness define))
         g (allocate-registers* g)
-        [_ var-types blocks] prog
+        [_ d var-types blocks] define
         var-locs (var-locations var-types g)
         blocks (-> (vec (vals blocks))
                    (with-allocated-registers {:loc var-locs}))]
-    (sub (program ?var-types ?var-locs ?blocks))))
+    (sub (define ?d ?var-types ?var-locs ?blocks))))
+
+(defn allocate-registers
+  {:=>/from 'Selected :=>/to 'RegAllocated}
+  [program]
+  (sub (program ~@(map allocate-fn-registers* (rest program)))))
 
 ;; Remove unallocated vars (if a var is set but never used)
 ;; This is not part of the instructor's compiler but seems good/simple. It falls
@@ -670,7 +675,8 @@
 (def remove-jumps
   (dialects
    (=> RemoveUnallocated RemoveUnallocated)
-   (directed (rule-list (rule '(program ?vars ?var-locs [(& ?blocks ?->jumps) ...])
+   (directed (rule-list (rule '(program ??->define*))
+                        (rule '(define ?d ?vars ?var-locs [(& ?blocks ?->jumps) ...])
                               (let [blocks (reduce (fn [m [_ label :as b]]
                                                      (assoc m label b))
                                                    {} blocks)
@@ -694,7 +700,7 @@
                                                          (assoc to from))
                                                      blocks)))
                                                blocks linear-jumps)]
-                                (sub (program ?vars ?var-locs [~@(remove symbol? (vals blocks))]))))
+                                (sub (define ?d ?vars ?var-locs [~@(remove symbol? (vals blocks))]))))
                         (rule '(block ?from ?vars ??stmt* (jump ?jc ?to))
                               [from to])
                         (rule '(block ??any)
@@ -705,7 +711,8 @@
 (def patch-instructions
   (dialects
    (=> RemoveUnallocated Patched)
-   (directed (rule-list (rule '(program ?vars ?var-locs [??->block*]))
+   (directed (rule-list (rule '(program ??->define*))
+                        (rule '(define ?d ?vars ?var-locs [??->block*]))
                         (rule '(block ?lbl ?vars ??->stmt* ?tail)
                               (sub (block ?lbl ?vars ~@(apply concat stmt*) ?tail)))
                         (rule '(addq (int 0) ?arg) [])
@@ -727,9 +734,12 @@
 (def save-registers
   (dialects
    (=> Patched Patched+)
-   (rule '(program ?vars ?var-locs ?block*)
-         (let [save-regs (save-registers* var-locs)]
-           (sub (program ?vars ?var-locs ?save-regs ?block*))))))
+   (directed
+    (rule-list
+     (rule '(program ??->define*))
+     (rule '(define ?d ?vars ?var-locs ?block*)
+           (let [save-regs (save-registers* var-locs)]
+             (sub (define ?d ?vars ?var-locs ?save-regs ?block*))))))))
 
 ;; Stringify: Turn the data representing X86 assembly into actual assembly
 
@@ -764,7 +774,8 @@
                           (range root-stack-size))
                    (addq (int ?root-spills) (reg r15))]))]
 
-     (directed (rule-list (rule '(program ?vars ?var-locs [??->save-regs] ?block*)
+     (directed (rule-list (rule '(program ??->define*))
+                          (rule '(define ?d ?vars ?var-locs [??->save-regs] ?block*)
                                 (let [offset (count save-regs)
                                       block* (apply concat (map #(first (descend % {:stack-offset offset}))
                                                                 block*))
@@ -866,7 +877,10 @@
    #'save-registers])
 
 (defn valid-asm? [p]
-  (every? #(every? string? %) p))
+  (when (sequential? p)
+    (every? #(and (sequential? %)
+                  (every? string? %))
+            p)))
 
 ;; TODO: adopt this or something similar into nanopass.
 (defn tester [start-dialect passes finalize valid-output?]

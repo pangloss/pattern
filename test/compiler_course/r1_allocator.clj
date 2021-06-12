@@ -123,22 +123,23 @@
 ;; - I will have to do something to force those allocations to be to the heap
 ;;   rather than the stack.
 
-(def program-liveness*
+(def fn-liveness*
   "In the book this is both 'uncover-live' and 'build-inter' plus the bonus
   exercise of building the move graph."
   (dialects
    (=> Selected nil)
-   (rule '(program ?var-types ?blocks)
+   (rule '(define [?v ??etc] ?var-types ?blocks)
          (let [edges (mapcat control-flow (vals blocks))
+               start (symbol (str v '-start))
                main (-> (build-graph)
                         (add-edges :to edges)
                         forked
-                        (g/get-vertex 'start))
+                        (g/get-vertex start))
                main (block-liveness main
                                     {:i [] :m [] :steps () :live #{} :types var-types}
                                     (atom {})
                                     blocks)
-               liveness (assoc (:blocks main) 'start (dissoc main :blocks))]
+               liveness (assoc (:blocks main) start (dissoc main :blocks))]
            (reduce-kv (fn [liveness label block]
                         (assoc-in liveness [label :block] block))
                       liveness
@@ -147,7 +148,7 @@
 (defn liveness
   {:=>/from 'Selected}
   [p]
-  (program-liveness* p))
+  (fn-liveness* p))
 
 (defn to-graph [liveness]
   (-> (build-graph)
