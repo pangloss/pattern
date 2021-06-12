@@ -85,10 +85,10 @@
   (Atom [atm #_:enforce]
         (read)
         ?i ?v ?b)
+  - Exp
   (NotExp [ne]
           ?e
           (not ?ne))
-  - Exp
   (Exp [e]
        ?atm
        (- ?atm)
@@ -130,8 +130,8 @@
        (vector-set! ?v ?i ?atm)
        (collect ?i)
        (allocate ?i ?type)
-       (funref ?lbl) ;; FIXME: this makes no sense if the call needs an atm.
-       (call ?atm ??atm*))
+       ;; calls become (let ([x (funref f)]) (call x ..))
+       (funref ?lbl) (call ?v ??atm*))
   (Stmt [stmt]
         (assign ?v ?e))
   (Tail [tail]
@@ -141,17 +141,21 @@
   (Block [block]
          (block ?lbl [??v*] ??stmt* ?tail))
   (ArgDef [argdef] [?v ?type])
-  (Define [d]
-    (define ?lbl [??argdef] ?type
+  - Define
+  (DefInfo [d]
+    [?lbl [??argdef*] ?type])
+  (Define [define]
+    (define ?d [??v*]
       ;; the book specifies an undefined ?info here, too...
-      (?:+map ?lbl* ?block*)))
-  (Program [program]
-           (program [??v*] (?:+map ?lbl* ?block*))))
+      (?:+map ?lbl* ?block*))))
+
 
 (def-derived Uncovered Explicit
-  - Program
-  (Program [program]
-           (program (?:*map ?v ?type) (?:+map ?lbl* ?block*))))
+  - Define
+  (Define [define]
+    (define ?d
+      (?:*map ?v ?type)
+      (?:+map ?lbl* ?block*))))
 
 (def jmp-cond #{true '< 'eq?})
 
