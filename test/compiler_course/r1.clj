@@ -120,6 +120,8 @@
        (rule '(vector-length ?->e))
        (rule '(vector-ref ?->e ?i))
        (rule '(vector-set! ?->e0 ?i ?->e1))
+       (rule '(void))
+       (rule '(read))
        (rule '(?->e:f ??->e:args)
              ;;(when-not (r1-keyword? f)
              ;; I don't try to handle if a fn shadows a built-in...
@@ -774,7 +776,8 @@
                           (range root-stack-size))
                    (addq (int ?root-spills) (reg r15))]))]
 
-     (directed (rule-list (rule '(program ??->define*))
+     (directed (rule-list (rule '(program ??->define*)
+                                (apply concat define*))
                           (rule '(define ?d ?vars ?var-locs [??->save-regs] ?block*)
                                 (let [offset (count save-regs)
                                       block* (apply concat (map #(first (descend % {:stack-offset offset}))
