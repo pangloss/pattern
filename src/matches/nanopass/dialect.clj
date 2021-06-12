@@ -514,6 +514,8 @@
         dialect (assoc (deref* parent-dialect)
                        :parent-dialect parent-dialect
                        :name name)
+        ;; TODO: use spliced here before processing instead of after
+        ;; TODO: use scheme-style to get ... working in dialects
         dialect (derive-dialect* (list* dialect (quo decls)))]
     (if (map? dialect)
       (finalize-dialect dialect)

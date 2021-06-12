@@ -118,7 +118,26 @@
        (rule '(?->e:f ??->e:args)
              ;;(when-not (r1-keyword? f)
              ;; I don't try to handle if a fn shadows a built-in...
-             (sub (call (funref ?f) ??args))))))))
+             (sub (call ?f ??args))))))))
+
+(def expose-functions
+  (dialects
+   (=> Shrunk Exposed)
+   (directed
+    (rule-list
+     (rule '(program (define (?v:defs ??argdef*) ?type ?e) ...)
+           (let [env {:defs (set defs)}
+                 e (mapv #(in % env) e)]
+             (sub (program (define (?defs ??argdef*) ?type ?e) ...))))
+     (rule '(dialect ?def ?type ?->e))
+     (rule '(if ??->e))
+     (rule '((?:= let) ([?v ?->e]) ?e:body)
+           (sub (let ([?v ?e])
+                  ~(in body (update %env :defs disj v)))))
+     (rule '(?op ??->e))
+     (rule '?v
+           (when (get-in %env [:defs v])
+             (sub (funref ?v))))))))
 
 ;; Functions must not have more than 6 args. Stuff the remaining in a vector.
 
@@ -135,7 +154,7 @@
 
 (def limit-functions
   (dialects
-   (=> Shrunk Shrunk)
+   (=> Exposed Exposed)
    (on-subexpressions
     (rule-list
      (rule '(define (?v ??argdef*) ?type ?body)
@@ -148,10 +167,10 @@
                                                :argid (zipmap (map first tail) (range))})
                             first)]
                (sub (define (?v ??args [?tv (Vector ??tt)]) ?type ?body)))))
-     (rule '(call ?funref ??e:args)
+     (rule '(call ?e ??e:args)
            (when (< 6 (count args))
              (let [[args tail] (split-at 5 args)]
-               (sub (call ?funref ??args (vector ??tail))))))))))
+               (sub (call ?e ??args (vector ??tail))))))))))
 
 ;; Add type metadata to everything possible
 
@@ -199,15 +218,12 @@
                  (rule '((?:as op (| < eq? not)) ??->e:x* ?->e:x)
                        (success
                         (subm (?op ??x* ?x) {::type (tag true)})))
-                 (rule '(call (funref ?v) ??->e:args)
-                       (let [v (with-meta v (get-in %env [:type v]))
-                             fr (subm (funref ?v) (get-in %env [:type v]))]
-                         (success (subm (call ?fr ??args)
-                                        {::type (last (get-in %env [:type v ::type]))}))))
-                 (rule '(call (funref ?->e) ??->e:args)
-                       (let [fr (subm (funref ?e) (get-type e))]
-                         (success (subm (call ?fr ??args)
-                                        {::type (last (::type (get-type e)))}))))
+                 (rule '(call ?->e ??->e:args)
+                       (success (subm (call ?e ??args)
+                                      {::type (last (::type (get-type e)))})))
+                 (rule '(funref ?v)
+                       (subm (funref ?v)
+                             (get-in %env [:type v])))
                  (rule '(read) (success (subm (read) {::type (tag 1)})))
                  (rule '(void) (success (subm (void) {::type 'Void})))
                  (rule '(global-value ?v:l)
@@ -237,17 +253,19 @@
 
 (def expose-allocation
   (dialects
+   ;; TODO: use AllocTyped and fix missing types (rule-simplifier bug?)
    (=> Typed Alloc)
    (rule-simplifier
     (rule '(vector ??e*)
           (let [t (::type (m!))]
-            (sub (vector> ~t [] [??e*] [~@(rest t)]))))
+            (subm (vector> ~t [] [??e*] [~@(rest t)]) (m!))))
     (rule '(vector> ?type ?names [?e ??e*] [?t ??t*])
           (let [n (gennice 'vec)
                 ;; building names in reverse
                 names (conj names n)]
-            (sub (let ([~(with-meta n {::type t}) ?e])
-                   (vector> ?type ?names [??e*] [??t*])))))
+            (subm (let ([~(with-meta n {::type t}) ?e])
+                    (vector> ?type ?names [??e*] [??t*]))
+                  (m!))))
     (rule '(vector> ?type ?names [] [])
           (let [len (count names)
                 ;; types will be inferred by add-types below.
@@ -267,8 +285,9 @@
           (let [idx (count n*)
                 _ (with-meta (gennice '_) {::type 'Void})]
             (add-types
-             (sub (let ([?_ (vector-set! ?v ?idx ?n)])
-                    (vector< ?v [??n*]))))))
+             (subm (let ([?_ (vector-set! ?v ?idx ?n)])
+                     (vector< ?v [??n*]))
+                   (m!)))))
     (rule '(vector< ?v [])
           v))))
 
@@ -297,6 +316,10 @@
                  (rule '((? op #{+ < eq? - not}) ??->e:args)
                        (wrap (symbol (str (name op) ".tmp")) args
                              (subm (?op ~@(map :value args)) (m!))))
+                 (rule '(call ??->guts)
+                       (wrap 'call guts (subm (call ~@(map :value guts)) (m!))))
+                 (rule '(funref ?v)
+                       (wrap 'funref nil (subm (funref ?v) (m!))))
                  (rule '(read)
                        (wrap 'read nil
                              (with-meta '(read) {::type 'Integer})))
@@ -341,6 +364,8 @@
                  (rule '((? op #{vector-set! + < eq? vector-ref - not global-value})
                          ??e:args)
                        (rco-atoms args (subm (?op ??args) (m!))))
+                 (rule '(call ??guts)
+                       (rco-atoms guts (subm (call ??guts) (m!))))
                  (rule '(?:letrec [maybe-not (?:as nots
                                                    (?:fresh [nots]
                                                             (| (not $maybe-not)
@@ -811,6 +836,7 @@
 (def passes
   [#'uniqify
    #'shrink
+   #'expose-functions
    #'limit-functions
    #'add-types
    #'expose-allocation

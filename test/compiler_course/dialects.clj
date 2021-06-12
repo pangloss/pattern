@@ -55,20 +55,27 @@
        + (eq? ?e0 ?e1)
        - (and ?e0 ?e1)
        - (or ?e0 ?e1)
-       - (& (?e:f ??e:args) (? _ seq?))
-       + (call (funref ?e:f) ??e:args)
-       + (funref ?e)))
+       ;; put this in here early because without call, fns are inconvenient.
+       + (call ?e:f ??e:args)
+       - (& (?e:f ??e:args) (? _ seq?))))
 
-(def-derived Typed Shrunk ;; dead end dialect :)
+(def-derived Exposed Shrunk
+  (Exp [e]
+       + (funref ?v)))
+
+(def-derived Typed Exposed ;; dead end dialect :)
   (Exp [e {:compiler-course.r1/type ?type}]))
 
-(def-derived Alloc Shrunk
+(def-derived Alloc Exposed
   (terminals + [name symbol?])
   (Exp [e]
        - (vector ??e*)
        + (collect ?i)
        + (allocate ?i ?type)
        + (global-value ?name)))
+
+(def-derived AllocTyped Alloc ;; dead end dialect :)
+  (Exp [e {:compiler-course.r1/type ?type}]))
 
 ;; FIXME: for some reason setting ?atm to be enforced causes downstream tests to fail. Not sure why...
 ;; - It doesn't change the output of the simplified pass
@@ -78,10 +85,10 @@
   (Atom [atm #_:enforce]
         (read)
         ?i ?v ?b)
-  - Exp
   (NotExp [ne]
           ?e
           (not ?ne))
+  - Exp
   (Exp [e]
        ?atm
        (- ?atm)
@@ -93,6 +100,8 @@
        (if ?ne ?e:then ?e:else)
        (vector-ref ?e ?i) (vector-set! ?e0 ?i ?e1)
        (void)
+       (funref ?v)
+       (call ?e:f ??e:args)
        (collect ?i)
        (allocate ?i ?type)
        (global-value ?name)))
@@ -121,7 +130,7 @@
        (vector-set! ?v ?i ?atm)
        (collect ?i)
        (allocate ?i ?type)
-       (funref ?lbl)
+       (funref ?lbl) ;; FIXME: this makes no sense if the call needs an atm.
        (call ?atm ??atm*))
   (Stmt [stmt]
         (assign ?v ?e))
