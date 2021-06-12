@@ -57,7 +57,7 @@
        - (or ?e0 ?e1)
        - (& (?e:f ??e:args) (? _ seq?))
        + (call (funref ?e:f) ??e:args)
-       + (funref ?v)))
+       + (funref ?e)))
 
 (def-derived Typed Shrunk ;; dead end dialect :)
   (Exp [e {:compiler-course.r1/type ?type}]))

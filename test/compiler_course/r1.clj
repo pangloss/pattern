@@ -159,17 +159,35 @@
   (cond (int? n) 'Integer
         (boolean? n) 'Boolean))
 
+(def set-fn-type*
+  (comp first
+        (rule '(define (?n [?_ ?t*] ...) ?t ?_)
+              (assoc-in %env [:type n] {::type (sub (??t* -> ?t))}))))
+
+;; TODO extract rule-fn into some composable features
+
 (def add-types
   (dialects
    (=> Shrunk Typed)
    (letfn [(get-type [e]
-             (or (meta e) {::type (tag e)}))]
+             (select-keys (or (meta e) {::type (tag e)})
+                          [::type]))]
      (directed
       ;; TODO: need a way to cleanly specify that I want the result meta merged with the input meta. Basically express:
       ;;
       ;; (success (with-meta ... (merge (meta (:rule/datum %env)) {... ...})))
-      (rule-list (rule '((?:= let) ([?v ?->e]) ?e:b)
-                       (let [env (assoc-in %env [::type v] (get-type e))
+      (rule-list (rule '(program ??d*)
+                       (let [env (reduce (fn [env d] (set-fn-type* d env))
+                                         %env d*)
+                             d* (mapv #(in % env) d*)]
+                         (success (sub (program ??d*)))))
+                 (rule '(define (?v:n ??argdef*) ?type ?e)
+                       (let [env (reduce (fn [env [v t]]
+                                           (assoc-in env [:type v] {::type t}))
+                                         %env argdef*)]
+                         (sub (define (?n ??argdef*) ?type ~(in e env)))))
+                 (rule '((?:= let) ([?v ?->e]) ?e:b)
+                       (let [env (assoc-in %env [:type v] (get-type e))
                              v (in v env) ;; to simplify checking
                              b (in b env)]
                          (success (subm (let ([?v ?e]) ?b)
@@ -181,6 +199,15 @@
                  (rule '((?:as op (| < eq? not)) ??->e:x* ?->e:x)
                        (success
                         (subm (?op ??x* ?x) {::type (tag true)})))
+                 (rule '(call (funref ?v) ??->e:args)
+                       (let [v (with-meta v (get-in %env [:type v]))
+                             fr (subm (funref ?v) (get-in %env [:type v]))]
+                         (success (subm (call ?fr ??args)
+                                        {::type (last (get-in %env [:type v ::type]))}))))
+                 (rule '(call (funref ?->e) ??->e:args)
+                       (let [fr (subm (funref ?e) (get-type e))]
+                         (success (subm (call ?fr ??args)
+                                        {::type (last (::type (get-type e)))}))))
                  (rule '(read) (success (subm (read) {::type (tag 1)})))
                  (rule '(void) (success (subm (void) {::type 'Void})))
                  (rule '(global-value ?v:l)
@@ -201,7 +228,7 @@
                  (rule '(allocate ?e:v ?type:t)
                        (success (subm (allocate ?v ?t) {::type t})))
                  (rule '?v
-                       (success (with-meta v (get-in %env [::type v])))))))))
+                       (success (with-meta v (get-in %env [:type v])))))))))
 
 ;; Expand the inner workings of (vector ...)
 
