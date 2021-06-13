@@ -71,7 +71,7 @@
   (dialects
    (=> Selected nil)
    (rule-list
-    (rule '(block ?lbl ?vars ??stmt* (jump ?a ?then) (jump ?b ?else))
+    (rule '(block ?lbl ??stmt* (jump ?a ?then) (jump ?b ?else))
           (sub [[?lbl ?then]
                 [?lbl ?else]]))
     (rule '?_ []))))
@@ -93,7 +93,7 @@
                                (update :blocks merge (:blocks b))))
                          init
                          b*)
-            [_ label vars & i*] (get blocks label)]
+            [_ label & i*] (get blocks label)]
         (let [live
               (reduce (fn [env i]
                         (liveness* i env

@@ -478,7 +478,7 @@
                  start (symbol (str v "-start"))
                  blocks (reduce-kv (fn [blocks l b]
                                      (assoc blocks l
-                                            (sub (block ?l [~@(sort (:v b))]
+                                            (sub (block ?l
                                                         ~@(:s b)))))
                                    {} (assoc (:b e) start (assoc e :label start)))]
              (sub (define [?v [??arg*] ?type] [~@(:v e)] ~blocks))))))))
@@ -498,7 +498,7 @@
                   ?blocks)))
 
      ;; Produce data for output
-     (rule '(block ?lbl ?vars ??->stmt* ?tail)
+     (rule '(block ?lbl ??->stmt* ?tail)
            (apply merge-with #(or %1 %2) (filter map? stmt*)))
      (rule '(assign ?v ?e)
            (let [vt (::type (meta v))
@@ -567,7 +567,7 @@
                                 (sub (movq (reg ?reg) (v ?arg))))
                               '[rdi rsi rdx rcx r8 r9]
                               args)]
-              (sub (block ?label ?vars ??prefix ??instrs))))]
+              (sub (block ?label ??prefix ??instrs))))]
     (dialects
      (=> Uncovered+ Selected)
      (directed (rule-list (rule '(program ??->define*))
@@ -579,8 +579,8 @@
                                       blocks (update blocks start extract-fn-args v*)
                                       vars (into (or vars {}) (map vector v* type*))]
                                   (sub (define ?v ?vars ?blocks))))
-                          (rule '(block ?label ?vars ??->instrs)
-                                (sub (block ?label ?vars ~@(apply concat instrs))))
+                          (rule '(block ?label ??->instrs)
+                                (sub (block ?label ~@(apply concat instrs))))
                           (rule '(assign ?->x (+ ?->atm:a ?->atm:b))
                                 (cond (= x b) (sub [(addq ?a ?b)])
                                       (= x a) (sub [(addq ?b ?a)])
@@ -700,8 +700,8 @@
    (=> RegAllocated RemoveUnallocated)
    (on-subexpressions
     (rule-list (rule '(movq ?arg0 (v ?v)) (success nil))
-               (rule '(block ?lbl ?vars ??ins*)
-                     (sub (block ?lbl ?vars ~@(remove nil? ins*))))))))
+               (rule '(block ?lbl ??ins*)
+                     (sub (block ?lbl ~@(remove nil? ins*))))))))
 
 ;; Combine blocks when a jump is not needed
 
@@ -734,7 +734,7 @@
                                                      blocks)))
                                                blocks linear-jumps)]
                                 (sub (define ?d ?vars ?var-locs [~@(remove symbol? (vals blocks))]))))
-                        (rule '(block ?from ?vars ??stmt* (jump ?jc ?to))
+                        (rule '(block ?from ??stmt* (jump ?jc ?to))
                               [from to])
                         (rule '(block ??any)
                               (success nil))))))
@@ -746,8 +746,8 @@
    (=> RemoveUnallocated Patched)
    (directed (rule-list (rule '(program ??->define*))
                         (rule '(define ?d ?vars ?var-locs [??->block*]))
-                        (rule '(block ?lbl ?vars ??->stmt* ?tail)
-                              (sub (block ?lbl ?vars ~@(apply concat stmt*) ?tail)))
+                        (rule '(block ?lbl ??->stmt* ?tail)
+                              (sub (block ?lbl ~@(apply concat stmt*) ?tail)))
                         ;; traversal above, patches below
                         (rule '(addq (int 0) ?arg) [])
                         (rule '(subq (int 0) ?arg) [])
@@ -848,7 +848,7 @@
                                     ["    popq %rbp"]
                                     ["    retq"]])))
 
-                          (rule '(block ?lbl ?vars ??->all*)
+                          (rule '(block ?lbl ??->all*)
                                 (list* [(str (name lbl) ":")]
                                        (fi all*)))
 
@@ -873,7 +873,7 @@
                           (rule '(jump eq? ?lbl)          (list "je " (name lbl)))
                           (rule '(jump true ?lbl)         (list "jmp " (name lbl)))
                           (rule '(indirect-callq ?->arg)  (list "callq *" arg))
-                          (rule '(tailjmp ?lbl)           (list "jmp *" j))
+                          (rule '(tailjmp ?lbl)           (list "jmp *" lbl))
                           (rule '(retq)                   ["jmp conclusion"])
                           (rule '(?x ?->a)                (list (name x) " " a))
                           (rule '(?x ?->a ?->b)           (list (name x) " " a ", " b)))))))
@@ -937,3 +937,15 @@
           (vec (reverse (conj results v))))))))
 
 (def test-pipeline (tester 'R1 passes stringify valid-asm?))
+
+(defn ->pass
+  ([pass]
+   (let [pass (if (int? pass) (nth passes pass) pass)]
+     (with-meta
+       (tester 'R1 (take-while #(and (not= pass %) (not= pass (deref %))) passes)
+               pass
+               (constantly false))
+       {:pass pass})))
+  ([pass form]
+   (let [f (->pass pass)]
+     [(meta f) (f form)])))

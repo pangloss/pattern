@@ -139,7 +139,7 @@
         (tailcall ?v ??atm*)
         (return ?e))
   (Block [block]
-         (block ?lbl [??v*] ??stmt* ?tail))
+         (block ?lbl ??stmt* ?tail))
   (ArgDef [argdef] [?v ?type])
   - Define
   (DefInfo [d]
@@ -212,7 +212,7 @@
         (tailjmp ?arg)
         (retq))
   (Block [block]
-         (block ?lbl [??v*] ??stmt* ?tail))
+         (block ?lbl ??stmt* ?tail))
   ;; FIXME: think about if this changes?
   (Define [define]
     (define ?v (?:*map ?v* ?type*) (?:*map ?lbl* ?block*)))
