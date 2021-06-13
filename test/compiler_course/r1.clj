@@ -748,9 +748,17 @@
                         (rule '(define ?d ?vars ?var-locs [??->block*]))
                         (rule '(block ?lbl ?vars ??->stmt* ?tail)
                               (sub (block ?lbl ?vars ~@(apply concat stmt*) ?tail)))
+                        ;; traversal above, patches below
                         (rule '(addq (int 0) ?arg) [])
                         (rule '(subq (int 0) ?arg) [])
                         (rule '(movq ?arg ?arg) [])
+                        (rule '(tailjmp ?arg)
+                              (sub [(movq ?arg (reg rax))
+                                    (tailjmp (reg rax))]))
+                        ;; NOTE: not sure if this is required. Is callq *-104(%rbp) legal? If so remove this rule:
+                        (rule '(indirect-callq ?arg)
+                              (sub [(movq ?arg (reg rax))
+                                    (indirect-callq (reg rax))]))
                         (rule '?x [x])))))
 
 ;; Capture callee-save registers on entry and restore them on exit
@@ -844,6 +852,7 @@
                                 (list* [(str (name lbl) ":")]
                                        (fi all*)))
 
+                          (rule '(funref ?lbl)                  (str lbl "(%rip)"))
                           (rule '(byte-reg ?r)                  (str "%" r))
                           (rule '(deref ?i:offset (reg ?v))           (str offset "(%" (name v) ")"))
                           (rule '(deref ?i:scale ?i:offset (reg ?v))  (str scale "(" offset ")(%" (name v) ")"))
@@ -863,6 +872,8 @@
                           (rule '(jump < ?lbl)            (list "jl " (name lbl)))
                           (rule '(jump eq? ?lbl)          (list "je " (name lbl)))
                           (rule '(jump true ?lbl)         (list "jmp " (name lbl)))
+                          (rule '(indirect-callq ?->arg)  (list "callq *" arg))
+                          (rule '(tailjmp ?lbl)           (list "jmp *" j))
                           (rule '(retq)                   ["jmp conclusion"])
                           (rule '(?x ?->a)                (list (name x) " " a))
                           (rule '(?x ?->a ?->b)           (list (name x) " " a ", " b)))))))
