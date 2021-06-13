@@ -157,6 +157,15 @@
       (?:*map ?v ?type)
       (?:+map ?lbl* ?block*))))
 
+(def-derived Uncovered+ Uncovered
+  ;; During select-instructions (assign (reg rax) ...) can happen.
+  (Loc [x :enforce]
+       ?v
+       (reg rax))
+  (Stmt [stmt]
+        - (assign ?v ?e)
+        + (assign ?x ?e)))
+
 (def jmp-cond #{true '< 'eq?})
 
 (def-dialect Selected
@@ -200,7 +209,7 @@
   ;; like above attached but they don't fit at the expression level.
   (Tail [tail]
         (jump ?jc ?lbl)
-        (tailjmp ?v)
+        (tailjmp ?arg)
         (retq))
   (Block [block]
          (block ?lbl [??v*] ??stmt* ?tail))

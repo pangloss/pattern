@@ -53,8 +53,7 @@
                                   reg regs]
                               [v reg])]
                   (update %env :i concat edges)))
-          (rule '((| indirect-callq tailjmp) ?x)
-                ;; FIXME: oops, no (v ?x) wrapper here!
+          (rule '((| indirect-callq tailjmp) (v ?x))
                 ;; TODO: I something like callq here, interfering all over the place.
                 (update %env :live conj x))
           (rule '((? _ ~move-instr?) (v ?v:a) ?_)

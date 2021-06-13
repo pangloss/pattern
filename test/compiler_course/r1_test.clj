@@ -83,7 +83,6 @@
     (let ([j 1])
       (z j j j j j j j j j j))])
 
-#_
 (deftest test-f
   (is (= ok (test-pipeline fprogram))))
 

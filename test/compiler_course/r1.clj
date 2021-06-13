@@ -260,7 +260,6 @@
 
 (def expose-allocation
   (dialects
-   ;; TODO: use AllocTyped and fix missing types (rule-simplifier bug?)
    (=> Typed AllocTyped)
    (rule-simplifier
     (rule '(vector ??e*)
@@ -558,10 +557,6 @@
 (def select-instructions*
   ;; TODO: split to assign and tail versions.. See hints here
   ;; https://iucompilercourse.github.io/IU-P423-P523-E313-E513-Fall-2020/lecture-Oct-6.html
-  ;;
-  ;; NOTE: The (return ...) rule can cause (assign (reg rax) ...) to be run
-  ;; which violates the Uncovered language, so assign can't validate (assign ?v
-  ;; ...)  return (below) or with x as a symbol.
   (letfn [(fn-args [arg*]
             (map (fn [arg reg]
                    (sub (movq ?arg (reg ?reg))))
@@ -574,7 +569,7 @@
                               args)]
               (sub (block ?label ?vars ??prefix ??instrs))))]
     (dialects
-     (=> Uncovered Selected)
+     (=> Uncovered+ Selected)
      (directed (rule-list (rule '(program ??->define*))
                           (rule '(define [?v [[?v* ?type*] ...] ?type] ?vars ?blocks)
                                 (let [blocks (reduce-kv (fn [blocks l b]
@@ -586,24 +581,24 @@
                                   (sub (define ?v ?vars ?blocks))))
                           (rule '(block ?label ?vars ??->instrs)
                                 (sub (block ?label ?vars ~@(apply concat instrs))))
-                          (rule '(assign ?->any:x (+ ?->atm:a ?->atm:b))
+                          (rule '(assign ?->x (+ ?->atm:a ?->atm:b))
                                 (cond (= x b) (sub [(addq ?a ?b)])
                                       (= x a) (sub [(addq ?b ?a)])
                                       :else (sub [(movq ?a ?x)
                                                   (addq ?b ?x)])))
-                          (rule '(assign ?->any:x (read))
+                          (rule '(assign ?->x (read))
                                 (sub [(callq read-int)
                                       (movq (reg rax) ?x)]))
-                          (rule '(assign ?->any:x (vector-ref ?->v:vec ?i))
+                          (rule '(assign ?->x (vector-ref ?->v:vec ?i))
                                 (sub [(movq ?vec (reg r11))
                                       (movq (deref 8 ~(inc i) (reg r11)) ?x)]))
 
-                          (rule '(assign ?->any:x (vector-set! ?->v:vec ?i ?->atm:val))
+                          (rule '(assign ?->x (vector-set! ?->v:vec ?i ?->atm:val))
                                 (sub [(movq ?vec (reg r11))
                                       (movq ?val (deref 8 ~(inc i) (reg r11)))
                                       (movq (int 0) ?x)]))
 
-                          (rule '(assign ?->any:x (allocate ?i:len (Vector ??type*)))
+                          (rule '(assign ?->x (allocate ?i:len (Vector ??type*)))
                                 (let [tag (make-tag len type*)
                                       free (sub (v ~(gennice 'free)))]
                                   (sub [(movq (global-value free_ptr) ?free)
@@ -611,7 +606,7 @@
                                         (movq ?free (reg rax))
                                         (movq (int ?tag) (deref 0 (reg rax))) ;; why use deref here??
                                         (movq ?free ?x)])))
-                          (rule '(assign ?->any:x (collect ?->i:bytes))
+                          (rule '(assign ?->x (collect ?->i:bytes))
                                 ;; TODO: can I deal with the existence of these
                                 ;; registers in the allocator and not cause
                                 ;; clobbering without just removing them from the
@@ -622,23 +617,23 @@
                                       (movq ?bytes (reg rsi))
                                       (callq collect)]))
 
-                          (rule '(assign ?->any:x (funref ?lbl))
+                          (rule '(assign ?->x (funref ?lbl))
                                 (sub [(leaq (funref ?lbl) ?x)]))
-                          (rule '(assign ?->any:x (call ?v:fr ??->atm:args))
+                          (rule '(assign ?->x (call ?v:fr ??->atm:args))
                                 (sub [~@(fn-args args)
-                                      (indirect-callq ?fr)
+                                      (indirect-callq (v ?fr))
                                       (movq (reg rax) ?x)]))
 
-                          (rule '(assign ?->any:x (- ?->e:a))
+                          (rule '(assign ?->x (- ?->e:a))
                                 (if (= x a)
                                   (sub [(negq ?x)])
                                   (sub [(movq ?a ?x)
                                         (negq ?x)])))
-                          (rule '(assign ?->any:x ((? op #{< eq?}) ?->atm:a ?->atm:b))
+                          (rule '(assign ?->x ((? op #{< eq?}) ?->atm:a ?->atm:b))
                                 (select-inst-cond (sub (?op ?a ?b)) {:v x}))
-                          (rule '(assign ?->any:x (not ?->pred:a))
+                          (rule '(assign ?->x (not ?->pred:a))
                                 (select-inst-cond (sub (not ?a)) {:v x}))
-                          (rule '(assign ?->any:x ?->e:a)
+                          (rule '(assign ?->x ?->e:a)
                                 (if (= x a)
                                   []
                                   (sub [(movq ?a ?x)])))
@@ -650,7 +645,7 @@
 
                           (rule '(tailcall ?v:fr ??->atm:args)
                                 (sub [~@(fn-args args)
-                                      (tailjmp ?fr)]))
+                                      (tailjmp (v ?fr))]))
 
 
                           (rule '(if ((? cmp #{< eq?}) ?->atm:a ?->atm:b) (goto ?lbl:then) (goto ?lbl:else))
