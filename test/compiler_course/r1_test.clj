@@ -83,8 +83,17 @@
     (let ([j 1])
       (z j j j j j j j j j j))])
 
+#_
 (deftest test-f
   (is (= ok (test-pipeline fprogram))))
+
+(def add-fun
+  '[(define (add [x Integer] [y Integer]) Integer
+      (+ x y))
+    (add 40 2)])
+
+(deftest test-add-fun
+  (is (= ok (test-pipeline add-fun))))
 
 (deftest various-programs
   (are [p] (= ok (test-pipeline p))

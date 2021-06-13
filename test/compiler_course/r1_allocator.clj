@@ -13,7 +13,7 @@
 ;; TODO: is rax ever looked at for liveness analysis? Not sure if I need this anyway...
 (def register-synonyms {:al :rax})
 
-(def move-instr? (into #{} '[movq movzbq]))
+(def move-instr? (into #{} '[movq movzbq leaq]))
 (def read-instr? (into #{} '[addq negq cmpq]))
 
 (def heap? (matcher '(Vector ??types)))
@@ -53,6 +53,10 @@
                                   reg regs]
                               [v reg])]
                   (update %env :i concat edges)))
+          (rule '((| indirect-callq tailjmp) ?x)
+                ;; FIXME: oops, no (v ?x) wrapper here!
+                ;; TODO: I something like callq here, interfering all over the place.
+                (update %env :live conj x))
           (rule '((? _ ~move-instr?) (v ?v:a) ?_)
                 (update %env :live conj a))
           (rule '((? _ ~read-instr?) (v ?v:a) (v ?v:d))
@@ -128,7 +132,7 @@
   exercise of building the move graph."
   (dialects
    (=> Selected nil)
-   (rule '(define [?v ??etc] ?var-types ?blocks)
+   (rule '(define ?v ?var-types ?blocks)
          (let [edges (mapcat control-flow (vals blocks))
                start (symbol (str v '-start))
                main (-> (build-graph)

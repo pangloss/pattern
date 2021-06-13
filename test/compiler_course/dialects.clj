@@ -192,7 +192,7 @@
         (set ?jc ?bytereg)     ; get cmp flag 1
         (movzbq ?bytereg ?arg) ; get cmp flag 2
         (jump ?jc ?lbl)
-        (indirect-callq ?arg (int ?i))
+        (indirect-callq ?arg)  ; I originally had an extra (int ?i) here and on tailjmp. Why?
         (leaq (funref ?v) ?arg))
   ;; there is specific valid sequencing like cmp -> jump -> jump, but I'm not
   ;; sure how or if I can encode that here...
@@ -205,14 +205,11 @@
   (Block [block]
          (block ?lbl [??v*] ??stmt* ?tail))
   ;; FIXME: think about if this changes?
-  (DefInfo [d]
-    [?lbl [??argdef*] ?type])
   (Define [define]
-    (define ?d (?:*map ?v ?type) (?:*map ?lbl* ?block*)))
+    (define ?v (?:*map ?v* ?type*) (?:*map ?lbl* ?block*)))
   (Program [program]
            (program ??define*))
   (entry Program))
-
 
 (def-derived RegAllocated Selected
   (Caller [caller :enforce] (reg (| rax rcx rdx rsi rdi r8 r9 r10 r11)))
@@ -228,9 +225,9 @@
        + ?loc)
   - Define
   (Define [define]
-    (define ?d
-      (?:*map ?v ?type)
-      (?:*map ?v* ?loc*)
+    (define ?v
+      (?:*map ?v*1 ?type)
+      (?:*map ?v*2 ?loc*)
       [??block*])))
 
 (def-derived RemoveUnallocated RegAllocated
@@ -250,8 +247,8 @@
            (movq ?callee (stack* ?i)))
   - Define
   (Define [define]
-    (define ?d
-      (?:*map ?v ?type)
-      (?:*map ?v* ?loc*)
+    (define ?v
+      (?:*map ?v*1 ?type)
+      (?:*map ?v*2 ?loc*)
       [??savereg*]
       [??block*])))

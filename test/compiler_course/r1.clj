@@ -564,17 +564,26 @@
   ;; ...)  return (below) or with x as a symbol.
   (letfn [(fn-args [arg*]
             (map (fn [arg reg]
-                     (sub (movq ?arg (reg ?reg))))
+                   (sub (movq ?arg (reg ?reg))))
                  arg*
-                 '[rdi rsi rdx rcx r8 r9]))]
+                 '[rdi rsi rdx rcx r8 r9]))
+          (extract-fn-args [[_ label vars & instrs] args]
+            (let [prefix (map (fn [reg arg]
+                                (sub (movq (reg ?reg) (v ?arg))))
+                              '[rdi rsi rdx rcx r8 r9]
+                              args)]
+              (sub (block ?label ?vars ??prefix ??instrs))))]
     (dialects
      (=> Uncovered Selected)
      (directed (rule-list (rule '(program ??->define*))
-                          (rule '(define ?d ?vars ?blocks)
+                          (rule '(define [?v [[?v* ?type*] ...] ?type] ?vars ?blocks)
                                 (let [blocks (reduce-kv (fn [blocks l b]
                                                           (assoc blocks l (descend b)))
-                                                        {} blocks)]
-                                  (sub (define ?d ?vars ?blocks))))
+                                                        {} blocks)
+                                      start (symbol (str v "-start"))
+                                      blocks (update blocks start extract-fn-args v*)
+                                      vars (into (or vars {}) (map vector v* type*))]
+                                  (sub (define ?v ?vars ?blocks))))
                           (rule '(block ?label ?vars ??->instrs)
                                 (sub (block ?label ?vars ~@(apply concat instrs))))
                           (rule '(assign ?->any:x (+ ?->atm:a ?->atm:b))
@@ -872,22 +881,6 @@
 
 (defn combine-strings [p]
   (apply str (map #(apply str (conj % "\n")) p)))
-
-(def ->shrink (comp #'shrink #'uniqify))
-(def ->type (comp #'add-types #'->shrink))
-(def ->expose-alloc (comp #'expose-allocation #'->type))
-(def ->simple (comp #'remove-complex-opera* #'->expose-alloc))
-(def ->flatten (comp #'explicate-control #'->simple))
-(def ->uncover (comp #'uncover-locals #'->flatten))
-;; ...
-(def ->select (comp #'select-instructions #'->uncover))
-(def ->live (comp #'liveness #'->select))
-(def ->alloc (comp #'allocate-registers #'->select))
-(def ->tidied (comp #'remove-unallocated #'->alloc))
-(def ->jump (comp #'remove-jumps #'->tidied))
-(def ->patch (comp #'patch-instructions #'->jump))
-(def ->reg (comp #'save-registers #'->patch))
-(def ->str (comp #'stringify #'->reg))
 
 (def passes
   [#'uniqify
