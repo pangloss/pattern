@@ -39,6 +39,7 @@
                                  (sub (let ([?x' ~(in e env)])
                                         ~(in body env)))))
                          (rule '(if ?->e ?->e:then ?->e:else))
+                         (rule '(lambda (??argdef*) ?type ?->e))
                          (rule '(??->forms))
                          (rule '?v (get-in %env [:vars v]))]))))
 
@@ -122,6 +123,7 @@
        (rule '(vector-set! ?->e0 ?i ?->e1))
        (rule '(void))
        (rule '(read))
+       (rule '(lambda (??argdef*) ?type ?->e))
        (rule '(?->e:f ??->e:args)
              ;;(when-not (r1-keyword? f)
              ;; I don't try to handle if a fn shadows a built-in...
@@ -145,6 +147,103 @@
      (rule '?v
            (when (get-in %env [:defs v])
              (sub (funref ?v))))))))
+
+;; Convert closures
+
+(defn descend-all
+  "Descend each element in e*, threading the env and returning the result.
+
+  Like descend, if called without env it just returns the resulting expression
+  and doesn't return the env, but if called with an env, it returns
+  [result env].
+
+  An alternative strategy would be to merge the resulting envs, but that could
+  require a custom merge strategy, so isn't provided as a built-in helper."
+  ([e*]
+   (first (descend-all e* {})))
+  ([e* env]
+   (reduce (fn [[e* env] e]
+             (let [[e env] (descend e env)]
+               [(conj e* e) env]))
+           [[] env]
+           e*)))
+
+(def convert-closures
+  (dialects
+   (=> Exposed Closures)
+   (directed
+    (rule-list (rule '(program ??define*)
+                     (let [[defs {:keys [closures]}]
+                           (reduce (fn [[def* env] d]
+                                     (let [[d env] (descend d env)]
+                                       [(conj def* d) env]))
+                                   [[] {:closures [] :free-vars #{}}] define*)]
+                       (sub (program ??defs ??closures))))
+               (rule '(define (?v:n ??argdef*) ?type ?->e)
+                     (let [_ (gennice '_)]
+                       (sub (define (?n [?_ Closure] ??argdef*) ?type ?e))))
+               (rule '(lambda (??argdef*) ?type ?e)
+                     (let [[e {:keys [free-vars] :as env}] (descend e %env)
+                           free-vars (apply disj free-vars (map first argdef*))
+                           vars (vec free-vars)
+                           ;; TODO get free-var types somehow...
+                           n (gennice 'lambda)
+                           carg (gennice 'carg)
+                           e (reduce (fn [form [i v]]
+                                       (sub (let ([?v (vector-ref ?carg ~(inc i))])
+                                              ?form)))
+                                     e (map-indexed vector vars))]
+                       ;; I can use add-types to get expr types.
+                       (success (sub (vector (funref ?n) ??free-vars))
+                                (-> env
+                                    (assoc :free-vars free-vars)
+                                    (update :closures conj
+                                            (sub (define (?n [?carg (Vector Closure (delay-type ??free-vars))] ;; FIXME
+                                                             ??argdef*)
+                                                   ?type
+                                                   ?e)))))))
+               (rule '((?:= let) ([?v ?e]) ?e:body)
+                     (let [[e env] (descend e %env)
+                           [body env] (descend body env)
+                           env (update env :free-vars disj v)]
+                       (success (sub (let ([?v ?e]) ?body))
+                                env)))
+               (rule '(call (funref ?v) ??e*)
+                     (let [[e* env] (descend-all e* %env)]
+                       (success (sub (call (funref ?v) (void) ??e*))
+                                env)))
+               (rule '(call ?e:f ??e*)
+                     (let [[f env] (descend f %env)
+                           closure (gennice 'closure)
+                           [e* env] (descend-all e* env)]
+                       (success (sub (let ([?closure ?f])
+                                       (call (vector-ref ?closure 0) ?closure ??e*)))
+                                env)))
+               (rule '(funref ?v)
+                     (sub (vector (funref ?v))))
+               (rule '(?v ??e*)
+                     (let [[e* env] (descend-all e* %env)]
+                       (success (sub (?v ??e*))
+                                env)))
+               (rule '?v
+                     (success v (update %env :free-vars conj v)))))))
+
+
+(->pass convert-closures '[(define (abc [x Integer]) Integer
+                             (abc 1))
+                           (let ([a 1])
+                             (+ ((lambda ([x Integer]) Integer (+ a x)) (abc 1))
+                                99))])
+
+(test-pipeline '[(define (abc [x Integer]) Integer
+                   (abc 1))
+                 (let ([a 1])
+                   (+ ((lambda ([x Integer]) Integer (+ a x)) (abc 1))
+                      99))])
+
+
+
+
 
 ;; Functions must not have more than 6 args. Stuff the remaining in a vector.
 
@@ -893,6 +992,7 @@
    #'shrink
    #'expose-functions
    #'limit-functions
+   #'convert-closures
    #'add-types
    #'expose-allocation
    #'remove-complex-opera*

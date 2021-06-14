@@ -19,8 +19,9 @@
         (?:letrec [simple   (| Integer Boolean Void)
                    compound (Vector (?:* $type))
                    function ((?:* $type) -> $type)
-                   type     (| $simple $compound $function)]
+                   type     (| $simple $compound $function $closure)]
           $type))
+  (ArgDef [argdef] [?v ?type])
   (Exp [e]
        ?i ?v ?b
        (read)
@@ -29,11 +30,12 @@
        (?cmp ?e0 ?e1)
        (let ([?v ?e]) ?e:body)
        (if ?e ?e:then ?e:else)
+       (lambda (??argdef*) ?type ?e)
        (vector ??e*) (vector-length ?e)
        (vector-ref ?e ?i) (vector-set! ?e0 ?i ?e1)
        (void)
-       (& (?e:f ??e:args) (? _ seq?))) ;; FIXME: this list should not unify with a vector... but it does if I don't add the (? _ seq?) rule.
-  (ArgDef [argdef] [?v ?type])
+       ;; FIXME: this list should not unify with a vector... but it does if I don't add the (? _ seq?) rule.
+       (& (?e:f ??e:args) (? _ seq?)))
   (Define [define]
     (define (?v:name ??argdef*) ?type ?e))
   (Program [p]
@@ -63,7 +65,23 @@
   (Exp [e]
        + (funref ?v)))
 
-(def-derived Typed Exposed ;; dead end dialect :)
+(def-derived Closures Exposed
+  - Type
+  (Type [type :enforce]
+        (?:letrec [simple   (| Integer Boolean Void Closure (delay-type ??v))
+                   compound (Vector (?:* $type))
+                   function ((?:* $type) -> $type)
+                   ;; closure is a vector whose first arg contains itself recursively (or Void)
+                   closure  (Vector #_closure-fn       ((| (Vector ??_) Void) (?:* $type) -> $type)
+                                    #_closed-over-vars (?:* $type))
+                   type     (| $simple $compound $function $closure)]
+          $type))
+  (Exp [e]
+       ;; lambdas become top-level define plus a vector of free variable values where the lambda was.
+       ;; calls to the return lambda become calls to the first member of the vector which is the funref
+       - (lambda (??argdef*) ?type ?e)))
+
+(def-derived Typed Closures ;; dead end dialect :)
   (Exp [e {:compiler-course.r1/type ?type}]))
 
 (def-derived Alloc Exposed
