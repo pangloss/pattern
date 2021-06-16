@@ -122,6 +122,10 @@
        (rule '(vector-set! ?->e0 ?i ?->e1))
        (rule '(void))
        (rule '(read))
+       (rule '((lambda ([?v* ?type*] ...) ?type ?->e) ??->arg*)
+             (reduce (fn [e [v arg]]
+                       (sub (let ([?v ?arg]) ?e)))
+                     e (reverse (map vector v* arg*))))
        (rule '(lambda (??argdef*) ?type ?->e))
        (rule '(?->e:f ??->e:args)
              ;;(when-not (r1-keyword? f)
