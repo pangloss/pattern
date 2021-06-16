@@ -19,6 +19,9 @@
         (?:letrec [simple   (| Integer Boolean Void)
                    compound (Vector (?:* $type))
                    function ((?:* $type) -> $type)
+                   closure  (Vector #_closure-fn       ((| (Vector ??_) Void)
+                                                        (?:* $type) -> $type)
+                                    #_closed-over-vars (?:* $type))
                    type     (| $simple $compound $function $closure)]
           $type))
   (ArgDef [argdef] [?v ?type])
@@ -68,14 +71,15 @@
 (def-derived Closures Exposed
   - Type
   (Type [type :enforce]
-        (?:letrec [simple   (| Integer Boolean Void Closure (delay-type ??v))
+        (?:letrec [simple   (| Integer Boolean Void Closure (delay-type ??_))
                    compound (Vector (?:* $type))
                    function ((?:* $type) -> $type)
                    ;; closure is a vector whose first arg contains itself recursively (or Void)
-                   closure  (Vector #_closure-fn       ((| (Vector ??_) Void) (?:* $type) -> $type)
+                   closure  (Vector #_closure-fn       ((| (Vector ??_) Void)
+                                                        (?:* $type) -> $type)
                                     #_closed-over-vars (?:* $type))
                    type     (| $simple $compound $function $closure)]
-          $type))
+                  $type))
   (Exp [e]
        ;; lambdas become top-level define plus a vector of free variable values where the lambda was.
        ;; calls to the return lambda become calls to the first member of the vector which is the funref
@@ -84,7 +88,7 @@
 (def-derived Typed Closures ;; dead end dialect :)
   (Exp [e {:compiler-course.r1/type ?type}]))
 
-(def-derived Alloc Exposed
+(def-derived Alloc Closures
   (terminals + [name symbol?])
   (Exp [e]
        - (vector ??e*)
@@ -192,11 +196,15 @@
              [i int?]
              [jc `jmp-cond])
   (Type [type :enforce]
-        (?:letrec [simple   (| Integer Boolean Void)
+        (?:letrec [simple   (| Integer Boolean Void Closure (delay-type ??_))
                    compound (Vector (?:* $type))
                    function ((?:* $type) -> $type)
-                   type     (| $simple $compound $function)]
-          $type))
+                   ;; closure is a vector whose first arg contains itself recursively (or Void)
+                   closure  (Vector #_closure-fn       ((| (Vector ??_) Void)
+                                                        (?:* $type) -> $type)
+                                    #_closed-over-vars (?:* $type))
+                   type     (| $simple $compound $function $closure)]
+                  $type))
   (ByteReg [bytereg :enforce] (byte-reg (| ah al bh bl ch cl dh dl)))
   (Reg [reg]
        (reg (| rdi rsi rdx rcx r8 r9)) ;; fn arg regs

@@ -147,7 +147,23 @@
            (when (get-in %env [:defs v])
              (sub (funref ?v))))))))
 
-;; Convert closures
+(comment
+  (test-pipeline
+   '
+   [(define (add [x Integer] [y  Integer])  Integer (+ x y))
+    (define (sub [x Integer] [y  Integer])  Integer (- x y))
+
+    (+ (add 20 1)
+       (let ([f (if (eq? (read) 0) add sub)])
+         (f 20 1)))]))
+
+  ;; Convert closures
+
+  ;; possible optimization: if a closure is not added to any data structure and is not returned from the block it's created in,
+  ;; and if the total number of vars + free vars < 5 then I could treat the free vars as normal vars and call the closure as
+  ;; a regular function call.
+  ;; another optimization: after above, if the lambda has < 5 args, create the closure vector with space for the extra args and
+  ;; at call time, just add those args to the vector. This wouldn't be thread safe because mutating a shared object.
 
 (def convert-closures
   (dialects
@@ -210,17 +226,20 @@
                      (success v (update %env :free-vars conj v)))))))
 
 
-(->pass convert-closures '[(define (abc [x Integer]) Integer
-                             (abc 1))
-                           (let ([a 1])
-                             (+ ((lambda ([x Integer]) Integer (+ a x)) (abc 1))
-                                99))])
-
-(test-pipeline '[(define (abc [x Integer]) Integer
+(comment
+  (stringify
+   (last
+    (->pass 15 '[(define (abc [x Integer]) Integer
                    (abc 1))
                  (let ([a 1])
                    (+ ((lambda ([x Integer]) Integer (+ a x)) (abc 1))
-                      99))])
+                      99))])))
+
+  (test-pipeline '[(define (abc [x Integer]) Integer
+                     (abc 1))
+                   (let ([a 1])
+                     (+ ((lambda ([x Integer]) Integer (+ a x)) (abc 1))
+                        99))]))
 
 
 
