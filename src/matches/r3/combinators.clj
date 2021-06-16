@@ -128,6 +128,24 @@
   ([expression env]
    (*descend* expression env)))
 
+(defn descend-all
+  "Descend each element in e*, threading the env and returning the result.
+
+  Like descend, if called without env it just returns the resulting expression
+  and doesn't return the env, but if called with an env, it returns
+  [result env].
+
+  An alternative strategy would be to merge the resulting envs, but that could
+  require a custom merge strategy, so isn't provided as a built-in helper."
+  ([e*]
+   (first (descend-all e* {})))
+  ([e* env]
+   (reduce (fn [[e* env] e]
+             (let [[e env] (*descend* e env)]
+               [(conj e* e) env]))
+           [[] env]
+           e*)))
+
 (def ^:dynamic *descent-depth* nil)
 (def ^:dynamic *do-mutual-descent* nil)
 

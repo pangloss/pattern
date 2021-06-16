@@ -31,6 +31,7 @@
               rule-list!
               in-order
               descend
+              descend-all
               on-subexpressions
               simplifier
               directed

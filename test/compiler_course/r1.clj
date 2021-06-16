@@ -5,7 +5,7 @@
             [compiler-course.dialects :refer [r1-keyword?]]
             [matches.nanopass.dialect :refer [all-dialects =>:to show-parse]]
             [matches :refer [descend directed on-subexpressions rule rule-list rule-list!
-                             sub success subm rule-simplifier matcher
+                             descend-all sub success subm rule-simplifier matcher
                              => dialects validate ok ok?]]
             [matches.types :refer [child-rules]]
             [clojure.string :as str]))
@@ -148,24 +148,6 @@
              (sub (funref ?v))))))))
 
 ;; Convert closures
-
-(defn descend-all
-  "Descend each element in e*, threading the env and returning the result.
-
-  Like descend, if called without env it just returns the resulting expression
-  and doesn't return the env, but if called with an env, it returns
-  [result env].
-
-  An alternative strategy would be to merge the resulting envs, but that could
-  require a custom merge strategy, so isn't provided as a built-in helper."
-  ([e*]
-   (first (descend-all e* {})))
-  ([e* env]
-   (reduce (fn [[e* env] e]
-             (let [[e env] (descend e env)]
-               [(conj e* e) env]))
-           [[] env]
-           e*)))
 
 (def convert-closures
   (dialects
