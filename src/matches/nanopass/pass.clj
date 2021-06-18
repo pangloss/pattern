@@ -15,6 +15,7 @@
                                                   on-subexpressions
                                                   rule-list
                                                   guard
+                                                  descend
                                                   directed]]
             [matches.r3.core :refer [rule success]]
             [matches.r3.rewrite :refer [quo sub]]))
@@ -165,16 +166,31 @@
              (dialects dialects#
                        ~(insert-defn (or compiled '<>) name fn-tail)))))))
 
-(def add-env-args* (rule '(rule ?pattern ??more)
-                         ;; metadata-only change needs `success` to stick!
-                         (success
-                          (sub (rule ~(vary-meta pattern assoc :env-args (:env-args %env))
-                                     ??more)))))
+(def add-env-args*
+  (directed
+   (rule-list (rule '(directed ?->rule))
+              (rule '(rule-list (?:* (| [??rules] ?->rule)))
+                    ;; FIXME: why didn't [??->rules] work in this context?
+                    (let [rules (map (fn [rs]
+                                       (map (fn [r] (first (descend r %env))) rs)) rules)]
+                      (sub (rule-list (?:* (| ?rule [??->rules]))))))
+              (rule '(rule ?pattern ??more)
+                    ;; metadata-only change needs `success` to stick!
+                    (success
+                     (sub (rule ~(vary-meta pattern assoc :env-args (:env-args %env))
+                                ??more)))))))
 
-(defn add-env-args [rule-list env-args]
+(defn -add-env-args [rule-list env-args]
   (mapv (fn [rule]
           (first (add-env-args* rule {:env-args env-args})))
         rule-list))
+
+(defmacro env-args
+  "Attach :env-args metadata to rules to enable convenient binding of env data in the rule handlers.
+
+  Does not work for "
+  [bindings rules]
+  (first (add-env-args* rules {:env-args bindings})))
 
 (def rulefn* (rule-list [(rule '(fn ?name ??fn-tail)
                                (when (symbol? name)
@@ -201,7 +217,7 @@
         info (map (fn [{:keys [name rule? rule-list env-args fn-tail] :as i}]
                     (let [as (gensym name)
                           ds (gensym name)
-                          rule-list (when rule-list (add-env-args rule-list env-args))]
+                          rule-list (when rule-list (-add-env-args rule-list env-args))]
                       (assoc i :atom-sym as
                              :def-sym ds
                              :atom `[~as (atom nil)]
