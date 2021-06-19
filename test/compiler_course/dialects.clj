@@ -1,6 +1,6 @@
 (ns compiler-course.dialects
   (:require [matches.nanopass.dialect :as d
-             :refer [=> ==> ===> def-dialect def-derived unparse-dialect
+             :refer [=> ==> ===> def-dialect def-derived show-dialect
                      validate valid? show-parse]]
             [matches.types :refer [ok]]
             [matches :refer [matcher]]))

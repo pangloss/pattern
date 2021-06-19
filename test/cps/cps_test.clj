@@ -6,7 +6,7 @@
                              define-dialect derive-dialect
                              from-dialect
                              tag tag-result
-                             unparse-dialect]]))
+                             show-dialect]]))
 
 (define-dialect Loose
   (terminals [var symbol?]
