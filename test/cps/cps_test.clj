@@ -3,12 +3,14 @@
                              rule sub
                              =>
                              on-subexpressions
-                             define-dialect derive-dialect
+                             def-dialect
                              from-dialect
-                             tag tag-result
                              show-dialect]]))
 
-(define-dialect Loose
+;; NOTE: this was just an early exercise to try out the nanopass-like tools I
+;; had built. It should probably go away soon.
+
+(def-dialect Loose
   (terminals [var symbol?]
              [s symbol?]
              [x some?])
@@ -16,7 +18,7 @@
         ?s
         ?x))
 
-(define-dialect LambdaCalc
+(def-dialect LambdaCalc
   (terminals [var symbol?]
              [s symbol?])
   (Expr [e]
@@ -24,7 +26,7 @@
         (fn [?var] ?e)
         (?e ?e)))
 
-(define-dialect CPS
+(def-dialect CPS
 
   (terminals [var symbol?]
              [s symbol?])
@@ -40,23 +42,19 @@
 
 (defpass naive-cps (=> LambdaCalc CPS)
   (let-rulefn [(M (=> Expr MExpr)
-                  [(tag-result 'MExpr
-                               (rule '[fn [?var] ?e:expr]
-                                     (let [k (gensym 'k)]
-                                       (sub (fn [?var ?k] ~(T expr k))))))
-                   (tag-result 'MExpr
-                               (rule '?s s))])
+                  [(rule '[fn [?var] ?e:expr]
+                         (let [k (gensym 'k)]
+                           (sub (fn [?var ?k] ~(T expr k)))))
+                   (rule '?s s)])
 
                (T* (=> Expr Cont) [rule/datum cont]
-                   [(tag-result 'Cont
-                                (rule '[fn ??_]
-                                      (let [cont (:cont %env)
-                                            expr (:rule/datum %env)]
-                                        (sub (?cont ~(M expr))))))
-                    (tag-result 'Cont
-                                (rule '?s
-                                      (let [cont (:cont %env)]
-                                        (sub (?cont ~(M s))))))
+                   [(rule '[fn ??_]
+                          (let [cont (:cont %env)
+                                expr (:rule/datum %env)]
+                            (sub (?cont ~(M expr)))))
+                    (rule '?s
+                          (let [cont (:cont %env)]
+                            (sub (?cont ~(M s)))))
                     (rule '(?e:f ?e)
                           (let [fs (gensym 'f)
                                 es (gensym 'e)
@@ -82,8 +80,8 @@
 ;; FIXME: where is my result metadata??
 (all-meta (naive-cps '(g a) 'halt))
 
-(all-meta (naive-cps (tag '[LambdaCalc Expr] '(g a))
-                     (tag '[LambdaCalc Expr] 'halt)))
+(all-meta (naive-cps '(g a)
+                     'halt))
 
 ;; TODO: I need a tool that takes a dialect and an expression (with an initial form type?) and recursively type annotates it.
 
@@ -158,7 +156,7 @@
 
 
 
-(define-dialect ExpandedInput
+(def-dialect ExpandedInput
   (terminals [var symbol?]
              [s symbol?]
              [n number?]
@@ -185,7 +183,7 @@
 ExpandedInput
 
 
-(define-dialect ExpandedCPS
+(def-dialect ExpandedCPS
   (terminals [var symbol?]
              [s symbol?]
              [n number?]
@@ -323,6 +321,7 @@ ExpandedInput
   #_
   (T-c '(g a) 'halt))
 
+#_
 (all-meta (matches.nanopass.dialect/add-tags
            ExpandedInput
            '(letrec [f (λ [n]

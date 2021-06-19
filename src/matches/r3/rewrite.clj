@@ -433,7 +433,7 @@
   the rule macro runs. It uses the metadata to let-bind values from %env within
   rule-handlers."
   (directed
-   (rule-list (rule '((?:chain ?op name (| "rule-list" "in-order")) (?:* (| [??rules] ?->rule)))
+   (rule-list (rule '((?:chain (? op symbol?) name (| "rule-list" "in-order")) (?:* (| [??rules] ?->rule)))
                     ;; FIXME: why didn't [??->rules] work in this context? The
                     ;; rule should have worked with the following, without the
                     ;; descend code below:
@@ -441,7 +441,7 @@
                     (let [rules (map (fn [rs]
                                        (map (fn [r] (first (descend r %env))) rs)) rules)]
                       (sub (?op (?:* (| ?rule [??->rules]))))))
-              (rule '((?:chain ?op name "rule") ?pattern ??more)
+              (rule '((?:chain (? op symbol?) name "rule") ?pattern ??more)
                     ;; metadata-only change needs `success` to stick!
                     (success
                      (sub (?op ~(vary-meta pattern assoc :env-args (:env-args %env))

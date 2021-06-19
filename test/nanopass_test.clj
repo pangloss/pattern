@@ -2,7 +2,7 @@
   (:require  [clojure.test :refer :all]
              [matches.nanopass :refer [scope tag type-rules]]
              [matches.match.predicator :refer [with-predicates on-each]]
-             [matches.nanopass.dialect :refer [define-dialect derive-dialect => ==>]]
+             [matches.nanopass.dialect :refer [def-dialect def-derived => ==>]]
              [matches.nanopass.pass :refer [defpass]]
              [matches.r3.combinators :refer [rule-simplifier directed rule-list]]
              [matches.r3.core :refer [rule success]]
@@ -10,7 +10,7 @@
              [matches.match.core :refer [compile-pattern* matcher]]
              [uncomplicate.fluokitten.core :as f]))
 
-(define-dialect Lssa
+(def-dialect Lssa
   (terminals [l symbol]
              [x symbol]
              [i int]
@@ -37,27 +37,27 @@
   (Lambda [f]
           (lambda (??x) ?b)))
 
-(derive-dialect Lflat-funcs Lssa
-                (Program [prog]
-                         - (letrec ((?:* [?l ?f])) ?b)
-                         + (letrec ((?:* [?l ?f])) (?:+ ?c)))
-                (Body [b]
-                      - (locals (??x) ?blocks))
-                (Blocks [blocks]
-                        - (labels ((?:* [?l ?t])) ?l))
-                - Effect
-                - Tail
-                (Lambda [f]
-                        - (lambda (??x) ?b)
-                        + (lambda (??x) (?:+ c)))
-                (Code [c]
-                      (label ?l)
-                      (set! ?x ?rhs)
-                      (mset! ?tr0 ?tr1 ?tr2)
-                      (call (?:+ tr))
-                      (goto ?l)
-                      (return ?tr)
-                      (if (relop ?tr0 ?tr1) (?l0) (?l1))))
+(def-derived Lflat-funcs Lssa
+  (Program [prog]
+           - (letrec ((?:* [?l ?f])) ?b)
+           + (letrec ((?:* [?l ?f])) (?:+ ?c)))
+  (Body [b]
+        - (locals (??x) ?blocks))
+  (Blocks [blocks]
+          - (labels ((?:* [?l ?t])) ?l))
+  - Effect
+  - Tail
+  (Lambda [f]
+          - (lambda (??x) ?b)
+          + (lambda (??x) (?:+ c)))
+  (Code [c]
+        (label ?l)
+        (set! ?x ?rhs)
+        (mset! ?tr0 ?tr1 ?tr2)
+        (call (?:+ tr))
+        (goto ?l)
+        (return ?tr)
+        (if (relop ?tr0 ?tr1) (?l0) (?l1))))
 
 #_
 (defpass eliminate-simple-moves (=> Lflat-funcs Lflat-funcs) [x]

@@ -39,11 +39,10 @@
               on-mutual
               rule-simplifier)
              (matches.nanopass.dialect
-              define-dialect
-              derive-dialect
+              def-dialect
+              def-derived
               => ==> ===>
               from-dialect to-dialect dialects
-              tag-result tag
               show-dialect
               valid? validate)
              (matches.types ok ok?)

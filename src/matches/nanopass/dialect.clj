@@ -521,15 +521,6 @@
   `(def ~name
      '~(run-derive-dialect name parent-dialect decls)))
 
-
-;; TODO: remove these old names
-(defmacro define-dialect [& args]
-  `(def-dialect ~@args))
-
-;; TODO: remove these old names
-(defmacro derive-dialect [& args]
-  `(def-derived ~@args))
-
 (defn from-dialect* [dialect f]
   (if dialect
     (let [dialect (if (symbol? dialect)

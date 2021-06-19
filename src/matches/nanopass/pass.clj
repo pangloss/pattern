@@ -7,8 +7,6 @@
              :as d
              :refer [=> ==> ===>
                      =>:from =>:to =>:type
-                     get-form
-                     tag-result
                      dialects
                      from-dialect]]
             [matches.r3.combinators :as c :refer [on-mutual
@@ -19,6 +17,17 @@
                                                   directed]]
             [matches.r3.core :refer [rule success]]
             [matches.r3.rewrite :refer [quo sub add-env-args*]]))
+
+(defn get-form [dialect form-name]
+  (cond (symbol? form-name)
+        (let [dialect (if (symbol? dialect)
+                        (@d/all-dialects dialect)
+                        dialect)]
+          (get-in dialect [:forms form-name]))
+        (vector? form-name)
+        (apply get-form form-name)
+        (and (map? form-name) (:form? form-name))
+        form-name))
 
 (defn combine-rules
   "Combine a collection of rule combinators which each handle inputs tagged with
@@ -53,18 +62,11 @@
                          (or ('==> by-type)
                              (when-not unconditional
                                ('=> by-type))))
-        rules (reduce-kv (fn [rules from-type pairs]
-                           (let [type-rules
-                                 (mapv (fn [[group-type rule]]
-                                         (if-let [to-form (when to-dialect
-                                                            (=>:to group-type nil))]
-                                           (tag-result to-dialect to-form rule)
-                                           rule))
-                                       pairs)]
-                             (assoc rules from-type
-                                    (if (= 1 (count type-rules))
-                                      (first type-rules)
-                                      (rule-list type-rules)))))
+        rules (reduce-kv (fn [rules from-type type-rules]
+                           (assoc rules from-type
+                                  (if (= 1 (count type-rules))
+                                    (first type-rules)
+                                    (rule-list type-rules))))
                          {} by-from)
         rules (assoc rules ::default (rule-list (concat unconditional conditional)))]
     (on-mutual ::default rules)))
@@ -166,8 +168,10 @@
              (dialects dialects#
                        ~(insert-defn (or compiled '<>) name fn-tail)))))))
 
-(defn- -add-env-args [rule-list env-args]
-  (first (add-env-args* rule-list {:env-args env-args})))
+(defn -add-env-args [rule-list env-args]
+  (mapv (fn [rule]
+          (first (add-env-args* rule {:env-args env-args})))
+        rule-list))
 
 (def rulefn* (rule-list [(rule '(fn ?name ??fn-tail)
                                (when (symbol? name)

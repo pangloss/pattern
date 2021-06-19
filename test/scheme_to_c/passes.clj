@@ -1,8 +1,12 @@
 (ns scheme-to-c.passes
   (:use [scheme-to-c.dialects]
         [matches :refer [sub rule rule-list in-order directed success substitute matcher descend]]
-        [matches.nanopass.dialect :refer [=> ==> ===> tag tag-result]]
+        [matches.nanopass.dialect :refer [=> ==> ===>]]
         [matches.nanopass.pass :refer [defpass let-rulefn]]))
+
+;; NOTE: this is some early naive porting from the scheme-to-c sample compiler
+;; done with the nanopass framework. It was never expected to actually run.
+;; The compiler-course work is of the same lineage and does work well.
 
 (def immed? (some-fn number? string?))
 
@@ -61,7 +65,7 @@
                           (errorf who "incorrect number of arguments ~s" (count e*))
                           ;; parse the args
                           (let [parses (map (fn [e] (parse* e env)) e*)]
-                            (tag '[Lsrc Expr] (sub (?info ??parses))))))
+                            (sub (?info ??parses)))))
                       '(set! ?x ?e)
                       (errorf who "primitives are immutable, ~s cannot be modified with set!" x)
                       '?x
@@ -99,12 +103,9 @@
         ;; as is any value that's unquoted into the expression.
         initial-env
         (let [parse-marked-rules (fn [rules]
-                                   (tag-result 'Lsrc 'Expr
-                                               (directed parse-scheme (rule-list rules))))
+                                   (directed parse-scheme (rule-list rules)))
               simple-rules (fn [rules]
-                             (tag-result 'Lsrc 'Expr
-                                         (rule-list rules)))
-              add-tag (partial tag '[Lsrc Expr])]
+                             (rule-list rules))]
           {'quote
            (simple-rules [(rule '(quote ?d)
                                 (if (datum? d)
@@ -112,7 +113,7 @@
                                   (errorf who "expected datum, but got ~s" d)))])
            'if
            (parse-marked-rules
-            [(rule '(if ?>-e0 ?>-e1) (sub add-tag (if ?e0 ?e1 (?:<- ~'(void-pr)))))
+            [(rule '(if ?>-e0 ?>-e1) (sub (if ?e0 ?e1 (?:<- ~'(void-pr)))))
              (rule '(if ?>-e0 ?>-e1 ?>-e2) (sub (if ?e0 ?e1 ?e2)))])
            'and
            (parse-marked-rules
@@ -142,15 +143,13 @@
             [(rule '(lambda (??x*) ?>-e)
                    (let [v* (mapv make-var x*)
                          env (extend-var-env* env x* v*)]
-                     (sub add-tag
-                          (lambda (??<-v*) ?e))))
+                     (sub (lambda (??<-v*) ?e))))
              ;; FIXME: >- is called but does not have the env update that happens in the body so it's useless.
              ;; also, env is built and thrown away now because the parse hidden in >- doesn't get recursively fed with it.
              (rule '(lambda (??x*) ??>-e* ?>-e)
                    (let [v* (mapv make-var x*)
                          env (extend-var-env* env x* v*)]
-                     (sub add-tag
-                          (lambda (??<-v*) (?:<- (begin ??e* ?e))))))])
+                     (sub (lambda (??<-v*) (?:<- (begin ??e* ?e))))))])
            'let
            (parse-marked-rules
             [(rule '(let ((?:* [?x0* ?>-e0*])) ?>-e)
@@ -160,8 +159,7 @@
              (rule '(let ((?:* [?x0* ?>-e0*])) ??>-e* ?>-e)
                    (let [v0* (map make-var x0*)
                          env (extend-var-env* env x0* v0*)]
-                     (sub add-tag
-                          (let ((?:* [?v0* ?e0*])) (?:<- (begin ??e* ?e))))))])
+                     (sub (let ((?:* [?v0* ?e0*])) (?:<- (begin ??e* ?e))))))])
            'letrec
            (parse-marked-rules
             [(rule '(letrec ((?:* [?x0* ?>-e0*])) ?>-e)
@@ -172,8 +170,7 @@
              (rule '(letrec ((?:* [?x0* ?>-e0*])) ??>-e* ?>-e)
                    (let [v0* (map make-var x0*)
                          env (extend-var-env* env x0* v0*)]
-                     (sub add-tag
-                          (letrec ((?:* [?v0* ?e0*]))
+                     (sub (letrec ((?:* [?v0* ?e0*]))
                                   (?:<- (begin ??e* ?e))))))])
            'set!
            (rule '(set! ?x ?e)
