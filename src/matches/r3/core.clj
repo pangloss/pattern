@@ -262,11 +262,10 @@
          matches (gensym 'matches)]
      `(let [p# ~(@spliced (@scheme-style pattern))]
         (make-rule p# (fn [~'%env ~matches]
-                        ;; TODO: should env-args or regular args dominate? or should a conflict be an error?
                         ;; TODO: is the JVM smart about eliding unused bindings here or should I try
                         ;;       to introspect the body to determine which args are used?
-                        (let [~@(extract-args matches args)
-                              ~@(env-args (:env-args (meta pattern)))]
+                        (let [~@(env-args (:env-args (meta pattern)))
+                              ~@(extract-args matches args)]
                           ~handler-body))
                    raw-matches
                    {:may-call-success0? ~(may-call-success0? handler-body)

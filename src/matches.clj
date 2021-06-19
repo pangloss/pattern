@@ -20,7 +20,8 @@
               subm
               quo
               spliced
-              eval-spliced)
+              eval-spliced
+              with-env-args)
              (matches.r3.core
               rule
               success

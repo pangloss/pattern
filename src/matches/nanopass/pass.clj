@@ -18,7 +18,7 @@
                                                   descend
                                                   directed]]
             [matches.r3.core :refer [rule success]]
-            [matches.r3.rewrite :refer [quo sub]]))
+            [matches.r3.rewrite :refer [quo sub add-env-args*]]))
 
 (defn combine-rules
   "Combine a collection of rule combinators which each handle inputs tagged with
@@ -166,31 +166,8 @@
              (dialects dialects#
                        ~(insert-defn (or compiled '<>) name fn-tail)))))))
 
-(def add-env-args*
-  (directed
-   (rule-list (rule '(directed ?->rule))
-              (rule '(rule-list (?:* (| [??rules] ?->rule)))
-                    ;; FIXME: why didn't [??->rules] work in this context?
-                    (let [rules (map (fn [rs]
-                                       (map (fn [r] (first (descend r %env))) rs)) rules)]
-                      (sub (rule-list (?:* (| ?rule [??->rules]))))))
-              (rule '(rule ?pattern ??more)
-                    ;; metadata-only change needs `success` to stick!
-                    (success
-                     (sub (rule ~(vary-meta pattern assoc :env-args (:env-args %env))
-                                ??more)))))))
-
-(defn -add-env-args [rule-list env-args]
-  (mapv (fn [rule]
-          (first (add-env-args* rule {:env-args env-args})))
-        rule-list))
-
-(defmacro env-args
-  "Attach :env-args metadata to rules to enable convenient binding of env data in the rule handlers.
-
-  Does not work for "
-  [bindings rules]
-  (first (add-env-args* rules {:env-args bindings})))
+(defn- -add-env-args [rule-list env-args]
+  (first (add-env-args* rule-list {:env-args env-args})))
 
 (def rulefn* (rule-list [(rule '(fn ?name ??fn-tail)
                                (when (symbol? name)
@@ -256,8 +233,18 @@
   [rulefns & body]
   `(let-rulefn* nil ~rulefns ~@body))
 
+;; TODO: maybe a def-rulefn would be better, where each of the mutual fns were
+;; exposed as top-level def's? Anyway in most of the passes I've done so far it
+;; hasn't been a big deal to just def each part directly and call into them.
+;; Usually there is some processing to do anyway, and per-type dispatch outside
+;; of visible forms seems pointless since it's easy and much more understandable
+;; to add visible forms to distinguish expression types.  so this whole concept
+;; seems pretty pointless, except it's pretty nice for auto-generated code, but
+;; that works a little differently. See the dialect validity checker.
+
 (comment
-  (defpass xyz (=> A B) (rule '(+ ?a ?a) (sub (* 2 ?a))))
+  (defpass xyz (=> A B)
+    (rule '(+ ?a ?a) (sub (* 2 ?a))))
   (xyz '(+ 9 9))
 
   (defpass xx-pass '(A B)
