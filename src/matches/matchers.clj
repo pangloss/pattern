@@ -206,8 +206,9 @@
 
   If multiple segments match the same variable, the segments must be the same length.
 
-  Mark restrictions with ^:each if you want them to match each element.
-  Otherwise they match the aggregate collection."
+  By default restrictions apply to each element individually. If you would like
+  them to apply on aggregate, use (?? x (on-all f)), or if you want the value to
+  be applied to a function, you can use (?? x (apply f))."
   [variable {:keys [reserve-min-tail] :as comp-env}]
   (let [[sat-mode sat?] (var-restriction variable
                                          (update comp-env :restrictions

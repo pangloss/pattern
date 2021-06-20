@@ -1,7 +1,7 @@
 (ns nanopass-test
   (:require  [clojure.test :refer :all]
              [matches.nanopass :refer [scope tag type-rules]]
-             [matches.match.predicator :refer [with-predicates on-each]]
+             [matches.match.predicator :refer [with-predicates]]
              [matches.nanopass.dialect :refer [def-dialect def-derived => ==>]]
              [matches.nanopass.pass :refer [defpass]]
              [matches.r3.combinators :refer [rule-simplifier directed rule-list]]
@@ -104,7 +104,7 @@
 (def make-explicit
   (letfn [(f [x] false)
           (expr? [x] (= :expr (:tag (meta x))))]
-    (with-predicates {'x (on-each symbol?)
+    (with-predicates {'x symbol?
                       'pr f 'c f 'd f}
       (directed
        ;; There are several rules that seem only exist in order to descend

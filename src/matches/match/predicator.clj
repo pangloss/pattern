@@ -15,25 +15,6 @@
         (or (re-matches p0 (name x))
             (re-matches p1 (name x)))))))
 
-(defn on-each
-  "Mark that a predicate should apply to each element of a sequential matcher.
-
-  This shouldn't really be needed anymore. Just put it in the matcher directly.
-
-  The basic options are (? x (on-each x)) (? x (apply f)) (? x (on-all x)).
-
-  On-each is generally the default now anyway.
-
-  Usage, either:
-
-      (?? x ~(on-each symbol?))
-
-  or
-
-      (?? x (on-each ~symbol?))"
-  [pred]
-  (list 'on-each pred))
-
 (defn apply-predicator [{:keys [abbr predicate metadata]} pattern]
   (let [mode (when metadata "$")
         symbol-matcher (match-abbr abbr)]
