@@ -156,6 +156,7 @@
 (defgen= matcher-type [simple-ref?] '?:ref)
 (defgen= matcher-type [compiled-matcher?] :compiled-matcher)
 (defgen= matcher-type [compiled*-matcher?] :compiled*-matcher)
+(defgen= matcher-type [fn?] :plain-function)
 
 (defgenera= matcher-mode 1
   "Return the mode portion of the matcher, which is a string of any
@@ -211,7 +212,7 @@
 (def re-prefix-name #"(\w[^:]*):(\w.*)")
 
 (defgen matcher-prefix [matcher-form?] [var]
-  (let [n (name (nth var 1))
+  (let [n (name (nth var 1 ""))
         [_ prefix] (re-matches re-prefix-name n)]
     prefix))
 
@@ -248,9 +249,13 @@
   [form fail]
   (let [f (cond (symbol? form) (resolve form)
                 (listy? form)
-                (when (and (= 2 (count form))
-                           (#{'apply `apply} (first form)))
-                  (partial apply (resolve-fn (second form) fail)))
+                (when (= 2 (count form))
+                  (let [fm (first form)
+                        fm (when (symbol? fm) (symbol (name fm)))]
+                    (cond (#{'apply} fm)
+                          (partial apply (resolve-fn (second form) fail))
+                          (#{'on-each 'on-all} fm)
+                          (resolve-fn (second form) fail))))
                 form form)]
     (if (and form (not (ifn? f)))
       (fail)
@@ -262,34 +267,37 @@
   [var comp-env]
   (if (or (:ignore-predicates comp-env)
           (not (named-matcher? var)))
-    (constantly true)
+    [nil (constantly true)]
     (let [pos @restriction-position
           pos (pos (matcher-type var) (pos ::default))
           restr-part (drop pos var)
-          sym-or-fn (first restr-part)
+          form (first restr-part)
           arg-vars (next restr-part)
-          f (if sym-or-fn
-              (if-let [sym-or-fn (some (fn [f] (f sym-or-fn))
-                                       (:restrictions comp-env))]
-                sym-or-fn
-                (resolve-fn sym-or-fn
-                            #(throw (ex-info "Restriction did not resolve to a function" {:var var})))))]
-      (vary-meta
+          form (when form
+                 ;; either apply a transform provided in the comp-env or try to resolve the form directly
+                 (or (some (fn [f] (f form))
+                           ;; TODO: I think I should remove this. It's used in just one place
+                           ;; to allow sequences to be restricted with just an integer representing count.
+                           (:restrictions comp-env))
+                     form))
+          f-mode (when (and (listy? form) (symbol? (first form)))
+                   ;; The possible valid modes could be configurable... They're just passed to the matcher
+                   (#{'on-each 'on-all} (symbol (name (first form)))))
+          f (resolve-fn form
+                        #(throw (ex-info "Restriction did not resolve to a function" {:var var})))]
+      [f-mode
        (if f
          (if arg-vars
            (let [arg-vars (map #(if (symbol? %) (var-name %) %)
                                arg-vars)]
-             (with-meta
-               (fn apply-restriction [dictionary datum]
-                 (apply f datum (map (fn [v]
-                                       (if (symbol? v)
-                                         (get (get dictionary v) :value)
-                                         v))
-                                     arg-vars)))
-               (meta f)))
+             (fn apply-restriction [dictionary datum]
+               (apply f datum (map (fn [v]
+                                     (if (symbol? v)
+                                       (get (get dictionary v) :value)
+                                       v))
+                                   arg-vars))))
            (fn restriction [dictionary datum] (f datum)))
-         (constantly true))
-       merge (meta sym-or-fn)))))
+         (constantly true))])))
 
 (defn lookup [name dict env]
   (let [name (var-key name env)]
@@ -306,28 +314,30 @@
       (when (not= ::none val)
         (assoc r :value val)))))
 
-(defn extend-dict [name value type dict env]
+(defn extend-dict [name value type abbr dict env]
   (let [name (var-key name env)]
     (if (or (nil? name) (= '_ name))
       dict
-      (assoc dict name {:name name :value value :type type}))))
+      (assoc dict name {:name name :value value :type type :abbr abbr}))))
 
 (defn sequence-extend-dict
   "Special version of extend-dict installed in the env when processing a sequence."
-  [name value type dict env]
+  [name value type abbr dict env]
   (let [name (var-key name env)]
     (if (or (nil? name) (= '_ name))
       dict
       (letfn [(add-to-var [m]
                 (if m
-                  (update m :value
-                          (fn [v]
-                            (if (and (seqable? (:value m))
-                                     (= (count (:value m))
-                                        (.repetition env)))
-                              (conj v value)
-                              v)))
-                  {:name name :value [value] :type type}))]
+                  (-> m
+                      (update :value
+                              (fn [v]
+                                (if (and (seqable? (:value m))
+                                         (= (count (:value m))
+                                            (.repetition env)))
+                                  (conj v value)
+                                  v)))
+                      (assoc :abbr abbr))
+                  {:name name :value [value] :type type :abbr abbr}))]
         (update dict name add-to-var)))))
 
 (defn all-names [match-procedure]
@@ -353,6 +363,16 @@
     (fn [dict]
       (reduce (fn [result name]
                 (assoc result (keyword name) (get-in dict [name :value])))
+              {} names))))
+
+(defn symbol-dict
+  "A success continuation that creates a simple dictionary of 'name -> value from
+  the full match dictionary."
+  [match-procedure]
+  (let [names (all-names match-procedure)]
+    (fn [dict]
+      (reduce (fn [result name]
+                (assoc result name (get-in dict [name :value])))
               {} names))))
 
 (defn restartable? [pattern]
@@ -389,8 +409,8 @@
   (with-meta
     (fn the-next-scope [data dictionary ^Env env]
       (let [path-length (count (.scopes env))]
-        (if (< path-length (count @(.scope_path env)))
-          (swap! (.scope_path env) update path-length inc)
+        (if (< path-length (dec (count @(.scope_path env))))
+          (swap! (.scope_path env) update (dec path-length) inc)
           (swap! (.scope_path env) conj 0))
         (let [path (subvec @(.scope_path env) 0 path-length)
               new-scope (make-new-scope (last (.scopes env)) path)
@@ -403,7 +423,7 @@
 (defmethod compile-pattern* :default [pattern comp-env]
   (throw (ex-info "Unknown matcher type" {:pattern pattern})))
 
-(defn- new-env
+(defn new-env
   [succeed]
   (map->Env {:succeed succeed
              :var-path {}

@@ -6,6 +6,7 @@
             matches.r3.rewrite
             matches.nanopass.dialect
             matches.nanopass.pass
+            matches.types
             [potemkin :refer [import-vars]]))
 
 (import-vars (matches.match.core
@@ -16,9 +17,11 @@
               substitute)
              (matches.r3.rewrite
               sub
+              subm
               quo
               spliced
-              eval-spliced)
+              eval-spliced
+              with-env-args)
              (matches.r3.core
               rule
               success
@@ -26,20 +29,23 @@
               rule-name)
              (matches.r3.combinators
               rule-list
+              rule-list!
               in-order
               descend
+              descend-all
               on-subexpressions
               simplifier
               directed
               on-mutual
               rule-simplifier)
              (matches.nanopass.dialect
-              define-dialect
-              derive-dialect
+              def-dialect
+              def-derived
               => ==> ===>
               from-dialect to-dialect dialects
-              tag-result tag
-              unparse-dialect)
+              show-dialect
+              valid? validate)
+             (matches.types ok ok?)
              (matches.nanopass.pass
               defpass
               let-rulefn))

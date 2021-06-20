@@ -70,6 +70,12 @@
   [m comp-env]
   m)
 
+(defn- match-plain-function
+  "If a plain function is inserted into a pattern, treat it as the function in
+  an anonymous matcher with a restriction function."
+  [f comp-env]
+  (compile-pattern* (list '? '_ f) comp-env))
+
 
 (defn- match-list
   "Match a list or vector. If the first symbol with in the list is ?:seq, allows
@@ -94,7 +100,8 @@
                                        :reserve-min-tail f/op (:length (meta m)))]))
                           [() (assoc comp-env :reserve-min-tail (len 0))]
                           (reverse pattern)))
-        {match-length :n variable-length? :v} (apply f/op (map (comp :length meta) matchers))]
+        {match-length :n variable-length? :v} (apply f/op (map (comp :length meta) matchers))
+        match-length (or match-length 0)]
     (with-meta
       (fn list-matcher [data dictionary ^Env env]
         (if (seq data)
@@ -153,8 +160,10 @@
   third position.
   "
   [variable comp-env]
-  (let [sat? (var-restriction variable comp-env)
-        name (var-name variable)]
+  (let [[sat-mode sat?] (var-restriction variable comp-env)
+        name (var-name variable)
+        prefix (matcher-prefix variable)
+        abbr (var-abbr prefix name)]
     (with-meta
       (fn element-matcher [data dictionary ^Env env]
         (if (seq data)
@@ -164,19 +173,16 @@
                 (if (= v datum)
                   ((.succeed env) dictionary 1)
                   (on-failure :mismatch variable dictionary env 1 data datum))
-                ((.succeed env) ((.store env) name datum '? dictionary env) 1))
+                ((.succeed env) ((.store env) name datum '? abbr dictionary env) 1))
               (on-failure :unsat variable dictionary env 1 data datum)))
           (on-failure :missing variable dictionary env 0 data nil)))
       (if (or (nil? name) (= '_ name))
         {:length (len 1)}
-        (let [prefix (matcher-prefix variable)
-              abbr (var-abbr prefix name)]
-          {:var-names [name]
-           :var-modes {name (matcher-mode variable)}
-           :var-prefixes {name (if prefix [prefix] [])}
-           :var-abbrs {name (if abbr [abbr] [])}
-           :length (len 1)})))))
-
+        {:var-names [name]
+         :var-modes {name (matcher-mode variable)}
+         :var-prefixes {name (if prefix [prefix] [])}
+         :var-abbrs {name (if abbr [abbr] [])}
+         :length (len 1)}))))
 
 (defn- segment-equal? [orig-data value ok pattern dictionary env]
   (if (seqable? value)
@@ -203,16 +209,18 @@
   Mark restrictions with ^:each if you want them to match each element.
   Otherwise they match the aggregate collection."
   [variable {:keys [reserve-min-tail] :as comp-env}]
-  (let [sat? (var-restriction variable
-                              (update comp-env :restrictions
-                                      (fnil conj []) (fn [i] (when (int? i)
-                                                              #(= i (count %))))))
-        sat? (if (:each (meta sat?))
-               (fn [dict s] (every? #(sat? dict %) s))
-               sat?)
+  (let [[sat-mode sat?] (var-restriction variable
+                                         (update comp-env :restrictions
+                                                 (fnil conj []) (fn [i] (when (int? i)
+                                                                         (list 'on-all #(= i (count %)))))))
+        sat? (if (= 'on-all sat-mode)
+               sat?
+               (fn [dict s] (every? #(sat? dict %) s)))
         force-greedy (not (:v reserve-min-tail)) ;; no later list matchers are variable-sized.
         reserved-tail (or (:n reserve-min-tail) 0)
         name (var-name variable)
+        prefix (matcher-prefix variable)
+        abbr (var-abbr prefix name)
         [loop-start loop-continue? loop-next update-datum]
         (if (or force-greedy (matcher-mode? variable "!"))
           [identity (fn [i n] (<= 0 i)) dec
@@ -233,17 +241,15 @@
             (loop [i (loop-start n) datum (vec (take i data))]
               (when (loop-continue? i n)
                 (or (and (sat? dictionary datum)
-                         ((.succeed env) ((.store env) name datum '?? dictionary env) i))
+                         ((.succeed env) ((.store env) name datum '?? abbr dictionary env) i))
                     (recur (loop-next i) (update-datum datum data n))))))))
       (if (or (nil? name) (= '_ name))
         {:length (var-len 0)}
-        (let [prefix (matcher-prefix variable)
-              abbr (var-abbr prefix name)]
-          {:var-names [name]
-           :var-modes {name (matcher-mode variable)}
-           :var-prefixes {name (if prefix [prefix] [])}
-           :var-abbrs {name (if abbr [abbr] [])}
-           :length (var-len 0)})))))
+        {:var-names [name]
+         :var-modes {name (matcher-mode variable)}
+         :var-prefixes {name (if prefix [prefix] [])}
+         :var-abbrs {name (if abbr [abbr] [])}
+         :length (var-len 0)}))))
 
 
 (defn- match-as
@@ -261,7 +267,7 @@
   Allows a restriction to be added, similar to [[match-element]]."
   [[_ name pattern :as as-pattern] comp-env]
   (let [m (compile-pattern* pattern comp-env)
-        sat? (var-restriction as-pattern comp-env)
+        [sat-mode sat?] (var-restriction as-pattern comp-env)
         name (if (namespace name) (symbol (clojure.core/name name)) name)]
     (with-meta
       (fn as-matcher [data dictionary ^Env env]
@@ -276,7 +282,7 @@
                                             (if (= v datum)
                                               ((.succeed env) dict n)
                                               (on-failure :mismatch as-pattern dictionary env n data datum))
-                                            ((.succeed env) ((.store env) name datum '?:as dict env) n))
+                                            ((.succeed env) ((.store env) name datum '?:as nil dict env) n))
                                           (on-failure :unsat as-pattern dictionary env n data datum))))))))
       (merge-with f/op
                   {:var-names [name]
@@ -322,6 +328,21 @@
             (on-failure ':not-map pattern dictionary env 1 data m))))
       (assoc (apply merge-with f/op (map meta vals))
              :length (len 1)))))
+
+
+(defn match-+map
+  "Create a ?:+map matcher than can match a key/value pair at least once."
+  [[_ k v] comp-env]
+  (compile-pattern* (list '?:chain '?_ 'seq (list (list '?:* [k v])))
+                    comp-env))
+
+(defn match-*map
+  "Create a ?:*map matcher than can match a key/value pair multiple times."
+  [[_ k v] comp-env]
+  (compile-pattern* (list '?:chain
+                          (list '? '_ (some-fn nil? map?))
+                          'seq (list '| nil (list (list '?:* [k v]))))
+                    comp-env))
 
 
 (defn- match-optional
@@ -816,11 +837,44 @@
         matcher (compile-pattern* form comp-env)]
     (assert (every? symbol? fresh))
     (assert (every? #(= :value (matcher-type %)) fresh))
-    (next-scope matcher (fn [scope path]
-                          (reduce (fn [scope name]
-                                    (assoc scope name path))
-                                  scope
-                                  fresh)))))
+    (vary-meta
+     (next-scope matcher (fn [scope path]
+                           (reduce (fn [scope name]
+                                     (assoc scope name path))
+                                   scope
+                                   fresh)))
+     update :var-names #(remove (set fresh) %))))
+
+
+(defn- match-all-fresh
+  "This allows composition of patterns which are not meant to unify with each
+  other.
+
+      (def other-pattern (compile-pattern '(?b ?c)))
+      (def your-pattern (compile-pattern `(?a ?b (?:all-fresh ~other-pattern))))
+
+  Without using all-fresh above, the above would only match if both instances of
+  ?b unify, but with all-fresh, they would be treated separately inside and
+  outside of the all-fresh form.
+
+      (your-pattern '(1 2 (3 4))) ;;=> {:a 1 :b 2}
+
+  The caveat is that the unifications within the ?:all-fresh block will not be
+  included in the standard matcher results, but they can be accessed via
+
+      (run-matcher your-pattern '(1 2 (3 4)) identity)
+
+  which runs the matcher returning the raw internal results dictionary including
+  matches that exist within nested scopes."
+  [[_ pattern] comp-env]
+  (let [matcher (compile-pattern* pattern comp-env)]
+    (vary-meta
+     (next-scope matcher (fn [scope path]
+                           (reduce (fn [scope name]
+                                     (assoc scope name path))
+                                   scope
+                                   (:var-names (meta matcher)))))
+     assoc :var-names [])))
 
 
 (defn- match-restartable
@@ -851,12 +905,15 @@
 
 (register-matcher :value match-value)
 (register-matcher :list #'match-list)
-(register-matcher '?:literal match-literal)
+(register-matcher '?:= match-literal {:aliases ['?:literal]})
 (register-matcher :compiled-matcher match-compiled)
 (register-matcher :compiled*-matcher match-compiled*)
+(register-matcher :plain-function #'match-plain-function)
 (register-matcher '? #'match-element {:named? true})
 (register-matcher '?? #'match-segment {:named? true})
 (register-matcher '?:map match-map)
+(register-matcher '?:+map #'match-+map)
+(register-matcher '?:*map #'match-*map)
 (register-matcher '?:as match-as {:named? true :restriction-position 3})
 (register-matcher '?:? #'match-optional {:aliases ['?:optional]})
 (register-matcher '?:1 #'match-one {:aliases ['?:one]})
@@ -870,7 +927,8 @@
 (register-matcher '?:when #'match-when)
 (register-matcher '?:letrec match-letrec)
 (register-matcher '?:ref match-ref {:named? true})
-(register-matcher '?:fresh match-fresh)
+(register-matcher '?:fresh #'match-fresh)
+(register-matcher '?:all-fresh #'match-all-fresh)
 (register-matcher '?:restartable match-restartable)
 (register-matcher '?:re-matches #'match-regex)
 (register-matcher '?:re-seq #'match-regex)

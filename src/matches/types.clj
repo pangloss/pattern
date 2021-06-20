@@ -1,4 +1,6 @@
-(ns matches.types)
+(ns matches.types
+  (:require [clojure.pprint :refer [simple-dispatch]])
+  (:import (clojure.lang IObj IMeta)))
 
 (defrecord Success [x])
 (defrecord SuccessEnv [x env])
@@ -49,3 +51,28 @@
       (let [m (meta r)]
         (or (`child-rules m)
             (`recombine m)))))
+
+(deftype Ok []
+  Object
+  (equals [a b]
+    (instance? Ok b)))
+
+(defmethod print-method Ok [_ ^java.io.Writer w]
+  (.write w "ok"))
+
+(defn ok? [x]
+  (instance? Ok x))
+
+(def ok (->Ok))
+
+(defmethod simple-dispatch Ok [ok]
+  (print-method ok *out*))
+
+(defn obj? [x]
+  (instance? IObj x))
+
+(defn meta? [x]
+  (instance? IMeta x))
+
+(defn not-meta? [x]
+  (not (meta? x)))

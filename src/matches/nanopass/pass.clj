@@ -7,17 +7,27 @@
              :as d
              :refer [=> ==> ===>
                      =>:from =>:to =>:type
-                     get-form
-                     tag-result
                      dialects
                      from-dialect]]
             [matches.r3.combinators :as c :refer [on-mutual
                                                   on-subexpressions
                                                   rule-list
                                                   guard
+                                                  descend
                                                   directed]]
             [matches.r3.core :refer [rule success]]
-            [matches.r3.rewrite :refer [quo sub]]))
+            [matches.r3.rewrite :refer [quo sub add-env-args*]]))
+
+(defn get-form [dialect form-name]
+  (cond (symbol? form-name)
+        (let [dialect (if (symbol? dialect)
+                        (@d/all-dialects dialect)
+                        dialect)]
+          (get-in dialect [:forms form-name]))
+        (vector? form-name)
+        (apply get-form form-name)
+        (and (map? form-name) (:form? form-name))
+        form-name))
 
 (defn combine-rules
   "Combine a collection of rule combinators which each handle inputs tagged with
@@ -52,18 +62,11 @@
                          (or ('==> by-type)
                              (when-not unconditional
                                ('=> by-type))))
-        rules (reduce-kv (fn [rules from-type pairs]
-                           (let [type-rules
-                                 (mapv (fn [[group-type rule]]
-                                         (if-let [to-form (when to-dialect
-                                                            (=>:to group-type nil))]
-                                           (tag-result to-dialect to-form rule)
-                                           rule))
-                                       pairs)]
-                             (assoc rules from-type
-                                    (if (= 1 (count type-rules))
-                                      (first type-rules)
-                                      (rule-list type-rules)))))
+        rules (reduce-kv (fn [rules from-type type-rules]
+                           (assoc rules from-type
+                                  (if (= 1 (count type-rules))
+                                    (first type-rules)
+                                    (rule-list type-rules))))
                          {} by-from)
         rules (assoc rules ::default (rule-list (concat unconditional conditional)))]
     (on-mutual ::default rules)))
@@ -123,18 +126,18 @@
                           [(rule '(fn [?var] ?expr)
                                   (let [k (gensym 'k)]
                                   (sub (fn [?var ?k] ~(T expr k)))))
-                          (rule '(? s symbol?) s)])
+                           (rule '(? s symbol?) s)])
                        (T* (=> Expr TExpr) [cont]
                           [(rule '(?:as expr (fn ??_))
                                   `(~cont ~(M expr)))
-                              (rule '(? s symbol?)
-                                  `(~cont ~(M s)))
-                              (rule '(?f ?e)
+                           (rule '(? s symbol?)
+                                 `(~cont ~(M s)))
+                           (rule '(?f ?e)
                                   (let [fs (gensym 'f)
-                                          es (gensym 'e)]
-                                      (T f (sub (fn [?fs]
-                                                  ~(T e (sub (fn [?es]
-                                                              (?fs ?es ?cont)))))))))])
+                                        es (gensym 'e)]
+                                    (T f (sub (fn [?fs]
+                                                ~(T e (sub (fn [?es]
+                                                             (?fs ?es ?cont)))))))))])
                        (fn T [expr cont]
                           (first (T* expr {:cont cont})))]
             <>)
@@ -165,13 +168,7 @@
              (dialects dialects#
                        ~(insert-defn (or compiled '<>) name fn-tail)))))))
 
-(def add-env-args* (rule '(rule ?pattern ??more)
-                         ;; metadata-only change needs `success` to stick!
-                         (success
-                          (sub (rule ~(vary-meta pattern assoc :env-args (:env-args %env))
-                                     ??more)))))
-
-(defn add-env-args [rule-list env-args]
+(defn -add-env-args [rule-list env-args]
   (mapv (fn [rule]
           (first (add-env-args* rule {:env-args env-args})))
         rule-list))
@@ -201,7 +198,7 @@
         info (map (fn [{:keys [name rule? rule-list env-args fn-tail] :as i}]
                     (let [as (gensym name)
                           ds (gensym name)
-                          rule-list (when rule-list (add-env-args rule-list env-args))]
+                          rule-list (when rule-list (-add-env-args rule-list env-args))]
                       (assoc i :atom-sym as
                              :def-sym ds
                              :atom `[~as (atom nil)]
@@ -240,8 +237,18 @@
   [rulefns & body]
   `(let-rulefn* nil ~rulefns ~@body))
 
+;; TODO: maybe a def-rulefn would be better, where each of the mutual fns were
+;; exposed as top-level def's? Anyway in most of the passes I've done so far it
+;; hasn't been a big deal to just def each part directly and call into them.
+;; Usually there is some processing to do anyway, and per-type dispatch outside
+;; of visible forms seems pointless since it's easy and much more understandable
+;; to add visible forms to distinguish expression types.  so this whole concept
+;; seems pretty pointless, except it's pretty nice for auto-generated code, but
+;; that works a little differently. See the dialect validity checker.
+
 (comment
-  (defpass xyz (=> A B) (rule '(+ ?a ?a) (sub (* 2 ?a))))
+  (defpass xyz (=> A B)
+    (rule '(+ ?a ?a) (sub (* 2 ?a))))
   (xyz '(+ 9 9))
 
   (defpass xx-pass '(A B)

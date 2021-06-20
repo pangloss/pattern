@@ -2,7 +2,8 @@
   (:require [clojure.test :refer :all]
             matches.r3.core
             [matches.match.core :as m :refer [matcher pattern-names var-name *disable-modes*
-                                              compile-pattern matcher-prefix]]
+                                              compile-pattern matcher-prefix run-matcher]]
+            [matches.types :refer [not-meta?]]
             matches.matchers
             [pure-conditioning :as c :refer [manage restart-with handler-cond]])
   (:use matches.r3.core))
@@ -297,14 +298,14 @@
          (matcher '(a ((?? a) (?? x)) (? b) c (?? x))
                   '(a (1 2 3) 2 c 2 3))))
   (is (= [3 nil 4]
-         (matcher [1 2 '(| [3 5] [(? a) (?? x seq) 4] [(? a) (? a)] [(? a) (? b even?)])]
+         (matcher [1 2 '(| [3 5] [(? a) (?? x (on-all seq)) 4] [(? a) (? a)] [(? a) (? b even?)])]
                   [1 2 [3 4]])))
   (testing "syntax quoted"
     (is (= [[1] [2 3] 2]
            (matcher `(a ((?? a) (?? x)) (? b) c (?? x))
                     `(a (1 2 3) 2 c 2 3))))
     (is (= [3 nil 4]
-           (matcher [1 2 `(| [3 5] [(? a) (?? x seq) 4] [(? a) (? a)] [(? a) (? b even?)])]
+           (matcher [1 2 `(| [3 5] [(? a) (?? x (on-all seq)) 4] [(? a) (? a)] [(? a) (? b even?)])]
                     [1 2 [3 4]]))))
   (testing "apply-style restrictions using other match values as arguments"
     (is (nil?
@@ -490,3 +491,56 @@
            ((compile-pattern '[(?:* (? group-type*) (| (?name* [??args*] ?rule*)
                                                        ?rule*))])
             '[(=> A B) c (=> D E) (f [g h] i)])))))
+
+
+(deftest combine-matcher-and-metadata-matcher
+  ;; from nanopass dialect
+  (let [match-value (compile-pattern '(| (? x int?) (const 1 ?a)))
+        match-meta (compile-pattern '(?:map :type (| Integer Void)))
+        matcher
+        (compile-pattern `(& ~match-value
+                             (?:all-fresh
+                              (| (? _ ~not-meta?)
+                                 (?:chain ?_ meta ~match-meta)))))]
+
+    (is (matcher 123))
+    (is (matcher (with-meta '(const 1 aoeu) {:type 'Void})))
+    (is (not (matcher '(const 1 aoeu))))))
+
+
+(deftest scoping-correctness
+  (let [matcher (compile-pattern '(?a ?b
+                                      (?:all-fresh [?b (?:all-fresh [?b ?c])])
+                                      (?:all-fresh [?b (?:all-fresh [?b ?c])])
+                                      ?c))]
+    (is (= '{a {:name a, :value 1, :type ? :abbr a},
+             b {:name b, :value 2, :type ? :abbr b},
+             [0 b] {:name [0 b], :value 3, :type ? :abbr b},
+             [0 0 b] {:name [0 0 b], :value 4, :type ? :abbr b},
+             [0 0 c] {:name [0 0 c], :value 5, :type ? :abbr c},
+             [1 b] {:name [1 b], :value 6, :type ? :abbr b},
+             [1 0 b] {:name [1 0 b], :value 7, :type ? :abbr b},
+             [1 0 c] {:name [1 0 c], :value 8, :type ? :abbr c},
+             c {:name c, :value 9, :type ? :abbr c}}
+           (run-matcher matcher
+                        '(1 2
+                            [3 [4 5]]
+                            [6 [7 8]]
+                            9)
+                        identity)))
+
+    (is (= '{a {:name a, :value 1, :type ? :abbr a},
+             b {:name b, :value 2, :type ? :abbr b},
+             [0 b] {:name [0 b], :value 3, :type ? :abbr b},
+             [0 0 b] {:name [0 0 b], :value 4, :type ? :abbr b},
+             [0 0 c] {:name [0 0 c], :value 5, :type ? :abbr c},
+             [1 b] {:name [1 b], :value 3, :type ? :abbr b},
+             [1 0 b] {:name [1 0 b], :value 4, :type ? :abbr b},
+             [1 0 c] {:name [1 0 c], :value 5, :type ? :abbr c},
+             c {:name c, :value 6, :type ? :abbr c}}
+           (run-matcher matcher
+                        '(1 2
+                            [3 [4 5]]
+                            [3 [4 5]]
+                            6)
+                        identity)))))

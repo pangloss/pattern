@@ -6,9 +6,12 @@
             [clojure.string :as str]
             [genera :refer [trampoline bouncing]]
             [clojure.walk :as walk]
-            [clojure.zip :as z :refer [zipper]]))
+            [clojure.zip :as z :refer [zipper]])
+  (:import clojure.lang.IObj))
 
 (def ^:dynamic *debug-rules* false)
+
+(defonce make-rule (atom nil))
 
 (defn run-rule
   "Runs a rule and returns either the successfully updated value or the original
@@ -45,6 +48,10 @@
        `child-rules (fn [_] rules)
        `recombine (fn [_ rules]
                     (rule-list rules))})))
+
+(defn rule-list! [& rules]
+  (rule-list (concat rules [(@make-rule '?_ (fn [env dict]
+                                              (throw (ex-info "No matching clause" env))))])))
 
 
 (defn in-order [rules]
@@ -121,57 +128,107 @@
   ([expression env]
    (*descend* expression env)))
 
+(defn descend-all
+  "Descend each element in e*, threading the env and returning the result.
+
+  Like descend, if called without env it just returns the resulting expression
+  and doesn't return the env, but if called with an env, it returns
+  [result env].
+
+  An alternative strategy would be to merge the resulting envs, but that could
+  require a custom merge strategy, so isn't provided as a built-in helper."
+  ([e*]
+   (first (descend-all e* {})))
+  ([e* env]
+   (reduce (fn [[e* env] e]
+             (let [[e env] (*descend* e env)]
+               [(conj e* e) env]))
+           [[] env]
+           e*)))
+
 (def ^:dynamic *descent-depth* nil)
 (def ^:dynamic *do-mutual-descent* nil)
 
-(defn- directed:extend-rule-metadata [rule-meta fn-map]
+(defn- directed:extend-rule-metadata [rule-meta {:keys [fn-map descend mutual on-rule-meta]
+                                                 :or {on-rule-meta (fn [from to] to)}}]
+  ;; These letfns could be refactored but the subtle differences are annoying
+  ;; and they're not used a lot...
   (letfn [(detect-mode [rule-meta mode-type mode-string data]
             ;; capture a list of var names with the given mode-type
             (update rule-meta mode-type
                     merge
                     (reduce-kv (fn [m n modes]
-                                 (if (and modes (str/includes? modes mode-string))
+                                 (if (and modes (str/includes? modes (name mode-string)))
                                    (assoc m n (data n))
                                    m))
-                               {} (:var-modes rule-meta))))]
-    (let [r (-> rule-meta
-                ;; marked with -> for descent.
-                (detect-mode :descending? "->" identity)
-                ;; marked with $ for mutual recursion.
-                (detect-mode :mutual? "$" meta)
-                (assoc :transform? {}))
-          r (reduce (fn [rule-meta [mode-string f]]
-                      (detect-mode rule-meta :transform? (name mode-string) (constantly f)))
-                    r fn-map)
-          ;; descend in var-name order
-          r (assoc r :active (map (set (concat (keys (:descending? r))
-                                               (keys (:transform? r))))
-                                  (:var-names rule-meta)))]
-      (cond-> r
-        ;; If the datum will change after the initial match, and it's possible
-        ;; that (success) arity 0 will be called, the datum needs to have the
-        ;; new values substituted into it:
-        (and (:may-call-success0? r)
-             (seq (:active r)))
-        (assoc :substitute (substitute (:pattern rule-meta)))))))
+                               {} (:var-modes rule-meta))))
+          (detect-meta [rule-meta mode-type meta-key f selection]
+            (if selection
+              (update rule-meta mode-type merge
+                      (reduce-kv (fn [m n attr]
+                                   (if-let [sel (some selection (f attr))]
+                                     (assoc m n (if (map? selection)
+                                                  sel
+                                                  meta-key))
+                                     m))
+                                 {} (meta-key rule-meta)))
+              rule-meta))
+          (detect-name [rule-meta mode-type selection]
+            (if selection
+              (update rule-meta mode-type merge
+                      (reduce (fn [m name]
+                                (if-let [sel (selection name)]
+                                  (assoc m name (if (map? selection) sel :name))
+                                  m))
+                              {} (:var-names rule-meta)))
+              rule-meta))]
+    (on-rule-meta
+     rule-meta
+     (let [r (-> rule-meta
+                 ;; marked with -> for descent.
+                 (detect-mode :descending? "->" identity)
+                 ;; marked with $ for mutual recursion.
+                 (detect-name :descending? (:name descend))
+                 (detect-meta :descending? :var-abbrs identity (:abbr descend))
+                 (detect-meta :descending? :var-prefixes #(map symbol %) (:prefix descend))
+                 (detect-mode :mutual? "$" meta)
+                 (detect-name :mutual? (:name mutual))
+                 (detect-meta :mutual? :var-abbrs identity (:abbr mutual))
+                 (detect-meta :mutual? :var-prefixes #(map symbol %) (:prefix mutual))
+                 (assoc :transform? {}))
+           r (reduce (fn [rule-meta [mode-string f]]
+                       (detect-mode rule-meta :transform? (name mode-string) (constantly f)))
+                     r fn-map)
+           ;; descend in var-name order
+           r (assoc r :active (map (set (concat (keys (:descending? r))
+                                                (keys (:transform? r))))
+                                   (:var-names rule-meta)))]
+       (cond-> r
+         ;; If the datum will change after the initial match, and it's possible
+         ;; that (success) arity 0 will be called, the datum needs to have the
+         ;; new values substituted into it:
+         (and (:may-call-success0? r)
+              (seq (:active r)))
+         (assoc :substitute (substitute (:pattern rule-meta))))))))
 
-(defn- directed:extended [rule fn-map]
+(defn- directed:extended [rule opts]
   (loop [rz (rule-zipper rule)]
     (cond (z/end? rz) (z/root rz)
           (z/branch? rz) (recur (z/next rz))
+          (nil? (z/node rz)) (recur (z/next rz))
           :else (recur (z/next (z/edit rz vary-meta update :rule
-                                       #(directed:extend-rule-metadata % fn-map)))))))
+                                       #(directed:extend-rule-metadata % opts)))))))
 
 (defn- directed:descend-marked [apply-rules rule-meta dict env depth]
   (let [{:keys [active descending? mutual? transform? substitute]} rule-meta
         apply-rules (partial apply-rules (inc depth))
         mutual-fn *do-mutual-descent*]
     (binding [*descend* apply-rules] ;; TODO: bind descend in do-mutual-descent, too
-      (reduce (fn [[dict env] k]
+      (reduce (fn [[dict env substitute] k]
                 (if-let [match (dict k)]
-                  (let [enter (cond (descending? k) apply-rules
-                                    (and mutual-fn (mutual? k))
+                  (let [enter (cond (and mutual-fn (mutual? k))
                                     (partial mutual-fn (mutual? k) (inc depth))
+                                    (descending? k) apply-rules
                                     :else vector)
                         enter (if-let [f (transform? k)]
                                 (comp (fn [[v e]] [(f v) e]) enter)
@@ -185,9 +242,9 @@
                                               (let [[r env] (enter d env)]
                                                 [(conj v r) env]))
                                             [[] env] (:value match))]
-                        [(assoc-in dict [k :value] v) env])
+                        [(assoc-in dict [k :value] v) env substitute])
                       (let [[v env] (enter (:value match) env)]
-                        [(assoc-in dict [k :value] v) env])))
+                        [(assoc-in dict [k :value] v) env substitute])))
                   [dict env substitute]))
               [dict env substitute] active))))
 
@@ -197,34 +254,48 @@
   Marking a subexpression looks like ?->x or ??->x (ie. marked with -> matcher
   mode), so a matcher like ?y would not get recurred into.
 
-  You can provide an optional fn-map argument, which is a map from additional
-  mode symbols to functions that are applied to a captured match before it is
-  passed to the rule handler. Only one function per symbol is allowed.
-
-  If a function is provided as the fn-map argument, it is treated as if you had
-  passed in {'>- f}, and if subexpressions are marked with >-, the expression or
-  the result of traversing into the expression if it is also marked with -> will
-  be passed to the function f. If no function is provided, [[identity]] is used.
-  In this case, the matcher would look like one of ?>-, ??>-, ?>-> (note this is
-  a shortened form), ?>-->, ??->>-, etc. The order of >- and -> does not matter.
-  If any other symbols other than >- are provided in the fn-map, the above
-  description applies with the symbol you used.
-
   Does not iteratively descend into any expressions returned by matchers. To do
   any iterative descent, call `descend` within the handler on the subexpressions
   you wish to descend into.
 
-  This uses the rule metadata to reconstruct the rules, and does not actually
-  run the rule-list or any rules directly
+  You can also use opts to mark vars to descend by :name, :prefix or
+  :abbr. Look at your rule metadata to see how the var names get that info
+  extracted. For example to descend all rules that have an abbr of `e`, use
 
-  Note that descent order within expressions is not defined."
+      {:descend {:abbr #{'e}}}
+
+  Which would cause all descend the same as the following rule even if that rule
+  had no -> markings:
+
+      (rule '[?->e ?->e0 ?->e123 ?no (?-> e*) ?->e:ok ?e-no ?e0:no])
+
+  You can provide an optional :fn-map via the opts argument, which is a map from
+  additional mode symbols to functions that are applied to a captured match
+  before it is passed to the rule handler. Only one function per symbol is
+  allowed.
+
+  If a function is provided as the opts argument, it is treated as if you had
+  passed in {:fn-map {'>- f}}, and if subexpressions are marked with >-, the
+  expression or the result of traversing into the expression if it is also
+  marked with -> will be passed to the function f. If no function is provided,
+  [[identity]] is used.  In this case, the matcher would look like one of ?>-,
+  ??>-, ?>-> (note this is a shortened form), ?>-->, ??->>-, etc. The order of
+  >- and -> does not matter.  If any other symbols other than >- are provided in
+  the :fn-map key of opts, the above description applies with the symbol you
+  used.
+
+  You can provide a function on the :on-rule-meta opts key to make any
+  arbitrary changes to rule metadata. The default is:
+
+      (fn on-rule-meta [rule-meta-before rule-meta-after]
+        rule-meta-after)"
   ([rule]
    (directed nil rule))
-  ([fn-map raw-rule]
-   (let [fn-map (if (fn? fn-map)
-                  {">-" fn-map}
-                  fn-map)
-         rule (directed:extended raw-rule fn-map)]
+  ([opts raw-rule]
+   (let [opts (if (fn? opts)
+                {:fn-map {">-" opts}}
+                opts)
+         rule (directed:extended raw-rule opts)]
      (with-meta
        (fn do-on-marked
          ([data] (first (run-rule do-on-marked data nil)))
@@ -259,25 +330,28 @@
            (merge {`child-rules (fn [_] [rule])
                    `recombine (fn [_ rules]
                                 (if (next rules)
-                                  (directed fn-map (rule-list rules))
-                                  (directed fn-map (first rules))))}))))))
+                                  (directed opts (rule-list rules))
+                                  (directed opts (first rules))))}))))))
 
 (defn on-mutual
-  "The idea is that you can create a group of named rule sets where matchers are tagged with metadata and a matcher mode
-  that tells this system to switch which rule set is applied for subexpressions of the given type. Effectively this lets you
-  switch between expression types (or dialects?) when applying rules to an expression.
+  "The idea is that you can create a group of named rule sets where matchers are
+  tagged with metadata and a matcher mode that tells this system to switch which
+  rule set is applied for subexpressions of the given type. Effectively this
+  lets you switch between expression types (or dialects?)  when applying rules
+  to an expression.
 
-  This is currently done in a somewhat simplistic way with bound variables because I'm not exactly sure how it should be structured but
-  eventually it should be done without the need for extra global state like this.
-  "
+  This is currently done in a somewhat simplistic way with bound variables
+  because I'm not exactly sure how it should be structured but eventually it
+  should be done without the need for extra global state like this.  "
   [initial-form name-rule-pairs]
   (let [forms (if (map? name-rule-pairs)
                 name-rule-pairs
                 (apply hash-map name-rule-pairs))]
     (letfn [(switch-branch [{:keys [form-name]} depth datum env]
-              (let [form-name (if (vector? form-name) (second form-name) form-name)
-                    rule (forms form-name)]
-                ;; TODO: probably want to just keep on the same branch if there is no option? Or maybe don't descend?
+              (let [rule (or (forms form-name)
+                             (when (vector? form-name) (forms (second form-name))))]
+                ;; TODO: probably want to just keep on the same branch if there
+                ;; is no option? Or maybe don't descend?
                 (if rule
                   (binding [*descent-depth* depth]
                     (run-rule rule datum env))
@@ -297,7 +371,9 @@
                  (y result env n))))))
         {:rule {:rule-type ::on-mutual
                 :initial-form initial-form
-                :name-rule-pairs (walk/postwalk (some-fn meta identity) name-rule-pairs)}}))))
+                :name-rule-pairs (reduce-kv (fn [m k v]
+                                              (assoc m k (meta v)))
+                                            {} name-rule-pairs)}}))))
 
 (defn- try-subexpressions [the-rule datum env events]
   (if (and (seqable? datum) (not (string? datum)))
@@ -308,7 +384,11 @@
           result (if (list? result) (reverse result) result)]
       [(if (= result datum)
          datum
-         result)
+         (if (meta result)
+           result
+           (if (instance? IObj result)
+             (with-meta result (meta datum))
+             result)))
        env])
     [datum env]))
 
@@ -404,7 +484,7 @@
 (defn rule-simplifier
   "Run a list of rule combinators repeatedly on all subexpressions until running
   them makes no further changes."
-  [rules]
+  [& rules]
   (vary-meta
-   (simplifier (rule-list rules))
+   (simplifier (apply rule-list rules))
    assoc-in [:rule :rule-type] ::rule-simplifier))

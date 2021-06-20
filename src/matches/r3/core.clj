@@ -9,7 +9,7 @@
             [matches.match.predicator :refer [*pattern-replace* apply-replacements]]
             [clojure.walk :as walk]
             [matches.types :refer [->SuccessUnmodified ->Success ->SuccessEnv]]
-            [matches.r3.combinators :refer [*debug-rules* run-rule]])
+            [matches.r3.combinators :as rc :refer [*debug-rules* run-rule]])
   (:import (matches.types Success SuccessEnv SuccessUnmodified)
            (clojure.lang IFn IObj IMeta)))
 
@@ -93,8 +93,9 @@
 
 (defmethod print-method Rule [r ^java.io.Writer w]
   (.write w (prn-str
-             (or (:src (:rule (meta r)))
-                 '(rule (:pattern (:rule (meta r))) '...)))))
+             (list 'rule
+                   (:pattern (:rule (meta r)))
+                   (:src (:rule (meta r)) '...)))))
 
 (defn- match-rule [^Rule rule data env dict succeed]
   (let [env (assoc env :rule/datum data
@@ -159,6 +160,7 @@
                       :handler handler}
                      metadata)}))))
 
+(reset! rc/make-rule #'make-rule)
 
 (defn rule-name
   "Attach a rule name to the given object's metadata."
@@ -169,6 +171,7 @@
 (defonce spliced (atom identity))
 (defonce qsub* (atom identity))
 (defonce rule-src (atom identity))
+(defonce scheme-style (atom identity))
 
 (defmacro sub
   "Use the version in the matches.r3.rewrite namespace."
@@ -251,23 +254,19 @@
    (let [args (pattern-args pattern)
          matches (gensym 'matches)]
      `(let [p# ~(@spliced pattern)]
-        (make-rule p# (fn [env# ~matches]
-                        (let [~@(extract-args matches args)]
-                          (sub ~(if (= 'quote (first pattern))
-                                  (second pattern)
-                                  pattern))))
-                   raw-matches {:src '~(@rule-src &form)}))))
+        (make-rule p# (fn [env# ~matches] (success))
+                   raw-matches {:may-call-success0? true
+                                :src '(success)}))))
   ([pattern handler-body]
    (let [args (pattern-args pattern)
          matches (gensym 'matches)]
-     `(let [p# ~(@spliced pattern)]
+     `(let [p# ~(@spliced (@scheme-style pattern))]
         (make-rule p# (fn [~'%env ~matches]
-                        ;; TODO: should env-args or regular args dominate? or should a conflict be an error?
                         ;; TODO: is the JVM smart about eliding unused bindings here or should I try
                         ;;       to introspect the body to determine which args are used?
-                        (let [~@(extract-args matches args)
-                              ~@(env-args (:env-args (meta pattern)))]
+                        (let [~@(env-args (:env-args (meta pattern)))
+                              ~@(extract-args matches args)]
                           ~handler-body))
                    raw-matches
                    {:may-call-success0? ~(may-call-success0? handler-body)
-                    :src '~(@rule-src &form)})))))
+                    :src '~handler-body})))))

@@ -28,7 +28,7 @@
   (constantly [pattern]))
 
 (defn- sub-literal [pattern]
-  (constantly [(first pattern)]))
+  (constantly [(second pattern)]))
 
 (defn- sub-restartable [pattern]
   (sub* (second pattern)))
@@ -170,9 +170,13 @@
           r
           [(finalize r)])))))
 
+(defn- sub-many-map [pattern])
+  ;; TODO zipmap the key/value)
+(defn- sub-at-least-one-map [pattern])
 
 (defmethod* sub* :value #'sub-value)
 (defmethod* sub* '?:literal #'sub-literal)
+(defmethod* sub* '?:= #'sub-literal)
 (defmethod* sub* '? #'sub-element)
 (defmethod* sub* '?? #'sub-sequence)
 (defmethod* sub* :list #'sub-list)
@@ -180,6 +184,8 @@
 (defmethod* sub* '?:1 #'sub-optional)
 (defmethod* sub* '?:* #'sub-many)
 (defmethod* sub* '?:+ #'sub-at-least-one)
+;;(defmethod* sub* '?:*map #'sub-many-map)
+;;(defmethod* sub* '?:+map #'sub-at-least-one-map)
 (defmethod* sub* '?:chain #'sub-chain)
 (defmethod* sub* '?:as #'sub-as)
 (defmethod* sub* '?:map #'sub-map)
