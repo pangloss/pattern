@@ -71,7 +71,11 @@
             (let [key (list n a)]
               (condp = op
                 '+ (assoc-in dialect [:terminals key] (make-terminal n a))
-                '- (update dialect :terminals dissoc key))))
+                '- (if (get-in dialect [:terminals key])
+                     (update dialect :terminals dissoc key)
+                     (throw (ex-info "Removing nonexistent terminal"
+                                     {:dialect (:name dialect)
+                                      :terminal key}))))))
           dialect
           (map vector ops names abbrs)))
 
@@ -372,7 +376,12 @@
                                         '+ (if (some #(= expr (:orig-expr %)) exprs)
                                              exprs
                                              (conj exprs (add-form-expr dialect form expr)))
-                                        '- (vec (remove #(= expr (:orig-expr %)) exprs))))
+                                        '- (if (some #(= expr (:orig-expr %)) exprs)
+                                             (vec (remove #(= expr (:orig-expr %)) exprs))
+                                             (throw (ex-info "Removing nonexistent expression"
+                                                             {:dialect (:name dialect)
+                                                              :form form-name
+                                                              :expr expr})))))
                                     es
                                     (map vector ops exprs)))))
         (assoc :last-form full-name))))
