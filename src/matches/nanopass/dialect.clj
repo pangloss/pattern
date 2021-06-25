@@ -345,6 +345,9 @@
 ;; do the unboxing right in the pattern.
 
 (defn- build-form [dialect form-name abbr metadata flags ops exprs]
+  (when (re-find #"[^a-z]" (name abbr))
+    (throw (ex-info "Invalid abbr character. Use only lower-case a-z characters."
+                    {:dialect (:name dialect) :form form-name :abbr abbr})))
   (let [dialect-name (:name dialect)
         full-name [dialect-name form-name]
         form (merge (get-in dialect [:forms form-name]
@@ -439,8 +442,8 @@
   "Show the given dialect with all additions and removals of terminals, forms
   and expressions resolved. This is a useful tool for debugging, especially for
   dialects that go through many layers of derivation."
-  [dialect]
-  `(~'define-dialect ~(:name dialect)
+  [dialect & {:keys [full-names]}]
+  `(~'def-dialect ~(:name dialect)
     (~'terminals ~@(map (fn [{:keys [abbr predicate]}]
                           [abbr predicate])
                         (vals (:terminals dialect))))
@@ -448,7 +451,7 @@
         [`(~'enter ~(:enter dialect))])
     ~@(map (fn [{:keys [name abbr exprs flags metadata-pattern]}]
              (let [etc (remove nil? (cons metadata-pattern (seq flags)))]
-               `(~name [~abbr ~@etc]
+               `(~(if full-names name (second name)) [~abbr ~@etc]
                  ~@(map :orig-expr exprs))))
            (vals (:forms dialect)))))
 
@@ -560,10 +563,10 @@
                :else b#))))))
 
 (defn validate [dialect expr]
-  ((:validate dialect) expr))
+  ((:validate (@all-dialects dialect dialect)) expr))
 
 (defn valid? [dialect expr]
-  ((:valid? dialect) expr))
+  ((:valid? (@all-dialects dialect dialect)) expr))
 
 (defn show-parse [dialect expr]
-  ((:validate dialect) expr {:raw true}))
+  ((:validate (@all-dialects dialect dialect)) expr {:raw true}))
