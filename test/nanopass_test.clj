@@ -1,6 +1,5 @@
 (ns nanopass-test
   (:require  [clojure.test :refer :all]
-             [matches.nanopass :refer [scope tag type-rules]]
              [matches.match.predicator :refer [with-predicates]]
              [matches.nanopass.dialect :refer [def-dialect def-derived => ==>]]
              [matches.nanopass.pass :refer [defpass]]

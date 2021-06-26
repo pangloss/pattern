@@ -44,6 +44,7 @@
               => ==> ===>
               from-dialect to-dialect dialects
               show-dialect
+              show-parse
               valid? validate)
              (matches.types ok ok?)
              (matches.nanopass.pass

@@ -223,97 +223,7 @@
                              (?:chain ?_ meta ~match-meta)))))
     matcher))
 
-
-(defn- make-checker [dialect]
-  (let [form-abbrs (set (map :abbr (vals (:forms dialect))))
-        mutual-forms (reduce (fn [m {:keys [abbr name] :as f}]
-                               (assoc m abbr {:dialect (:name dialect)
-                                              :form-name name}))
-                             {} (vals (:forms dialect)))
-        terminals (vals (:terminals dialect))
-        terminals (when terminals (zipmap (map :abbr terminals) terminals))
-        terminal? (if terminals
-                    (fn [abbr v]
-                      (when-let [{:keys [predicate]} (terminals abbr)]
-                        (predicate v)))
-                    (constantly false))
-        ok (->Ok)
-        ;; TODO: how do I deal with matchers that are just normal loose
-        ;; matchers, not binding any particular language form?
-        remove-terminals (fn [raw dict]
-                           (reduce-kv (fn [dict k v]
-                                        (let [abbr (:abbr (raw k))]
-                                          (if (= '? (:type (raw k)))
-                                            (if (terminal? abbr v)
-                                              (assoc dict k ok)
-                                              dict)
-                                            (assoc dict k
-                                                   (if (every? #(or (= ok %) (terminal? abbr %))
-                                                               v)
-                                                     ok
-                                                     v)))))
-                                      dict dict))
-        validator
-        (on-mutual
-         (if-let [e (:entry dialect)]
-           (get-in dialect [:forms e :name])
-           (:last-form dialect))
-         (into {}
-               (for [form (vals (:forms dialect))
-                     :let [has-meta (:match-metadata form)]]
-                 [(:name form)
-                  (directed
-                   {:descend {:abbr form-abbrs}
-                    :mutual {:abbr (dissoc mutual-forms (:abbr form))}}
-                   (rule-list
-                    (for [expr (:exprs form)
-                          :let [t (matcher-type-for-dispatch (:expr expr))]]
-                      (make-rule (expr-matcher-with-meta (:match expr) has-meta)
-                                 (if (= '? t)
-                                   (fn [env raw dict]
-                                     ;; For ?e exprs, let the rule fall through if not success
-                                     (if (:raw env)
-                                       (merge {:orig (:orig-expr expr)}
-                                              dict)
-                                       (let [dict (remove-terminals raw dict)]
-                                         (when (every? #{ok} (vals dict))
-                                           ok))))
-                                   (fn [env raw dict]
-                                     (if (:raw env)
-                                       (merge {:orig (:orig-expr expr)}
-                                              dict
-                                              {:meta (reduce-kv (fn [m k v]
-                                                                  (assoc m k (meta v)))
-                                                                {} dict)})
-                                       (let [dict (remove-terminals raw dict)]
-                                         (if (every? #{ok} (vals dict))
-                                           ok
-                                           (merge {:fail (:orig-expr expr)}
-                                                  dict
-                                                  {:meta (reduce-kv (fn [m k v]
-                                                                      (if (ok? v)
-                                                                        m
-                                                                        (assoc m k (meta v))))
-                                                                    {} dict)}))))))
-                                 (fn [x]
-                                   ;; give the handler both the raw matches and the processed version for now
-                                   (let [f (symbol-dict x)]
-                                     (fn [m] [m (f m)])))
-                                 {}))))])))]
-    (with-meta
-      (fn dialect-checker
-        ([expr]
-         (dialect-checker expr {}))
-        ([expr env]
-         (let [result (first (validator expr env))
-               result (if (= expr result)
-                        {:fail (:name dialect) :expr expr :meta (meta expr)}
-                        result)]
-           (if (map? result)
-             (merge {:dialect (:name dialect)}
-                    result)
-             result))))
-      (meta validator))))
+(declare make-checker)
 
 (defn- finalize-dialect [dialect]
   ;; Predicators are required for top-level forms and for terminals, not for expressions.
@@ -447,22 +357,7 @@
 (defn- deref* [x]
   (if (var? x) @x x))
 
-(defn show-dialect
-  "Show the given dialect with all additions and removals of terminals, forms
-  and expressions resolved. This is a useful tool for debugging, especially for
-  dialects that go through many layers of derivation."
-  [dialect & {:keys [full-names]}]
-  `(~'def-dialect ~(:name dialect)
-    (~'terminals ~@(map (fn [{:keys [abbr predicate]}]
-                          [abbr predicate])
-                        (vals (:terminals dialect))))
-    ~@(when (:enter dialect)
-        [`(~'enter ~(:enter dialect))])
-    ~@(map (fn [{:keys [name abbr exprs flags metadata-pattern]}]
-             (let [etc (remove nil? (cons metadata-pattern (seq flags)))]
-               `(~(if full-names name (second name)) [~abbr ~@etc]
-                 ~@(map :orig-expr exprs))))
-           (vals (:forms dialect)))))
+(declare show-dialect)
 
 (defn ^:no-doc run-derive-dialect [name parent-dialect decls]
   (let [parent-dialect (resolve* parent-dialect)
@@ -533,6 +428,23 @@
   `(def ~name
      '~(run-derive-dialect name parent-dialect decls)))
 
+(defn show-dialect
+  "Show the given dialect with all additions and removals of terminals, forms
+  and expressions resolved. This is a useful tool for debugging, especially for
+  dialects that go through many layers of derivation."
+  [dialect & {:keys [full-names]}]
+  `(~'def-dialect ~(:name dialect)
+    (~'terminals ~@(map (fn [{:keys [abbr predicate]}]
+                          [abbr predicate])
+                        (vals (:terminals dialect))))
+    ~@(when (:enter dialect)
+        [`(~'enter ~(:enter dialect))])
+    ~@(map (fn [{:keys [name abbr exprs flags metadata-pattern]}]
+             (let [etc (remove nil? (cons metadata-pattern (seq flags)))]
+               `(~(if full-names name (second name)) [~abbr ~@etc]
+                 ~@(map :orig-expr exprs))))
+           (vals (:forms dialect)))))
+
 (defn from-dialect* [dialect f]
   (if dialect
     (let [dialect (if (symbol? dialect)
@@ -544,7 +456,9 @@
         f))
     (f)))
 
-(defmacro from-dialect [dialect & body]
+(defmacro from-dialect
+  "Wrap a given rule combinator with the dialect. See `dialects`"
+  [dialect & body]
   `(from-dialect* ~dialect (fn [] ~@body)))
 
 (defn to-dialect* [dialect f]
@@ -556,10 +470,18 @@
         f))
     (f)))
 
-(defmacro to-dialect [dialect & body]
+(defmacro to-dialect
+  "Wrap a given rule combinator with the dialect. See `dialects`"
+  [dialect & body]
   `(to-dialect* ~dialect (fn [] ~@body)))
 
-(defmacro dialects [=>dialects & body]
+(defmacro dialects
+  "Wrap a given rule combinator definition to specify that those rules transform
+  between the given pair of dialects.
+
+  The rules will also make use of all abbr predicates defined within the rule
+  (either terminals or expressions that are marked with :enforce)."
+  [=>dialects & body]
   `(let [d# ~=>dialects]
      (from-dialect
       (=>:from d# nil)
@@ -571,11 +493,110 @@
                (obj? b#) (vary-meta b# merge d#)
                :else b#))))))
 
-(defn validate [dialect expr]
+(defn- make-checker [dialect]
+  (let [form-abbrs (set (map :abbr (vals (:forms dialect))))
+        mutual-forms (reduce (fn [m {:keys [abbr name] :as f}]
+                               (assoc m abbr {:dialect (:name dialect)
+                                              :form-name name}))
+                             {} (vals (:forms dialect)))
+        terminals (vals (:terminals dialect))
+        terminals (when terminals (zipmap (map :abbr terminals) terminals))
+        terminal? (if terminals
+                    (fn [abbr v]
+                      (when-let [{:keys [predicate]} (terminals abbr)]
+                        (predicate v)))
+                    (constantly false))
+        ok (->Ok)
+        ;; TODO: how do I deal with matchers that are just normal loose
+        ;; matchers, not binding any particular language form?
+        remove-terminals (fn [raw dict]
+                           (reduce-kv (fn [dict k v]
+                                        (let [abbr (:abbr (raw k))]
+                                          (if (= '? (:type (raw k)))
+                                            (if (terminal? abbr v)
+                                              (assoc dict k ok)
+                                              dict)
+                                            (assoc dict k
+                                                   (if (every? #(or (= ok %) (terminal? abbr %))
+                                                               v)
+                                                     ok
+                                                     v)))))
+                                      dict dict))
+        validator
+        (on-mutual
+         (if-let [e (:entry dialect)]
+           (get-in dialect [:forms e :name])
+           (:last-form dialect))
+         (into {}
+               (for [form (vals (:forms dialect))
+                     :let [has-meta (:match-metadata form)]]
+                 [(:name form)
+                  (directed
+                   {:descend {:abbr form-abbrs}
+                    :mutual {:abbr (dissoc mutual-forms (:abbr form))}}
+                   (rule-list
+                    (for [expr (:exprs form)
+                          :let [t (matcher-type-for-dispatch (:expr expr))]]
+                      (make-rule (expr-matcher-with-meta (:match expr) has-meta)
+                                 (if (= '? t)
+                                   (fn [env raw dict]
+                                     ;; For ?e exprs, let the rule fall through if not success
+                                     (if (:raw env)
+                                       (merge {:orig (:orig-expr expr)}
+                                              dict)
+                                       (let [dict (remove-terminals raw dict)]
+                                         (when (every? #{ok} (vals dict))
+                                           ok))))
+                                   (fn [env raw dict]
+                                     (if (:raw env)
+                                       (merge {:orig (:orig-expr expr)}
+                                              dict
+                                              {:meta (reduce-kv (fn [m k v]
+                                                                  (assoc m k (meta v)))
+                                                                {} dict)})
+                                       (let [dict (remove-terminals raw dict)]
+                                         (if (every? #{ok} (vals dict))
+                                           ok
+                                           (merge {:fail (:orig-expr expr)}
+                                                  dict
+                                                  {:meta (reduce-kv (fn [m k v]
+                                                                      (if (ok? v)
+                                                                        m
+                                                                        (assoc m k (meta v))))
+                                                                    {} dict)}))))))
+                                 (fn [x]
+                                   ;; give the handler both the raw matches and the processed version for now
+                                   (let [f (symbol-dict x)]
+                                     (fn [m] [m (f m)])))
+                                 {}))))])))]
+    (with-meta
+      (fn dialect-checker
+        ([expr]
+         (dialect-checker expr {}))
+        ([expr env]
+         (let [result (first (validator expr env))
+               result (if (= expr result)
+                        {:fail (:name dialect) :expr expr :meta (meta expr)}
+                        result)]
+           (if (map? result)
+             (merge {:dialect (:name dialect)}
+                    result)
+             result))))
+      (meta validator))))
+
+(defn validate
+  "Validates an expression in the given dialect and either returns `ok` or a
+  detailed parse showing all parse errors."
+  [dialect expr]
   ((:validate (@all-dialects dialect dialect)) expr))
 
-(defn valid? [dialect expr]
+(defn valid?
+  "Returns true if the expr is valid in the given dialect"
+  [dialect expr]
   ((:valid? (@all-dialects dialect dialect)) expr))
 
-(defn show-parse [dialect expr]
+(defn show-parse
+  "Show a detailed view of how the dialect parses a given input, even if it
+  parses it successfully."
+  [dialect expr]
   ((:validate (@all-dialects dialect dialect)) expr {:raw true}))
