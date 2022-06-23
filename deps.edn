@@ -5,6 +5,8 @@
                                        #_#_
                                        :local/root "../pure-conditioning"}
         org.clojure/core.memoize {:mvn/version "1.0.236"}
+        com.xn--lgc/genera {:git/url "https://github.com/pangloss/genera"
+                            :sha "02f3629e054237e676f569d273b7e7a0d1fae6d9"}
         uncomplicate/fluokitten {:mvn/version "0.9.1"}
         potemkin/potemkin {:mvn/version "0.4.5"}}
  :aliases
