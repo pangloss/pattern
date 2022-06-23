@@ -2,6 +2,7 @@
   (:use [scheme-to-c.dialects]
         [matches :refer [sub rule rule-list in-order directed success substitute matcher descend]]
         [matches.nanopass.dialect :refer [=> ==> ===>]]
+        [matches.nanopass.dialect :refer [=> ==> ===> show-dialect]]
         [matches.nanopass.pass :refer [defpass let-rulefn]]))
 
 ;; NOTE: this is some early naive porting from the scheme-to-c sample compiler
