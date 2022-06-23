@@ -134,8 +134,8 @@
 
   Rules are meant to be combined via the combinators library.
 
-  By default, calls the handler with a simple dictionary of matches (configured
-  via the [[dict-handler]] arg transformer), but a custom arg transformation can
+  By default, calls the handler with a simple dictionary of matches - configured
+  via the [[dict-handler]] arg transformer -, but a custom arg transformation can
   be specified by providing ->get-values, which is called with the compiled
   match-procedure at compile time, then the result of that is called with the
   results dictionary and applied to the handler.
@@ -210,7 +210,7 @@
               [arg `(get (~matches '~arg) :value)])
             args)))
 
-(defn- env-args [env-args]
+(defn- extract-env-args [env-args]
   (when (seq env-args)
     (mapcat (fn [arg]
               [(symbol (name arg)) `(~'%env ~(keyword arg))])
@@ -220,6 +220,13 @@
   (boolean (some #{'(success) 'success:env
                    `(success) `success:env}
                  (tree-seq list? seq body))))
+
+(defmacro rule-fn-body [args env-args handler-body]
+  (let [matches (gensym 'matches)]
+    `(fn [~'%env ~matches]
+       (let [~@(extract-env-args env-args)
+             ~@(extract-args matches args)]
+         ~handler-body))))
 
 (defmacro rule
   "Create a single rule. There are 2 arities, both with unique behavior.
@@ -255,18 +262,13 @@
          matches (gensym 'matches)]
      `(let [p# ~(@spliced pattern)]
         (make-rule p# (fn [env# ~matches] (success))
-                   raw-matches {:may-call-success0? true
-                                :src '(success)}))))
+          raw-matches {:may-call-success0? true
+                       :src '(success)}))))
   ([pattern handler-body]
-   (let [args (pattern-args pattern)
-         matches (gensym 'matches)]
-     `(let [p# ~(@spliced (@scheme-style pattern))]
-        (make-rule p# (fn [~'%env ~matches]
-                        ;; TODO: is the JVM smart about eliding unused bindings here or should I try
-                        ;;       to introspect the body to determine which args are used?
-                        (let [~@(env-args (:env-args (meta pattern)))
-                              ~@(extract-args matches args)]
-                          ~handler-body))
-                   raw-matches
-                   {:may-call-success0? ~(may-call-success0? handler-body)
-                    :src '~handler-body})))))
+   `(let [p# ~(@spliced (@scheme-style pattern))]
+      (make-rule p#
+        (rule-fn-body ~(pattern-args pattern) ~(:env-args (meta pattern))
+          ~handler-body)
+        raw-matches
+        {:may-call-success0? ~(may-call-success0? handler-body)
+         :src '~handler-body}))))

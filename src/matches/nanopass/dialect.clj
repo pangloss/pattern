@@ -71,7 +71,11 @@
             (let [key (list n a)]
               (condp = op
                 '+ (assoc-in dialect [:terminals key] (make-terminal n a))
-                '- (update dialect :terminals dissoc key))))
+                '- (if (get-in dialect [:terminals key])
+                     (update dialect :terminals dissoc key)
+                     (throw (ex-info "Removing nonexistent terminal"
+                                     {:dialect (:name dialect)
+                                      :terminal key}))))))
           dialect
           (map vector ops names abbrs)))
 
@@ -219,6 +223,275 @@
                              (?:chain ?_ meta ~match-meta)))))
     matcher))
 
+(declare make-checker)
+
+(defn- finalize-dialect [dialect]
+  ;; Predicators are required for top-level forms and for terminals, not for expressions.
+  (let [dialect
+        (update dialect :forms
+                (fn [forms]
+                  (reduce (fn [forms [form-name form]]
+                            (assoc forms form-name
+                                   (finalize-form dialect form (dialect-predicators dialect))))
+                          {} forms)))
+        tas (terminal-abbrs dialect)
+        ;; FIXME: why finalize all of the forms and then do this? Finalize them in topo order and
+        ;; add predicators as I go. Topo order should include possible preds within expressions (at least
+        ;; if they are marked :explicit.
+        ;; FIXME: enforce topo order (no cycles) for any forms that have the
+        ;; :enforce flag including all expr pattern attrs.
+        dialect (add-is-form-predicates dialect)
+        dialect (compile-metadata-patterns dialect)
+        dialect (assoc dialect :predicators (dialect-predicators dialect))
+        _ (when-let [abbr (some tas (map :abbr (vals (:forms dialect))))]
+            (throw (ex-info "The same abbr is used for both a terminal and a form" {:abbr abbr})))
+        dialect (assoc dialect :validate (make-checker dialect))
+        dialect (assoc dialect :valid? (comp ok? (:validate dialect)))]
+    (swap! all-dialects assoc (:name dialect) dialect)
+    dialect))
+
+
+;; Each expr must be either a terminal and its matcher type must not be :value
+;;
+;; Would an unboxing protocol make sense within the matcher? Would need to think through
+;; the implications... If something will not match a type that needs to be
+;; boxed, we know that in advance... The same kind of pattern rewriting could be used to
+;; do the unboxing right in the pattern.
+
+(defn- build-form [dialect form-name abbr metadata flags ops exprs]
+  (when (re-find #"[^a-z]" (name abbr))
+    (throw (ex-info "Invalid abbr character. Use only lower-case a-z characters."
+                    {:dialect (:name dialect) :form form-name :abbr abbr})))
+  (let [dialect-name (:name dialect)
+        full-name [dialect-name form-name]
+        form (merge (get-in dialect [:forms form-name]
+                            {:exprs []})
+                    {:name full-name
+                     ;; NOTE: The form? predicate must be rebuilt for every
+                     ;; dialect both to capture the updated [dialect form] name,
+                     ;; and because form containment rules may change between
+                     ;; dialects.
+                     :form? (fn form? [x]
+                              (= full-name (get (meta x) ::form)))
+                     :abbr abbr
+                     :flags (set flags)
+                     :metadata-pattern metadata
+                     :symbol? (match-abbr abbr)})]
+    (-> dialect
+        (assoc-in [:forms form-name]
+                  (update form :exprs
+                          (fn [es]
+                            (reduce (fn [exprs [op expr]]
+                                      (condp = op
+                                        '+ (if (some #(= expr (:orig-expr %)) exprs)
+                                             exprs
+                                             (conj exprs (add-form-expr dialect form expr)))
+                                        '- (if (some #(= expr (:orig-expr %)) exprs)
+                                             (vec (remove #(= expr (:orig-expr %)) exprs))
+                                             (throw (ex-info "Removing nonexistent expression"
+                                                             {:dialect (:name dialect)
+                                                              :form form-name
+                                                              :expr expr})))))
+                                    es
+                                    (map vector ops exprs)))))
+        (assoc :last-form full-name))))
+
+(defn- remove-form [dialect name]
+  (update dialect :forms dissoc name))
+
+(defn- set-entry [dialect name]
+  (assoc dialect :entry name))
+
+(def ^:private derive-dialect*
+  (with-predicates {'dialect map?
+                    'op #{'+ '-}
+                    'name symbol?
+                    'abbr symbol?
+                    'expr (complement #{+ -})}
+    (letfn [(continue [dialect more]
+              (if (seq more)
+                (list* dialect more)
+                dialect))]
+      (iterated
+       (rule-list [(rule '(?dialect (terminals (?:* ?op* [?abbr*
+                                                          (| ?name*
+                                                             (quote ?name*))]))
+                                    ??more)
+                         (continue (add-remove-terminals dialect op* name* abbr*)
+                                   more))
+
+                   (rule '(?dialect (terminals (?:* [?abbr*
+                                                     (| ?name*
+                                                        (quote ?name*))]))
+                                    ??more)
+                         (continue (add-remove-terminals dialect (repeat '+) name* abbr*)
+                                   more))
+
+                   (rule '(?dialect (entry ?name) ??more)
+                         (continue (set-entry dialect name)
+                                   more))
+
+                   (rule '(?dialect - ?name ??more)
+                         (continue (remove-form dialect name)
+                                   more))
+
+                   (rule '(?dialect (?name [?abbr
+                                            (?:? (? metadata map?))
+                                            (?:* (? flags keyword?))]
+                                           (?:* ?op* ?expr*)) ??more)
+                         (continue (build-form dialect name abbr metadata flags
+                                               op* expr*)
+                                   more))
+
+                   (rule '(?dialect (?name [?abbr
+                                            (?:? (? metadata map?))
+                                            (?:* (? flags keyword?))]
+                                           (?:* ?expr*)) ??more)
+                         (continue (build-form dialect name abbr metadata flags
+                                               (repeat '+) expr*)
+                                   more))])))))
+
+(defn- resolve* [x]
+  (if (symbol? x) (resolve x) x))
+
+(defn- deref* [x]
+  (if (var? x) @x x))
+
+(declare show-dialect)
+
+(defn ^:no-doc run-derive-dialect [name parent-dialect decls]
+  (let [parent-dialect (resolve* parent-dialect)
+        dialect (assoc (deref* parent-dialect)
+                       :parent-dialect parent-dialect
+                       :name name)
+        dialect (derive-dialect* (list* dialect (quo (scheme-style decls))))]
+    (if (map? dialect)
+      (finalize-dialect dialect)
+      (throw (ex-info "failed to parse dialect" {:remaining-forms (vec (rest dialect))
+                                                 :partial-dialect (show-dialect (first dialect))
+                                                 :details (first dialect)})))))
+
+(defmacro def-dialect
+  "Create a new dialect.
+
+  Both terminals and forms may be defined. The following example creates a
+  language with 2 terminals (nsn and tn) and two forms (nsform and ns):
+
+    (def-dialect NS
+      (terminals [nsn nsname?]
+                 [tn typename?])
+      (NsForm [nsform]
+              (:require (?:* (| ?nsn:req-symbol
+                                [?nsn:req-symbol ??opts])))
+              (:import (?:* (| ?nsn:fq-name
+                               (?nsn:ns-name ??tn:typenames)))))
+      (Namespace [ns]
+                 ((?:literal ns) ?nsn:name ??nsform)))
+
+  This is a somewhat sophisticated macro and as such has a bit of syntax you
+  need to understand.
+
+  There are 2 top-level syntax types: terminals declarations and form
+  declarations. Terminals are matched objects that do not require any further
+  matching, ie. they are leaves of the syntax tree for the dialect. Forms are
+  groups of patterns. In order for an IR instance to be valid, every form as it
+  is recursively traversed must match one of the patterns and be tagged with the
+  form type (ie. NsForm or Namespace in the above example)."
+  [name & decls]
+  `(def ~name
+     '~(run-derive-dialect name nil decls)))
+
+(defmacro def-derived
+  "Create a new dialect based on another one by defining terminals or forms that
+  should be added or removed.
+
+  This works essentially the same as [[define-dialect]] but adds a
+  parent-dialect argument and makes it possible to prevent inheritance of
+  terminals, forms or expressions within forms from the parent dialect by
+  prefixing each one with either + or -.
+
+      (def-derived D2 NS
+        (terminals + (symbol s)
+                   - (nsname nsn)
+                   - (typename tn))
+        - NsForm
+        (Expr [e]
+              + (let [(?:* ?s:binding* ?e:bound*)] ??e:body)))
+
+  In the above example, 1 new terminal is added, and 2 are removed, the entire
+  NsForm form is removed, and a new Expr form is added, adding a let binding. It
+  is also possible to remove a pattern expression from a form by replacing the +
+  with a -. Forms that are newly added may also omit all of the + symbols as
+  well, but within a form all expressions must either be marked with +/- or not
+  marked at all."
+  [name parent-dialect & decls]
+  `(def ~name
+     '~(run-derive-dialect name parent-dialect decls)))
+
+(defn show-dialect
+  "Show the given dialect with all additions and removals of terminals, forms
+  and expressions resolved. This is a useful tool for debugging, especially for
+  dialects that go through many layers of derivation."
+  [dialect & {:keys [full-names]}]
+  `(~'def-dialect ~(:name dialect)
+    (~'terminals ~@(map (fn [{:keys [abbr predicate]}]
+                          [abbr predicate])
+                        (vals (:terminals dialect))))
+    ~@(when (:enter dialect)
+        [`(~'enter ~(:enter dialect))])
+    ~@(map (fn [{:keys [name abbr exprs flags metadata-pattern]}]
+             (let [etc (remove nil? (cons metadata-pattern (seq flags)))]
+               `(~(if full-names name (second name)) [~abbr ~@etc]
+                 ~@(map :orig-expr exprs))))
+           (vals (:forms dialect)))))
+
+(defn from-dialect* [dialect f]
+  (if dialect
+    (let [dialect (if (symbol? dialect)
+                    (@all-dialects dialect)
+                    dialect)]
+      (with-bindings* {#'*from-dialect* dialect
+                       #'*pattern-replace* (into (or *pattern-replace* [])
+                                                 (:predicators dialect))}
+        f))
+    (f)))
+
+(defmacro from-dialect
+  "Wrap a given rule combinator with the dialect. See `dialects`"
+  [dialect & body]
+  `(from-dialect* ~dialect (fn [] ~@body)))
+
+(defn to-dialect* [dialect f]
+  (if dialect
+    (let [dialect (if (symbol? dialect)
+                    (@all-dialects dialect)
+                    dialect)]
+      (with-bindings* {#'*to-dialect* dialect}
+        f))
+    (f)))
+
+(defmacro to-dialect
+  "Wrap a given rule combinator with the dialect. See `dialects`"
+  [dialect & body]
+  `(to-dialect* ~dialect (fn [] ~@body)))
+
+(defmacro dialects
+  "Wrap a given rule combinator definition to specify that those rules transform
+  between the given pair of dialects.
+
+  The rules will also make use of all abbr predicates defined within the rule
+  (either terminals or expressions that are marked with :enforce)."
+  [=>dialects & body]
+  `(let [d# ~=>dialects]
+     (from-dialect
+      (=>:from d# nil)
+      (to-dialect
+       (=>:to d# nil)
+       (let [b# ~@body
+             d# (select-keys d# [:=>/from :=>/to])]
+         (cond (var? b#) (alter-meta! b# merge d#)
+               (obj? b#) (vary-meta b# merge d#)
+               :else b#))))))
 
 (defn- make-checker [dialect]
   (let [form-abbrs (set (map :abbr (vals (:forms dialect))))
@@ -311,259 +584,19 @@
              result))))
       (meta validator))))
 
-(defn- finalize-dialect [dialect]
-  ;; Predicators are required for top-level forms and for terminals, not for expressions.
-  (let [dialect
-        (update dialect :forms
-                (fn [forms]
-                  (reduce (fn [forms [form-name form]]
-                            (assoc forms form-name
-                                   (finalize-form dialect form (dialect-predicators dialect))))
-                          {} forms)))
-        tas (terminal-abbrs dialect)
-        ;; FIXME: why finalize all of the forms and then do this? Finalize them in topo order and
-        ;; add predicators as I go. Topo order should include possible preds within expressions (at least
-        ;; if they are marked :explicit.
-        ;; FIXME: enforce topo order (no cycles) for any forms that have the
-        ;; :enforce flag including all expr pattern attrs.
-        dialect (add-is-form-predicates dialect)
-        dialect (compile-metadata-patterns dialect)
-        dialect (assoc dialect :predicators (dialect-predicators dialect))
-        _ (when-let [abbr (some tas (map :abbr (vals (:forms dialect))))]
-            (throw (ex-info "The same abbr is used for both a terminal and a form" {:abbr abbr})))
-        dialect (assoc dialect :validate (make-checker dialect))
-        dialect (assoc dialect :valid? (comp ok? (:validate dialect)))]
-    (swap! all-dialects assoc (:name dialect) dialect)
-    dialect))
+(defn validate
+  "Validates an expression in the given dialect and either returns `ok` or a
+  detailed parse showing all parse errors."
+  [dialect expr]
+  ((:validate (@all-dialects dialect dialect)) expr))
 
+(defn valid?
+  "Returns true if the expr is valid in the given dialect"
+  [dialect expr]
+  ((:valid? (@all-dialects dialect dialect)) expr))
 
-;; Each expr must be either a terminal and its matcher type must not be :value
-;;
-;; Would an unboxing protocol make sense within the matcher? Would need to think through
-;; the implications... If something will not match a type that needs to be
-;; boxed, we know that in advance... The same kind of pattern rewriting could be used to
-;; do the unboxing right in the pattern.
-
-(defn- build-form [dialect form-name abbr metadata flags ops exprs]
-  (let [dialect-name (:name dialect)
-        full-name [dialect-name form-name]
-        form (merge (get-in dialect [:forms form-name]
-                            {:exprs []})
-                    {:name full-name
-                     ;; NOTE: The form? predicate must be rebuilt for every
-                     ;; dialect both to capture the updated [dialect form] name,
-                     ;; and because form containment rules may change between
-                     ;; dialects.
-                     :form? (fn form? [x]
-                              (= full-name (get (meta x) ::form)))
-                     :abbr abbr
-                     :flags (set flags)
-                     :metadata-pattern metadata
-                     :symbol? (match-abbr abbr)})]
-    (-> dialect
-        (assoc-in [:forms form-name]
-                  (update form :exprs
-                          (fn [es]
-                            (reduce (fn [exprs [op expr]]
-                                      (condp = op
-                                        '+ (if (some #(= expr (:orig-expr %)) exprs)
-                                             exprs
-                                             (conj exprs (add-form-expr dialect form expr)))
-                                        '- (vec (remove #(= expr (:orig-expr %)) exprs))))
-                                    es
-                                    (map vector ops exprs)))))
-        (assoc :last-form full-name))))
-
-(defn- remove-form [dialect name]
-  (update dialect :forms dissoc name))
-
-(defn- set-entry [dialect name]
-  (assoc dialect :entry name))
-
-(def ^:private derive-dialect*
-  (with-predicates {'dialect map?
-                    'op #{'+ '-}
-                    'name symbol?
-                    'abbr symbol?
-                    'expr (complement #{+ -})}
-    (letfn [(continue [dialect more]
-              (if (seq more)
-                (list* dialect more)
-                dialect))]
-      (iterated
-       (rule-list [(rule '(?dialect (terminals (?:* ?op* [?abbr*
-                                                          (| ?name*
-                                                             (quote ?name*))]))
-                                    ??more)
-                         (continue (add-remove-terminals dialect op* name* abbr*)
-                                   more))
-
-                   (rule '(?dialect (terminals (?:* [?abbr*
-                                                     (| ?name*
-                                                        (quote ?name*))]))
-                                    ??more)
-                         (continue (add-remove-terminals dialect (repeat '+) name* abbr*)
-                                   more))
-
-                   (rule '(?dialect (entry ?name) ??more)
-                         (continue (set-entry dialect name)
-                                   more))
-
-                   (rule '(?dialect - ?name ??more)
-                         (continue (remove-form dialect name)
-                                   more))
-
-                   (rule '(?dialect (?name [?abbr
-                                            (?:? (? metadata map?))
-                                            (?:* (? flags keyword?))]
-                                           (?:* ?op* ?expr*)) ??more)
-                         (continue (build-form dialect name abbr metadata flags
-                                               op* expr*)
-                                   more))
-
-                   (rule '(?dialect (?name [?abbr
-                                            (?:? (? metadata map?))
-                                            (?:* (? flags keyword?))]
-                                           (?:* ?expr*)) ??more)
-                         (continue (build-form dialect name abbr metadata flags
-                                               (repeat '+) expr*)
-                                   more))])))))
-
-(defn- resolve* [x]
-  (if (symbol? x) (resolve x) x))
-
-(defn- deref* [x]
-  (if (var? x) @x x))
-
-(defn show-dialect
-  "Show the given dialect with all additions and removals of terminals, forms
-  and expressions resolved. This is a useful tool for debugging, especially for
-  dialects that go through many layers of derivation."
-  [dialect]
-  `(~'define-dialect ~(:name dialect)
-    (~'terminals ~@(map (fn [{:keys [abbr predicate]}]
-                          [abbr predicate])
-                        (vals (:terminals dialect))))
-    ~@(when (:enter dialect)
-        [`(~'enter ~(:enter dialect))])
-    ~@(map (fn [{:keys [name abbr exprs flags metadata-pattern]}]
-             (let [etc (remove nil? (cons metadata-pattern (seq flags)))]
-               `(~name [~abbr ~@etc]
-                 ~@(map :orig-expr exprs))))
-           (vals (:forms dialect)))))
-
-(defn ^:no-doc run-derive-dialect [name parent-dialect decls]
-  (let [parent-dialect (resolve* parent-dialect)
-        dialect (assoc (deref* parent-dialect)
-                       :parent-dialect parent-dialect
-                       :name name)
-        dialect (derive-dialect* (list* dialect (quo (scheme-style decls))))]
-    (if (map? dialect)
-      (finalize-dialect dialect)
-      (throw (ex-info "failed to parse dialect" {:remaining-forms (vec (rest dialect))
-                                                 :partial-dialect (show-dialect (first dialect))
-                                                 :details (first dialect)})))))
-
-(defmacro def-dialect
-  "Create a new dialect.
-
-  Both terminals and forms may be defined. The following example creates a
-  language with 2 terminals (nsn and tn) and two forms (nsform and ns):
-
-    (def-dialect NS
-      (terminals [nsn nsname?]
-                 [tn typename?])
-      (NsForm [nsform]
-              (:require (?:* (| ?nsn:req-symbol
-                                [?nsn:req-symbol ??opts])))
-              (:import (?:* (| ?nsn:fq-name
-                               (?nsn:ns-name ??tn:typenames)))))
-      (Namespace [ns]
-                 ((?:literal ns) ?nsn:name ??nsform)))
-
-  This is a somewhat sophisticated macro and as such has a bit of syntax you
-  need to understand.
-
-  There are 2 top-level syntax types: terminals declarations and form
-  declarations. Terminals are matched objects that do not require any further
-  matching, ie. they are leaves of the syntax tree for the dialect. Forms are
-  groups of patterns. In order for an IR instance to be valid, every form as it
-  is recursively traversed must match one of the patterns and be tagged with the
-  form type (ie. NsForm or Namespace in the above example)."
-  [name & decls]
-  `(def ~name
-     '~(run-derive-dialect name nil decls)))
-
-(defmacro def-derived
-  "Create a new dialect based on another one by defining terminals or forms that
-  should be added or removed.
-
-  This works essentially the same as [[define-dialect]] but adds a
-  parent-dialect argument and makes it possible to prevent inheritance of
-  terminals, forms or expressions within forms from the parent dialect by
-  prefixing each one with either + or -.
-
-      (def-derived D2 NS
-        (terminals + (symbol s)
-                   - (nsname nsn)
-                   - (typename tn))
-        - NsForm
-        (Expr [e]
-              + (let [(?:* ?s:binding* ?e:bound*)] ??e:body)))
-
-  In the above example, 1 new terminal is added, and 2 are removed, the entire
-  NsForm form is removed, and a new Expr form is added, adding a let binding. It
-  is also possible to remove a pattern expression from a form by replacing the +
-  with a -. Forms that are newly added may also omit all of the + symbols as
-  well, but within a form all expressions must either be marked with +/- or not
-  marked at all."
-  [name parent-dialect & decls]
-  `(def ~name
-     '~(run-derive-dialect name parent-dialect decls)))
-
-(defn from-dialect* [dialect f]
-  (if dialect
-    (let [dialect (if (symbol? dialect)
-                    (@all-dialects dialect)
-                    dialect)]
-      (with-bindings* {#'*from-dialect* dialect
-                       #'*pattern-replace* (into (or *pattern-replace* [])
-                                                 (:predicators dialect))}
-        f))
-    (f)))
-
-(defmacro from-dialect [dialect & body]
-  `(from-dialect* ~dialect (fn [] ~@body)))
-
-(defn to-dialect* [dialect f]
-  (if dialect
-    (let [dialect (if (symbol? dialect)
-                    (@all-dialects dialect)
-                    dialect)]
-      (with-bindings* {#'*to-dialect* dialect}
-        f))
-    (f)))
-
-(defmacro to-dialect [dialect & body]
-  `(to-dialect* ~dialect (fn [] ~@body)))
-
-(defmacro dialects [=>dialects & body]
-  `(let [d# ~=>dialects]
-     (from-dialect
-      (=>:from d# nil)
-      (to-dialect
-       (=>:to d# nil)
-       (let [b# ~@body
-             d# (select-keys d# [:=>/from :=>/to])]
-         (cond (var? b#) (alter-meta! b# merge d#)
-               (obj? b#) (vary-meta b# merge d#)
-               :else b#))))))
-
-(defn validate [dialect expr]
-  ((:validate dialect) expr))
-
-(defn valid? [dialect expr]
-  ((:valid? dialect) expr))
-
-(defn show-parse [dialect expr]
-  ((:validate dialect) expr {:raw true}))
+(defn show-parse
+  "Show a detailed view of how the dialect parses a given input, even if it
+  parses it successfully."
+  [dialect expr]
+  ((:validate (@all-dialects dialect dialect)) expr {:raw true}))

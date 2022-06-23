@@ -2,6 +2,7 @@
   (:use [scheme-to-c.dialects]
         [matches :refer [sub rule rule-list in-order directed success substitute matcher descend]]
         [matches.nanopass.dialect :refer [=> ==> ===>]]
+        [matches.nanopass.dialect :refer [=> ==> ===> show-dialect]]
         [matches.nanopass.pass :refer [defpass let-rulefn]]))
 
 ;; NOTE: this is some early naive porting from the scheme-to-c sample compiler
@@ -106,6 +107,8 @@
                                    (directed parse-scheme (rule-list rules)))
               simple-rules (fn [rules]
                              (rule-list rules))]
+          ;; NOTE: below, >- indicates passing the value through parse-scheme because
+          ;;   (directed f ...) maps >- to its f argument.
           {'quote
            (simple-rules [(rule '(quote ?d)
                                 (if (datum? d)
@@ -148,34 +151,34 @@
              ;; also, env is built and thrown away now because the parse hidden in >- doesn't get recursively fed with it.
              (rule '(lambda (??x*) ??>-e* ?>-e)
                    (let [v* (mapv make-var x*)
-                         env (extend-var-env* env x* v*)]
+                         env (extend-var-env* %env x* v*)]
                      (sub (lambda (??<-v*) (?:<- (begin ??e* ?e))))))])
            'let
            (parse-marked-rules
             [(rule '(let ((?:* [?x0* ?>-e0*])) ?>-e)
                    (let [v0* (map make-var x0*)
-                         env (extend-var-env* env x0* v0*)]
+                         env (extend-var-env* %env x0* v0*)]
                      (sub (let ((?:* [?v0* ?e0*])) ?e))))
              (rule '(let ((?:* [?x0* ?>-e0*])) ??>-e* ?>-e)
                    (let [v0* (map make-var x0*)
-                         env (extend-var-env* env x0* v0*)]
+                         env (extend-var-env* %env x0* v0*)]
                      (sub (let ((?:* [?v0* ?e0*])) (?:<- (begin ??e* ?e))))))])
            'letrec
            (parse-marked-rules
             [(rule '(letrec ((?:* [?x0* ?>-e0*])) ?>-e)
                    (let [v0* (map make-var x0*)
-                         env (extend-var-env* env x0* v0*)]
+                         env (extend-var-env* %env x0* v0*)]
                      (sub (letrec ((?:* [?v0* ?e0*]))
                                   ?e))))
              (rule '(letrec ((?:* [?x0* ?>-e0*])) ??>-e* ?>-e)
                    (let [v0* (map make-var x0*)
-                         env (extend-var-env* env x0* v0*)]
+                         env (extend-var-env* %env x0* v0*)]
                      (sub (letrec ((?:* [?v0* ?e0*]))
                                   (?:<- (begin ??e* ?e))))))])
            'set!
            (rule '(set! ?x ?e)
-                 (let [t (apply-env env x)]
-                   (t env (sub (set! ?x ?e)))))})]
+                 (let [t (apply-env %env x)]
+                   (t %env (sub (set! ?x ?e)))))})]
     (let-rulefn [(parse (===> nil Expr) [env]
                         [(rule '(? imm immed?) (sub (quote ?imm)))
                          ;; if these two rules match, use the rules stored in the env, above.
@@ -191,7 +194,7 @@
    (parse ir initial-env)))
 
 
-(def immediate?)
+;;(def immediate?)
 (def convert-datum)
 (def dialect-parser)
 
@@ -212,44 +215,48 @@
 (defrecord FVInfo [lid mask fv*])
 
 
+#_
 (defpass abc (=> A B)
   (let [a 1]
     (let-rulefn ) <>)
   [b] (+ a b))
 
 
+;; (show-dialect Lsanitized)
+
 (defpass uncover-free (=> Lsanitized Lfree)
   (letfn [(make--fv-info [index] (->FVInfo index 0 nil))
           (record-ref! [x info]
+            #_ ;; NO IDEA what this was about, and the when consequent isn't even present...
             (if-let [idx (:slot x)]
               (when (fx<? idx (:lid info)))))
           (set-offsets! [x* indedx])
           ($with-offsets [index x* p])
+          (make-fv-info [index])
           (with-offsets [& x])]
-    (let-rulefn [(Expr (=> Expr Expr
-                           [index fv-info]
-                           [(rule '?x (record-ref! e fv-info))
-                            (rule '(let ((?:* [?x* ?->e*])) ?e)
-                                  (with-offsets (index x*)
-                                    (let [[e env] (Expr e %env)]
-                                      (success (sub (let ((?:* [?x* ?e*])) ?e))
-                                               env))))
-                            (rule '(letrec ((?:* [?x* ?f*])) ?e)
-                                  (with-offsets (index x*)
-                                    (let [[f* env] (map #(Lambda % %env) f*)
-                                          [e env] (Expr e env)]
-                                      (success (sub (let ((?:* [?x* ?e*])) ?e))
-                                               env))))])
-                       (Lambda (=> Lambda Lambda) [index outer-fv-info]
-                               [(rule '(lambda (??x*) ?e)
-                                      (let ([fv-info (make-fv-info index)])
-                                        (with-offsets (index x*)
-                                          (let [e (Expr e %env)
-                                                fv* (:fv* fv-info)]
-                                            (doseq [fv fn*]
-                                              (record-ref! fv outer-fv-info))
-                                            (sub (lambda (??x*) (free (??fv*) ?e)))))))]))]
-      e
+    (let-rulefn [(Expr (=> Expr Expr)
+                   [index fv-info]
+                   [(rule '?x (record-ref! %env fv-info))
+                    (rule '(let ((?:* [?x* ?->e*])) ?e)
+                      (with-offsets (index x*)
+                        (let [[e env] (Expr e %env)]
+                          (success (sub (let ((?:* [?x* ?e*])) ?e))
+                            env))))
+                    (rule '(letrec ((?:* [?x* ?f*])) ?e)
+                      (with-offsets (index x*)
+                        (let [[e* env] (map (fn [x] (Lambda x %env)) f*)
+                              [e env] (Expr e env)]
+                          (success (sub (let ((?:* [?x* ?e*])) ?e))
+                            env))))])
+                 (Lambda (=> Lambda Lambda) [index outer-fv-info]
+                   [(rule '(lambda (??x*) ?e)
+                      (let [fv-info (make-fv-info index)]
+                        (with-offsets (index x*)
+                          (let [e (Expr e %env)
+                                fv* (:fv* fv-info)]
+                            (doseq [fv fv*]
+                              (record-ref! fv outer-fv-info))
+                            (sub (lambda (??x*) (free (??fv*) ?e)))))))])]
        <>))
   [ir]
   (Expr ir 0 (make-fv-info 0)))
@@ -257,22 +264,23 @@
 (def make-label)
 
 (defpass convert-closures (=> Lfree Lclosure)
-  (let-rulefn [(Expr (===> Expr Expr)
+  (letfn [(make-label [x])]
+    (let-rulefn [(Expr (===> Expr Expr)
                      [(rule '(letrec ((?:* [?x* ?->f*])) ?->e)
-                            (let [free** (mapv (comp :free* meta) f*)
-                                  l* (map make-label x*)]
-                              (sub (letrec ((?:* [?l* ?f*]))
-                                           (closures ((?:* [?x* ?l* ??free**])) ?e)))))
+                       (let [free** (mapv (comp :free* meta) f*)
+                             l* (map make-label x*)]
+                        (sub (letrec ((?:* [?l* ?f*]))
+                              (closures ((?:* [?x* ?l* ??free**])) ?e)))))
                       (rule '(?x ??->e*) (sub (?x ?x ??e*)))
                       (rule '(?pr ??->e*) (sub (?pr ??e*)))
                       (rule '(?->e ??->e*)
-                            (let [t (make-var 'proc)]
-                              (sub (let ([?t ?e]) (?t ?t ??e*)))))])
-               (Lambda (=> Lambda Lambda)
-                       [(rule '(lambda (??x*) (free (??x0*) ?->e))
-                              (let [cp (make-var 'cp)]
-                                (with-meta (sub (lambda (?cp ??x*) (bind-free (?cp ??x0*) ?e)))
-                                  {:free* x0*})))])]))
+                       (let [t (make-var 'proc)]
+                        (sub (let ([?t ?e]) (?t ?t ??e*)))))])
+                 (Lambda (=> Lambda Lambda)
+                     [(rule '(lambda (??x*) (free (??x0*) ?->e))
+                       (let [cp (make-var 'cp)]
+                        (with-meta (sub (lambda (?cp ??x*) (bind-free (?cp ??x0*) ?e)))
+                          {:free* x0*})))])])))
 
 
 
@@ -280,9 +288,12 @@
 ;;;
 
 (defpass purify-letrec (=> Ldatum Lletrec)
-  (let [lambda-expr? (rule '(lambda (??x) ?e) true)
-        simple-expr? (rule-list [(rule ''?i true)
-                                 (rule '?x (success (not var-flags-assigned? x)))
-                                 (rule '(begin ??e) (success (every? simple-expr? e)))
-                                 (rule '(if ??e) (success (every? simple-expr? e)))
-                                 (rule '(?pr ??e) (success (and (pure-primitive? pr) (every? simple-expr? e))))])]))
+  (letfn [(var-flags-assigned? [x])
+          (simple-expr? [e])
+          (pure-primitive? [pr])]
+    (let [lambda-expr? (rule '(lambda (??x) ?e) true)
+          simple-expr? (rule-list [(rule ''?i true)
+                                   (rule '?x (success (not (var-flags-assigned? x))))
+                                   (rule '(begin ??e) (success (every? simple-expr? e)))
+                                   (rule '(if ??e) (success (every? simple-expr? e)))
+                                   (rule '(?pr ??e) (success (and (pure-primitive? pr) (every? simple-expr? e))))])])))

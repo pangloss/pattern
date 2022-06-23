@@ -251,8 +251,9 @@
 (defn directed
   "Recurs depth-first, but only into marked subexpressions.
 
-  Marking a subexpression looks like ?->x or ??->x (ie. marked with -> matcher
-  mode), so a matcher like ?y would not get recurred into.
+  Marking a subexpression looks like ?->x or ??->x
+  (ie. marked with -> matcher mode), so a matcher like ?y would not get recurred
+  into.
 
   Does not iteratively descend into any expressions returned by matchers. To do
   any iterative descent, call `descend` within the handler on the subexpressions
@@ -276,8 +277,8 @@
 
   If a function is provided as the opts argument, it is treated as if you had
   passed in {:fn-map {'>- f}}, and if subexpressions are marked with >-, the
-  expression or the result of traversing into the expression if it is also
-  marked with -> will be passed to the function f. If no function is provided,
+  expression, or the result of traversing into the expression if it is also
+  marked with -> , will be passed to the function f. If no function is provided,
   [[identity]] is used.  In this case, the matcher would look like one of ?>-,
   ??>-, ?>-> (note this is a shortened form), ?>-->, ??->>-, etc. The order of
   >- and -> does not matter.  If any other symbols other than >- are provided in
