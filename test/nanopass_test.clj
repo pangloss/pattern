@@ -37,6 +37,7 @@
           (lambda (??x) ?b)))
 
 (def-derived Lflat-funcs Lssa
+  #_ ;; no longer changed:
   (Program [prog]
            - (letrec ((?:* [?l ?f])) ?b)
            + (letrec ((?:* [?l ?f])) (?:+ ?c)))

@@ -134,8 +134,8 @@
 
   Rules are meant to be combined via the combinators library.
 
-  By default, calls the handler with a simple dictionary of matches (configured
-  via the [[dict-handler]] arg transformer), but a custom arg transformation can
+  By default, calls the handler with a simple dictionary of matches - configured
+  via the [[dict-handler]] arg transformer -, but a custom arg transformation can
   be specified by providing ->get-values, which is called with the compiled
   match-procedure at compile time, then the result of that is called with the
   results dictionary and applied to the handler.
