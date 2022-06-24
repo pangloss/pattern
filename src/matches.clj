@@ -18,6 +18,8 @@
              (matches.r3.rewrite
               sub
               subm
+              subm!
+              rmeta
               quo
               spliced
               eval-spliced

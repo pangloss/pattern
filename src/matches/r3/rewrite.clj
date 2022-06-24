@@ -453,3 +453,13 @@
   in the rule handlers."
   [bindings rules]
   (first (add-env-args* rules {:env-args bindings})))
+
+(defmacro rmeta
+  "Expands to (meta (:rule/datom %env))"
+  []
+  `(meta (:rule/datum ~'%env)))
+
+(defmacro subm!
+  "Copy the source form's metadata onto the resulting form."
+  [form]
+  `(subm ~form (rmeta)))

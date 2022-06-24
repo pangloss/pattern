@@ -20,15 +20,37 @@
 
   Reset the counter with (reset! niceid 0)"
   [sym]
-  (symbol (str (name sym) \. (swap! niceid inc))))
+  (let [nice (symbol (str (name sym) \. (swap! niceid inc)))]
+    (with-meta nice
+        (assoc (meta sym)
+          :gennice/old sym
+          :gennice/new nice))))
 
 (defn run-rule
   "Runs a rule and returns either the successfully updated value or the original
   if the rule fails."
   ([rule datum env]
-   (rule datum env nil (fn [d e _] [d e]) (fn [] [datum env])))
+   (rule datum env nil
+     (fn rule-succeeded [d e _]
+       (if-let [orig-meta (meta datum)]
+         (if-let [m (meta d)]
+           (if-let [mm (:rule/merge-meta m)]
+             [(with-meta d (mm orig-meta m)) e]
+             [(with-meta d (merge orig-meta m)) e])
+           [(with-meta d orig-meta) e])
+         [d e]))
+     (fn rule-failed [] [datum env])))
   ([rule datum events env]
-   (rule datum env events (fn [d e _] [d e]) (fn [] [datum env]))))
+   (rule datum env events
+     (fn rule-succeeded [d e _]
+       (if-let [orig-meta (meta datum)]
+         (if-let [m (meta d)]
+           (if-let [mm (:rule/merge-meta m)]
+             [(with-meta d (mm orig-meta m)) e]
+             [(with-meta d (merge orig-meta m)) e])
+           [(with-meta d orig-meta) e])
+         [d e]))
+     (fn rule-failed [] [datum env]))))
 
 (defn rule-zipper
   "Construct a zipper object for rule combinators to enable customization of rules, attaching
@@ -125,7 +147,8 @@
    (in-order (repeat n rule))
    assoc-in [:rule :rule-type] ::n-times))
 
-(def ^:dynamic *descend* identity)
+(def ^:dynamic *descend*
+  (fn ([e] e) ([e env] [e env])))
 
 (defn descend
   "If passing in an env, pass it as the first arg since within a rule handler,
