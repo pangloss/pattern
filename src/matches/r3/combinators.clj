@@ -352,7 +352,9 @@
                                          (directed:descend-marked apply-rules (:rule (meta r))
                                                                   match-dict env depth)
                                          datum (if subs
-                                                 (subs (fn [k none] (:value (match-dict k) none)) nil)
+                                                 (with-meta
+                                                   (subs (fn [k none] (:value (match-dict k) none)) nil)
+                                                   (meta datum))
                                                  datum)]
                                      [datum match-dict env])))
                           (fn [d env _] [d env])
