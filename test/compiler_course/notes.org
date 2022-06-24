@@ -1,8 +1,8 @@
 #+TITLE: Notes
 
 
-Ok... my version seems to have full functionality and it's a LOT more concise and understandable than the instructor version posted here:
-https://iucompilercourse.github.io/IU-P423-P523-E313-E513-Fall-2020/lecture-Sep-8.html.
+Ok... my version seems to have full functionality and I think it's more concise and understandable than the nanopass-based version posted here:
+https://github.com/IUCompilerCourse/IU-P423-P523-E313-E513-Fall-2020/blob/master/lecture-Sep-8.md.
 
 On the other hand I think mine is not quite as explicit as his. He seems to have clearly defined languages step-by-step, anticipating the nanopass style, while I stayed with a sort of progressively simplified version of "racket" as the syntax. He quickly moves from (let ([x y]) e) to (Let x y e), for instance.
 

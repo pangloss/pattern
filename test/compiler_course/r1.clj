@@ -4,19 +4,11 @@
                                                   var-locations with-allocated-registers]]
             [compiler-course.dialects :refer [r1-keyword?]]
             [matches.nanopass.dialect :refer [all-dialects =>:to show-parse]]
-            [matches :refer [descend directed on-subexpressions rule rule-list rule-list!
+            [matches :refer [descend in gennice niceid directed on-subexpressions rule rule-list rule-list!
                              descend-all sub success subm rule-simplifier matcher
                              => dialects validate ok ok?]]
             [matches.types :refer [child-rules]]
             [clojure.string :as str]))
-
-(def niceid (atom 0))
-
-(defn gennice [sym]
-  (symbol (str (name sym) \. (swap! niceid inc))))
-
-(defn in [x env]
-  (first (descend x env)))
 
 ;; Give every var a unique name
 

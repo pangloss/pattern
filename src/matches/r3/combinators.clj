@@ -13,6 +13,15 @@
 
 (defonce make-rule (atom nil))
 
+(defonce niceid (atom 0))
+
+(defn gennice
+  "Produce nice readable symbols.
+
+  Reset the counter with (reset! niceid 0)"
+  [sym]
+  (symbol (str (name sym) \. (swap! niceid inc))))
+
 (defn run-rule
   "Runs a rule and returns either the successfully updated value or the original
   if the rule fails."
@@ -127,6 +136,11 @@
    (first (*descend* expression nil)))
   ([expression env]
    (*descend* expression env)))
+
+(defn in
+  "Descend with an env without retaining the resulting env."
+  [x env]
+  (first (descend x env)))
 
 (defn descend-all
   "Descend each element in e*, threading the env and returning the result.
