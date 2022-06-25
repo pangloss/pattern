@@ -400,9 +400,9 @@
 
 ;; Remove complex operators / operands
 
-(declare rco-exp)
+(declare simplify-to-exp)
 
-(def rco-atom
+(def simplify-to-atom
   (dialects
    (=> Alloc Simplified)
    (let [wrap (fn wrap [name args exp]
@@ -417,8 +417,8 @@
      (directed
       (rule-list (rule '((?:= let) ([?v ?e]) ?e:body)
                        (wrap 'let nil
-                             (subm (let ([?v ~(rco-exp e)])
-                                     ~(rco-exp body))
+                             (subm (let ([?v ~(simplify-to-exp e)])
+                                     ~(simplify-to-exp body))
                                    (m!))))
                  (rule '((? op #{+ < eq? - not}) ??->e:args)
                        (wrap (symbol (str (name op) ".tmp")) args
@@ -448,7 +448,7 @@
 
 (defmacro rco-atoms [vars exp]
   `(let [r# (reduce (fn [r# exp#]
-                      (let [x# (rco-atom exp#)
+                      (let [x# (simplify-to-atom exp#)
                             wrap# (:wrap x#)
                             r# (update r# :values conj (:value x#))]
                         (if wrap#
@@ -460,7 +460,7 @@
          ~vars (:values r#)]
      (wrap# ~exp)))
 
-(def rco-exp
+(def simplify-to-exp
   (dialects
    (=> Alloc Simplified)
    (let [preserve-not (comp first
@@ -492,7 +492,7 @@
   "Remove complex operators/operands by let binding them around any complex expression."
   {:=>/from 'Alloc  :=>/to 'Simplified}
   [p]
-  (rco-exp p))
+  (simplify-to-exp p))
 
 ;; Explicate expressions: remove nesting (aka flatten)
 

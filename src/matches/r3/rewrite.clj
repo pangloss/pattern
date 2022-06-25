@@ -30,6 +30,7 @@
                                             simplifier
                                             on-subexpressions
                                             directed]]
+            [matches.util :as util]
             [clojure.string :as str]))
 
 (def remove-expressions
@@ -383,9 +384,34 @@
    (binding [*on-marked-insertion* f]
      (qsub* form))))
 
+(defmacro rmeta
+  "Expands to (meta (:rule/datom %env))"
+  []
+  `(meta (:rule/datum ~'%env)))
+
 (defmacro subm
+  "Perform substitution and attach the provided metadata.
+
+  If called arity-1, copy the rule's original matching form's metadata onto the
+  resulting form, using rmeta to capture the metadata."
+  ([form]
+   `(subm ~form (rmeta)))
   ([form metadata]
    `(with-meta (sub ~form) ~metadata)))
+
+(defmacro subm!
+  "Perform substitution and recursively attach the metadata from the provided form.
+
+  Substitution stops if the forms diverge. Metadata is merged with
+
+    (merge orig-form-metadata new-form-metadata)
+
+  If called arity-1, use the rule's original matching form as the original form
+  to capture metadata from."
+  ([form]
+   `(util/forward-meta (:rule/datum ~'%env) (sub ~form)))
+  ([form orig]
+   `(util/forward-meta orig (sub ~form))))
 
 (defn eval-spliced
   "Experimental. Uses [[spliced]] to transform regular lists, then uses eval to
@@ -454,12 +480,3 @@
   [bindings rules]
   (first (add-env-args* rules {:env-args bindings})))
 
-(defmacro rmeta
-  "Expands to (meta (:rule/datom %env))"
-  []
-  `(meta (:rule/datum ~'%env)))
-
-(defmacro subm!
-  "Copy the source form's metadata onto the resulting form."
-  [form]
-  `(subm ~form (rmeta)))
