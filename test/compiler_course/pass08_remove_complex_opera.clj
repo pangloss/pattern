@@ -34,7 +34,7 @@
                        (wrap 'funref nil (subm (funref ?v) (m!))))
                  (rule '(read)
                        (wrap 'read nil
-                             (with-meta '(read) {::type 'Integer})))
+                             (with-meta '(read) {:r1/type 'Integer})))
                  (rule '(global-value ?name)
                        (wrap name nil (:rule/datum %env)))
                  (rule '(vector-ref ?->e:v ?i)

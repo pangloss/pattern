@@ -208,16 +208,16 @@
         (first (remove interference (range 1000))))))
 
 (defn allocate-registers* [g]
-  (loop [lg (f/linear g)
+  (loop [g g
          vs (->> (f/all-vertices g)
               (remove (comp reg? f/element-id))
               (remove color)
               (sort-by order))]
     (if-let [v (first vs)]
       (recur
-        (set-color lg (f/element-id v) (next-color v))
+        (set-color g (f/element-id v) (next-color v))
         (sort-by order (rest vs)))
-      (f/forked lg))))
+      g)))
 
 (defn get-location [t n]
   (if-let [reg (nth registers n nil)]

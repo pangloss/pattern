@@ -21,8 +21,8 @@
      (rule '(block ?lbl ??->stmt* ?tail)
            (apply merge-with #(or %1 %2) (filter map? stmt*)))
      (rule '(assign ?v ?e)
-           (let [vt (::type (meta v))
-                 et (::type (meta e))]
+           (let [vt (:r1/type (meta v))
+                 et (:r1/type (meta e))]
              (if (and vt et (not= vt et))
                {v {v vt e et}}
                {v (or vt et)})))))))

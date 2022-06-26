@@ -86,7 +86,7 @@
        - (lambda (??argdef*) ?type ?e)))
 
 (def-derived Typed Closures ;; dead end dialect :)
-  (Exp [e {:compiler-course.r1/type ?type}]))
+  (Exp [e {:r1/type ?type}]))
 
 (def-derived Alloc Closures
   (terminals + [name symbol?])
@@ -97,7 +97,7 @@
        + (global-value ?name)))
 
 (def-derived AllocTyped Alloc ;; dead end dialect :)
-  (Exp [e {:compiler-course.r1/type ?type}]))
+  (Exp [e {:r1/type ?type}]))
 
 ;; FIXME: for some reason setting ?atm to be enforced causes downstream tests to fail. Not sure why...
 ;; - It doesn't change the output of the simplified pass

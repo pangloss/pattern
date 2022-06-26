@@ -1,6 +1,7 @@
 (ns compiler-course.pass07-expose-allocation
   (:require
-   [pattern :refer [=> dialects gennice rule rule-simplifier subm]]))
+   [pattern :refer [=> dialects gennice rule rule-simplifier subm sub]]
+   [compiler-course.pass06-add-types :refer [add-types]]))
 
 
 
@@ -14,10 +15,10 @@
    (=> Typed AllocTyped)
    (rule-simplifier
     (rule '(vector ??e*)
-          (let [t (::type (m!))]
+          (let [t (:r1/type (m!))]
             (subm (vector> ~t [] [??e*] [~@(rest t)]) (m!))))
     (rule '(vector> ?type ?names [?e ??e*] [?t ??t*])
-          (let [n (with-meta (gennice 'entry) {::type t})
+          (let [n (with-meta (gennice 'entry) {:r1/type t})
                 ;; building names in reverse
                 m (m!)
                 names (conj names n)]
@@ -46,9 +47,9 @@
           ;; using names in reverse, so n* count is the vector position
           (let [idx (count n*)
                 m (m!)
-                _ (with-meta (gennice '_) {::type 'Void})]
+                _ (with-meta (gennice '_) {:r1/type 'Void})]
             (subm (let ([?_ ~(subm (vector-set! ?v ?idx ?n)
-                                   {::type 'Void})])
+                                   {:r1/type 'Void})])
                     ~(subm (vector< ?v [??n*]) m))
                   m)))
     (rule '(vector< ?v [])
