@@ -195,8 +195,9 @@
   (- (count (both-e :move v))))
 
 (defn order [v]
-  (+ (* 1024 (saturation v))
-     (movedness v)))
+  (bit-or
+    (bit-shift-left (saturation v) 16)
+    (movedness v)))
 
 (defn next-color
   "Provide the lowest-indexed free register from the registers vector"
@@ -207,14 +208,16 @@
         (first (remove interference (range 1000))))))
 
 (defn allocate-registers* [g]
-  (loop [g g]
-    (if-let [v (->> (f/all-vertices g)
-                    (remove (comp reg? f/element-id))
-                    (remove color)
-                    (sort-by order)
-                    first)]
-      (recur (set-color g (f/element-id v) (next-color v)))
-      g)))
+  (loop [lg (f/linear g)
+         vs (->> (f/all-vertices g)
+              (remove (comp reg? f/element-id))
+              (remove color)
+              (sort-by order))]
+    (if-let [v (first vs)]
+      (recur
+        (set-color lg (f/element-id v) (next-color v))
+        (sort-by order (rest vs)))
+      (f/forked lg))))
 
 (defn get-location [t n]
   (if-let [reg (nth registers n nil)]
