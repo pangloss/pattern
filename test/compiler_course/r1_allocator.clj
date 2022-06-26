@@ -20,8 +20,8 @@
 (def reg? (matcher '(reg ?name)))
 
 (def liveness*
-  "Capture currently-live variables in :live plus aggregate (as a collection of
-  edge pairs) both interference in :i and the move graph in :m"
+  "Capture currently-live variables in :live plus aggregate both interference in
+  :i and the move graph in :m as a collection of edge pairs"
   (dialects
    (=> Selected nil)
    (comp first

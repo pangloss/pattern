@@ -1,15 +1,8 @@
 (ns compiler-course.pass03-expose-functions
-  (:require [compiler-course.r1-allocator :refer [liveness to-graph allocate-registers*
-                                                  caller-saved-registers callee-saved-registers
-                                                  var-locations with-allocated-registers]]
-            [compiler-course.dialects :refer [r1-keyword?]]
-            [matches.nanopass.dialect :refer [all-dialects =>:to show-parse]]
-            [matches :refer [descend in gennice niceid directed on-subexpressions rule rule-list rule-list!
-                             descend-all sub success subm rule-simplifier matcher
-                             => dialects validate ok ok?]]
-            [matches.types :refer [child-rules]]
-            [clojure.string :as str]))
+  (:require
+   [matches :refer [=> dialects directed in rule rule-list sub]]))
 
+;; Find regular function calls and convert (f x) to ((funref f) x).
 
 (def expose-functions
   (dialects
