@@ -151,30 +151,16 @@ Here is the full list of matchers available.
 
 ## Compilation Dialects and Tools
 
-
-## Credits
-
 and nanopass-style compilation
+
+## Acknowledgements
 
 Pattern is based upon the core ideas described in the excellent book (Software Design for Flexibilty)[https://mitpress.mit.edu/books/software-design-flexibility] by Chris Hanson and Gerald Jay Sussman.
 
 The compilation tools aspect is heavily inspired by the (Nanopass Framework)[https://nanopass.org/] which introduces the idea of dialects and was the inspiration for some of the more powerful rule combinators that this library introduces.
 
-## Usage
-
-Basic rule expression:
-
-``` clojure
-    (def simplify-zero (rule '(+ 0 ??n) (sub (+ ??n)))
-    
-    (simplify-zero '(+ 0 1 2 3)) ;; => (+ 1 2 3)
-```
-
-More examples coming soon...
-
 ## License
 
-Copyright © 2021 Darrick Wiebe
+Copyright © 2022 Darrick Wiebe
 
-TBD:
 _Distributed under the Eclipse Public License version 1.0._
