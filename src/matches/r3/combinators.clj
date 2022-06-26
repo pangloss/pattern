@@ -3,6 +3,7 @@
   (:require [matches.match.core :refer [run-matcher]]
             [matches.substitute :refer [substitute]]
             [matches.types :refer [rule-combinator? child-rules recombine]]
+            [matches.util :refer [meta?]]
             [clojure.string :as str]
             [genera :refer [trampoline bouncing]]
             [clojure.walk :as walk]
@@ -32,23 +33,27 @@
   ([rule datum env]
    (rule datum env nil
      (fn rule-succeeded [d e _]
-       (if-let [orig-meta (meta datum)]
-         (if-let [m (meta d)]
-           (if-let [mm (:rule/merge-meta m)]
-             [(with-meta d (mm orig-meta m)) e]
-             [(with-meta d (merge orig-meta m)) e])
-           [(with-meta d orig-meta) e])
+       (if (meta? d)
+         (if-let [orig-meta (meta datum)]
+           (if-let [m (meta d)]
+             (if-let [mm (:rule/merge-meta m)]
+               [(with-meta d (mm orig-meta m)) e]
+               [(with-meta d (merge orig-meta m)) e])
+             [(with-meta d orig-meta) e])
+           [d e])
          [d e]))
      (fn rule-failed [] [datum env])))
   ([rule datum events env]
    (rule datum env events
      (fn rule-succeeded [d e _]
-       (if-let [orig-meta (meta datum)]
-         (if-let [m (meta d)]
-           (if-let [mm (:rule/merge-meta m)]
-             [(with-meta d (mm orig-meta m)) e]
-             [(with-meta d (merge orig-meta m)) e])
-           [(with-meta d orig-meta) e])
+       (if (meta? d)
+         (if-let [orig-meta (meta datum)]
+           (if-let [m (meta d)]
+             (if-let [mm (:rule/merge-meta m)]
+               [(with-meta d (mm orig-meta m)) e]
+               [(with-meta d (merge orig-meta m)) e])
+             [(with-meta d orig-meta) e])
+           [d e])
          [d e]))
      (fn rule-failed [] [datum env]))))
 
