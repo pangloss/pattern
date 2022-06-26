@@ -1,9 +1,9 @@
 (ns scheme-to-c.passes
   (:use [scheme-to-c.dialects]
-        [matches :refer [sub rule rule-list in-order directed success substitute matcher descend]]
-        [matches.nanopass.dialect :refer [=> ==> ===>]]
-        [matches.nanopass.dialect :refer [=> ==> ===> show-dialect]]
-        [matches.nanopass.pass :refer [defpass let-rulefn]]))
+        [pattern :refer [sub rule rule-list in-order directed success substitute matcher descend]]
+        [pattern.nanopass.dialect :refer [=> ==> ===>]]
+        [pattern.nanopass.dialect :refer [=> ==> ===> show-dialect]]
+        [pattern.nanopass.pass :refer [defpass let-rulefn]]))
 
 ;; NOTE: this is some early naive porting from the scheme-to-c sample compiler
 ;; done with the nanopass framework. It was never expected to actually run.

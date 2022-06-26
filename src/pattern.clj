@@ -1,21 +1,21 @@
-(ns matches
-  (:require matches.matchers
-            matches.substitute
-            matches.r3.core
-            matches.r3.combinators
-            matches.r3.rewrite
-            matches.nanopass.dialect
-            matches.nanopass.pass
-            matches.types
+(ns pattern
+  (:require pattern.matchers
+            pattern.substitute
+            pattern.r3.core
+            pattern.r3.combinators
+            pattern.r3.rewrite
+            pattern.nanopass.dialect
+            pattern.nanopass.pass
+            pattern.types
             [potemkin :refer [import-vars]]))
 
-(import-vars (matches.match.core
+(import-vars (pattern.match.core
               matcher
               compile-pattern
               pattern-names)
-             (matches.substitute
+             (pattern.substitute
               substitute)
-             (matches.r3.rewrite
+             (pattern.r3.rewrite
               sub
               subm
               subm!
@@ -24,12 +24,12 @@
               spliced
               eval-spliced
               with-env-args)
-             (matches.r3.core
+             (pattern.r3.core
               rule
               success
               success:env
               rule-name)
-             (matches.r3.combinators
+             (pattern.r3.combinators
               rule-list
               rule-list!
               in-order
@@ -41,7 +41,7 @@
               on-mutual
               rule-simplifier
               in gennice niceid)
-             (matches.nanopass.dialect
+             (pattern.nanopass.dialect
               def-dialect
               def-derived
               => ==> ===>
@@ -49,7 +49,7 @@
               show-dialect
               show-parse
               valid? validate)
-             (matches.types ok ok?)
-             (matches.nanopass.pass
+             (pattern.types ok ok?)
+             (pattern.nanopass.pass
               defpass
               let-rulefn))

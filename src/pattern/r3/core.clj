@@ -1,16 +1,16 @@
-(ns matches.r3.core
+(ns pattern.r3.core
   "This namespace bootstraps the core rule macro and some utility functions."
-  (:require [matches.match.core :refer [matcher compile-pattern
+  (:require [pattern.match.core :refer [matcher compile-pattern
                                         run-matcher pattern-names
                                         all-values value-dict]]
-            matches.matchers
+            pattern.matchers
             [genera.trampoline :refer [bounce?]]
-            [matches.substitute :refer [substitute]]
-            [matches.match.predicator :refer [*pattern-replace* apply-replacements]]
+            [pattern.substitute :refer [substitute]]
+            [pattern.match.predicator :refer [*pattern-replace* apply-replacements]]
             [clojure.walk :as walk]
-            [matches.types :refer [->SuccessUnmodified ->Success ->SuccessEnv]]
-            [matches.r3.combinators :as rc :refer [*debug-rules* run-rule]])
-  (:import (matches.types Success SuccessEnv SuccessUnmodified)
+            [pattern.types :refer [->SuccessUnmodified ->Success ->SuccessEnv]]
+            [pattern.r3.combinators :as rc :refer [*debug-rules* run-rule]])
+  (:import (pattern.types Success SuccessEnv SuccessUnmodified)
            (clojure.lang IFn IObj IMeta)))
 
 (defn raw-matches
@@ -66,7 +66,7 @@
   the rule handler function with a dictionary of match data when processing a
   match.
 
-  Otherwise use [[matches.match.core/all-values]] to do named positional
+  Otherwise use [[pattern.match.core/all-values]] to do named positional
   arguments, or provide your own function."
   (comp list (value-dict match-procedure)))
 
@@ -142,7 +142,7 @@
 
   Note that the [[rule]] macro enables splicing even in simple quoted rules, but
   that is only possible with a macro. To get the same behaviour with the
-  make-rule function directly, either use the [[matches/quo]] macro to turn spliceable
+  make-rule function directly, either use the [[pattern/quo]] macro to turn spliceable
   syntax quoted lists into regular quoted lists by stripping the namespace from
   all symbols, or use regular syntax-quoted lists."
   ([orig-pattern orig-handler]
@@ -155,7 +155,7 @@
      (->Rule match-procedure handler get-values
              {:rule
               (merge (meta match-procedure)
-                     {:rule-type :matches/rule
+                     {:rule-type :pattern/rule
                       :match match-procedure
                       :handler handler}
                      metadata)}))))
@@ -174,7 +174,7 @@
 (defonce scheme-style (atom identity))
 
 (defmacro sub
-  "Use the version in the matches.r3.rewrite namespace."
+  "Use the version in the pattern.r3.rewrite namespace."
   [form]
   (@qsub* form))
 
@@ -248,7 +248,7 @@
 
   Rules may have unquote and spliced unquote in their definitions even if they are
   defined as normal quoted lists. The functionality is provided by a ruleset in
-  matches.r3.rewrite/spliced. It allows the following, but note that splices in rule
+  pattern.r3.rewrite/spliced. It allows the following, but note that splices in rule
   definitions only happen at *compile time*:
 
       (rule '[(? a ~my-pred) ~@my-seq-of-things]

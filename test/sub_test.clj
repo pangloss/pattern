@@ -1,7 +1,7 @@
 (ns sub-test
   (:require [clojure.test :refer :all]
-            [matches.substitute :refer [substitute]]
-            [matches.match.core :refer [matcher var-name *disable-modes*]]
+            [pattern.substitute :refer [substitute]]
+            [pattern.match.core :refer [matcher var-name *disable-modes*]]
             [pure-conditioning :as c :refer [manage restart-with handler-cond]]))
 
 

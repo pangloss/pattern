@@ -1,12 +1,12 @@
 (ns nanopass-test
   (:require  [clojure.test :refer :all]
-             [matches.match.predicator :refer [with-predicates]]
-             [matches.nanopass.dialect :refer [def-dialect def-derived => ==>]]
-             [matches.nanopass.pass :refer [defpass]]
-             [matches.r3.combinators :refer [rule-simplifier directed rule-list]]
-             [matches.r3.core :refer [rule success]]
-             [matches.r3.rewrite :refer [sub]]
-             [matches.match.core :refer [compile-pattern* matcher]]
+             [pattern.match.predicator :refer [with-predicates]]
+             [pattern.nanopass.dialect :refer [def-dialect def-derived => ==>]]
+             [pattern.nanopass.pass :refer [defpass]]
+             [pattern.r3.combinators :refer [rule-simplifier directed rule-list]]
+             [pattern.r3.core :refer [rule success]]
+             [pattern.r3.rewrite :refer [sub]]
+             [pattern.match.core :refer [compile-pattern* matcher]]
              [uncomplicate.fluokitten.core :as f]))
 
 (def-dialect Lssa

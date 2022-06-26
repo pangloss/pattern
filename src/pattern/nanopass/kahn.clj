@@ -5,7 +5,7 @@
 ;; the terms of this license.
 ;; You must not remove this notice, or any other, from this software.
 ;;(ns alandipert.kahn
-(ns matches.nanopass.kahn
+(ns pattern.nanopass.kahn
   (:require [clojure.set :refer [difference union intersection]]))
 
 (defn without

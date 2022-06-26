@@ -1,4 +1,4 @@
-(ns matches.r3.rewrite
+(ns pattern.r3.rewrite
   "This namespace defines several rulesets and related macros that enhance the expressive
   power of the rules engine.
 
@@ -20,17 +20,17 @@
   Note that `sequence` is included in the rules because when booting, Clojure's
   syntax quote expands slightly differently than at runtime. It also uses lists rather
   than Cons objects at boot."
-  (:require [matches.match.core :refer [matcher-type-for-dispatch var-name matcher-mode
+  (:require [pattern.match.core :refer [matcher-type-for-dispatch var-name matcher-mode
                                         named-matcher? simple-named-var?]]
-            matches.matchers ;; just to ensure the ns is loaded
-            [matches.r3.core :as r :refer [rule success rule-name pattern-args]]
+            pattern.matchers ;; just to ensure the ns is loaded
+            [pattern.r3.core :as r :refer [rule success rule-name pattern-args]]
             [clojure.walk :as walk]
-            [matches.r3.combinators :refer [descend
+            [pattern.r3.combinators :refer [descend
                                             rule-list in-order rule-simplifier
                                             simplifier
                                             on-subexpressions
                                             directed]]
-            [matches.util :as util]
+            [pattern.util :as util]
             [clojure.string :as str]))
 
 (def remove-expressions
@@ -373,7 +373,7 @@
   patterns.
 
   This produces what I expect shoud be optimally fast substitutions, but differs
-  from [[matches.substitute/substitute]] in that it requires that all substitution patterns
+  from [[pattern.substitute/substitute]] in that it requires that all substitution patterns
   must be bound, and will produce a compilation error if not.
 
   The arity 2 version allows substitutions to be transformed by the supplied

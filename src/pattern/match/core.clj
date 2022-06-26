@@ -1,14 +1,14 @@
-(ns matches.match.core
+(ns pattern.match.core
   (:refer-clojure :exclude [trampoline])
   (:require [genera :refer [defgenera defgenera* defgenera= defgen defgen* defgen= defmethod* defmethod!
                             trampoline trampolining bouncing]]
             [uncomplicate.fluokitten.core :as f]
-            [matches.types :refer [->Length map->Env]]
-            [matches.match.predicator :refer [*pattern-replace*]]
+            [pattern.types :refer [->Length map->Env]]
+            [pattern.match.predicator :refer [*pattern-replace*]]
             [pure-conditioning :as c :refer [condition restarts default manage restart-with handler-cond]]
             [clojure.string :as str]
             [clojure.walk :as walk])
-  (:import matches.types.Env))
+  (:import pattern.types.Env))
 
 ;; match-utils
 
@@ -85,7 +85,7 @@
      (when named?
        (swap! named-matcher-type? conj matcher-type))
      (when restriction-position
-       (swap! matches.match.core/restriction-position assoc matcher-type restriction-position))
+       (swap! pattern.match.core/restriction-position assoc matcher-type restriction-position))
      (defmethod* compile-pattern* matcher-type matcher-impl))))
 
 (defn listy?
@@ -436,7 +436,7 @@
 
 (defn run-matcher
   "Run the given matcher on the given datum, calling succeed with the match
-  dictionary if the matcher matches.
+  dictionary if the matcher pattern.
 
   The dictionary is structured var-name -> {:name var-name
                                             :value matched-value

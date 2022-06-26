@@ -1,6 +1,6 @@
 (ns compiler-course.pass17-stringify
   (:require
-   [matches :refer [=> descend dialects directed matcher rule rule-list sub]]))
+   [pattern :refer [=> descend dialects directed matcher rule rule-list sub]]))
 
 
 ;; Stringify: Turn the data representing X86 assembly into actual assembly

@@ -3,7 +3,7 @@
    [compiler-course.r1-allocator :refer [allocate-registers* liveness to-graph
                                          var-locations
                                          with-allocated-registers]]
-   [matches :refer [sub]]))
+   [pattern :refer [sub]]))
 
 
 ;; Allocate registers (see r1-allocate ns)

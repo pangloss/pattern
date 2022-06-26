@@ -1,6 +1,6 @@
 (ns compiler-course.pass04-limit-functions
   (:require
-   [matches :refer [=> dialects directed gennice in on-subexpressions rule
+   [pattern :refer [=> dialects directed gennice in on-subexpressions rule
                     rule-list sub]]))
 
 ;; Functions must not have more than 6 args. Stuff the remaining in a vector.

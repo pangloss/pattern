@@ -1,6 +1,6 @@
 (ns compiler-course.pass14-remove-jumps
   (:require
-   [matches :refer [=> dialects directed rule rule-list sub success]]))
+   [pattern :refer [=> dialects directed rule rule-list sub success]]))
 
 
 ;; Combine blocks when a jump is not needed

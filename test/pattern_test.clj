@@ -1,12 +1,12 @@
-(ns matches-test
+(ns pattern-test
   (:require [clojure.test :refer :all]
-            matches.r3.core
-            [matches.match.core :as m :refer [matcher pattern-names var-name *disable-modes*
+            pattern.r3.core
+            [pattern.match.core :as m :refer [matcher pattern-names var-name *disable-modes*
                                               compile-pattern matcher-prefix run-matcher]]
-            [matches.types :refer [not-meta?]]
-            matches.matchers
+            [pattern.types :refer [not-meta?]]
+            pattern.matchers
             [pure-conditioning :as c :refer [manage restart-with handler-cond]])
-  (:use matches.r3.core))
+  (:use pattern.r3.core))
 
 (deftest extensibility
   (let [<- (juxt m/matcher-type m/matcher-type-for-dispatch m/matcher-mode m/var-name)]

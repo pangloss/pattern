@@ -1,7 +1,7 @@
 (ns predicator-test
   (:require  [clojure.test :refer :all]
-             [matches :refer [compile-pattern]]
-             [matches.match.predicator :refer [match-abbr apply-predicator make-abbr-predicator]]))
+             [pattern :refer [compile-pattern]]
+             [pattern.match.predicator :refer [match-abbr apply-predicator make-abbr-predicator]]))
 
 (deftest symbol-matcher
   (is (= ["?e" "?" "" "" "e"]

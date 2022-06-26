@@ -1,5 +1,5 @@
 (ns cps.cps-test
-  (:require [matches :refer [defpass let-rulefn
+  (:require [pattern :refer [defpass let-rulefn
                              rule sub
                              =>
                              on-subexpressions
@@ -308,8 +308,8 @@ ExpandedInput
 
 
 (let [[M T-c] expanded-transform
-      ae {:matches.nanopass.dialect/form '[ExpandedInput Aexpr]}
-      e  {:matches.nanopass.dialect/form '[ExpandedInput Expr]}]
+      ae {:pattern.nanopass.dialect/form '[ExpandedInput Aexpr]}
+      e  {:pattern.nanopass.dialect/form '[ExpandedInput Expr]}]
 
   (T-c ^e
        '(letrec [f ^ae (λ [n]
@@ -322,7 +322,7 @@ ExpandedInput
   (T-c '(g a) 'halt))
 
 #_
-(all-meta (matches.nanopass.dialect/add-tags
+(all-meta (pattern.nanopass.dialect/add-tags
            ExpandedInput
            '(letrec [f (λ [n]
                           (if (= n 0)
@@ -334,8 +334,8 @@ ExpandedInput
 
 
 (let [[M T-c] expanded-transform
-      ae {:matches.nanopass.dialect/form '[ExpandedInput Aexpr]}
-      e  {:matches.nanopass.dialect/form '[ExpandedInput Expr]}]
+      ae {:pattern.nanopass.dialect/form '[ExpandedInput Aexpr]}
+      e  {:pattern.nanopass.dialect/form '[ExpandedInput Expr]}]
 
   ;; NOTE this does not work: it just tags everthing {:e true}, etc.
   (all-meta ^e

@@ -1,6 +1,6 @@
 (ns compiler-course.pass09-explicate-control
   (:require
-   [matches :refer [=> dialects directed gennice rule rule-list sub]]))
+   [pattern :refer [=> dialects directed gennice rule rule-list sub]]))
 
 
 ;; Explicate expressions: remove nesting (aka flatten)

@@ -1,6 +1,6 @@
 (ns compiler-course.pass01-uniqify
   (:require
-   [matches :refer [=> dialects directed gennice in niceid rule rule-list sub]]))
+   [pattern :refer [=> dialects directed gennice in niceid rule rule-list sub]]))
 
 
 ;; Give every var a unique name

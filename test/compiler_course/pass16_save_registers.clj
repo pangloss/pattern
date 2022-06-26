@@ -1,7 +1,7 @@
 (ns compiler-course.pass16-save-registers
   (:require
    [compiler-course.r1-allocator :refer [callee-saved-registers]]
-   [matches :refer [=> dialects directed rule rule-list sub]]))
+   [pattern :refer [=> dialects directed rule rule-list sub]]))
 
 
 ;; Capture callee-save registers on entry and restore them on exit

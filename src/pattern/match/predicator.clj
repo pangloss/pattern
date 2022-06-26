@@ -1,4 +1,4 @@
-(ns matches.match.predicator
+(ns pattern.match.predicator
   (:require [clojure.walk :as walk]))
 
 (def ^:dynamic *pattern-replace*

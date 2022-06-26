@@ -1,6 +1,6 @@
 (ns compiler-course.pass06-add-types
   (:require
-   [matches :refer [=> dialects directed in rule rule-list sub subm success]]))
+   [pattern :refer [=> dialects directed in rule rule-list sub subm success]]))
 
 
 ;; Add type metadata to everything possible

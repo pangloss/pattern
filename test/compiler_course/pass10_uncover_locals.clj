@@ -1,6 +1,6 @@
 (ns compiler-course.pass10-uncover-locals
   (:require
-   [matches :refer [=> dialects directed rule rule-list sub]]))
+   [pattern :refer [=> dialects directed rule rule-list sub]]))
 
 
 ;; Uncover locals

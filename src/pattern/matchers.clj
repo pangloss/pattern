@@ -1,4 +1,4 @@
-(ns matches.matchers
+(ns pattern.matchers
   "This file contains the definitions of the nearly 20 built-in pattern matcher
   combinators.
 
@@ -26,12 +26,12 @@
   metadata is a combination of the matcher's own metadata and that of its child
   matchers."
   (:refer-clojure :exclude [trampoline])
-  (:use matches.match.core)
+  (:use pattern.match.core)
   (:require [genera :refer [trampoline trampolining bouncing]]
             [uncomplicate.fluokitten.core :as f]
-            [matches.match.core :as m]
-            [matches.match.predicator :refer [var-abbr]])
-  (:import (matches.types Env)))
+            [pattern.match.core :as m]
+            [pattern.match.predicator :refer [var-abbr]])
+  (:import (pattern.types Env)))
 
 
 (defn- match-value

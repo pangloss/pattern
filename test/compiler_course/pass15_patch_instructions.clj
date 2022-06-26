@@ -1,6 +1,6 @@
 (ns compiler-course.pass15-patch-instructions
   (:require
-   [matches :refer [=> dialects directed rule rule-list sub]]))
+   [pattern :refer [=> dialects directed rule rule-list sub]]))
 
 
 

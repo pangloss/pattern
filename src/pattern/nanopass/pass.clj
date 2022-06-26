@@ -1,22 +1,22 @@
-(ns matches.nanopass.pass
-  (:require [matches.match.predicator :refer [*pattern-replace*
+(ns pattern.nanopass.pass
+  (:require [pattern.match.predicator :refer [*pattern-replace*
                                               make-abbr-predicator
                                               with-predicates]]
-            [matches.match.core :refer [compile-pattern]]
-            [matches.nanopass.dialect
+            [pattern.match.core :refer [compile-pattern]]
+            [pattern.nanopass.dialect
              :as d
              :refer [=> ==> ===>
                      =>:from =>:to =>:type
                      dialects
                      from-dialect]]
-            [matches.r3.combinators :as c :refer [on-mutual
+            [pattern.r3.combinators :as c :refer [on-mutual
                                                   on-subexpressions
                                                   rule-list
                                                   guard
                                                   descend
                                                   directed]]
-            [matches.r3.core :refer [rule success]]
-            [matches.r3.rewrite :refer [quo sub add-env-args*]]))
+            [pattern.r3.core :refer [rule success]]
+            [pattern.r3.rewrite :refer [quo sub add-env-args*]]))
 
 (defn get-form [dialect form-name]
   (cond (symbol? form-name)

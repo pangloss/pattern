@@ -1,4 +1,4 @@
-(ns matches.types
+(ns pattern.types
   (:require [clojure.pprint :refer [simple-dispatch]])
   (:import (clojure.lang IObj IMeta)))
 

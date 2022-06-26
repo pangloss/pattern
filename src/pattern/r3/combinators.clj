@@ -1,9 +1,9 @@
-(ns matches.r3.combinators
+(ns pattern.r3.combinators
   (:refer-clojure :exclude [trampoline])
-  (:require [matches.match.core :refer [run-matcher]]
-            [matches.substitute :refer [substitute]]
-            [matches.types :refer [rule-combinator? child-rules recombine]]
-            [matches.util :refer [meta?]]
+  (:require [pattern.match.core :refer [run-matcher]]
+            [pattern.substitute :refer [substitute]]
+            [pattern.types :refer [rule-combinator? child-rules recombine]]
+            [pattern.util :refer [meta?]]
             [clojure.string :as str]
             [genera :refer [trampoline bouncing]]
             [clojure.walk :as walk]

@@ -1,20 +1,20 @@
-(ns matches.nanopass.dialect
-  (:require [matches.r3.core :refer [rule make-rule success]]
-            [matches.r3.combinators :refer [run-rule iterated rule-list on-subexpressions
+(ns pattern.nanopass.dialect
+  (:require [pattern.r3.core :refer [rule make-rule success]]
+            [pattern.r3.combinators :refer [run-rule iterated rule-list on-subexpressions
                                             on-mutual directed]]
-            [matches.match.core :refer [compile-pattern matcher compile-pattern match?
+            [pattern.match.core :refer [compile-pattern matcher compile-pattern match?
                                         symbol-dict
                                         matcher-type matcher-type-for-dispatch]]
-            [matches.r3.rewrite :refer [sub quo spliced scheme-style]]
-            [matches.match.predicator :refer [with-predicates
+            [pattern.r3.rewrite :refer [sub quo spliced scheme-style]]
+            [pattern.match.predicator :refer [with-predicates
                                               *pattern-replace*
                                               apply-replacements
                                               match-abbr
                                               make-abbr-predicator]]
-            [matches.nanopass.kahn :refer [kahn-sort]]
-            [matches.types :refer [->MetaBox ->Ok ok? obj? not-meta?]]
+            [pattern.nanopass.kahn :refer [kahn-sort]]
+            [pattern.types :refer [->MetaBox ->Ok ok? obj? not-meta?]]
             [genera :refer [defgenera defgen]]
-            matches.matchers
+            pattern.matchers
             [clojure.walk :as walk]))
 
 (defonce all-dialects (atom {}))

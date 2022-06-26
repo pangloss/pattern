@@ -1,5 +1,5 @@
 (ns scheme-to-c.dialects
-  (:require [matches.nanopass.dialect :refer [def-dialect def-derived show-dialect]]))
+  (:require [pattern.nanopass.dialect :refer [def-dialect def-derived show-dialect]]))
 
 (defmacro make-terminal [pred]
   ;; assume a ? at the end...

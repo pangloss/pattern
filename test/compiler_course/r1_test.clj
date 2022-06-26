@@ -1,8 +1,8 @@
 (ns compiler-course.r1-test
   (:require [compiler-course.r1-allocator :as a]
             [compiler-course.r1 :as r1 :refer :all]
-            [matches :refer [valid? validate ok? sub subm]]
-            [matches.types :refer [ok]]
+            [pattern :refer [valid? validate ok? sub subm]]
+            [pattern.types :refer [ok]]
             [compiler-course.dialects :as d]
             [clojure.test :refer [deftest testing is are]]
             [clojure.walk :as walk]))

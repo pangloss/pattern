@@ -2,7 +2,7 @@
   (:require [clojure.set :as set]
             [fermor.core :as f :refer [build-graph add-edges add-vertices both-e forked]]
             [fermor.core :as g]
-            [matches :refer [on-subexpressions rule rule-list sub matcher compile-pattern success
+            [pattern :refer [on-subexpressions rule rule-list sub matcher compile-pattern success
                              dialects =>]]))
 
 (def registers '[rbx rcx rdx rsi rdi r8 r9 r10 r11 r12 r13 r14])

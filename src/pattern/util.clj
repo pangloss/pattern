@@ -1,4 +1,4 @@
-(ns matches.util
+(ns pattern.util
   (:require [clojure.zip :as zip])
   (:import [clojure.lang IMeta IObj]))
 

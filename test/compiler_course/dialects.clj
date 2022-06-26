@@ -1,9 +1,9 @@
 (ns compiler-course.dialects
-  (:require [matches.nanopass.dialect :as d
+  (:require [pattern.nanopass.dialect :as d
              :refer [=> ==> ===> def-dialect def-derived show-dialect
                      validate valid? show-parse]]
-            [matches.types :refer [ok]]
-            [matches :refer [matcher]]))
+            [pattern.types :refer [ok]]
+            [pattern :refer [matcher]]))
 
 (def cmp? #{'eq? '< '<= '> '>=})
 

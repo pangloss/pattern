@@ -2,10 +2,10 @@
   (:require [clojure.test :refer :all]
             [pure-conditioning :as c :refer [manage restart-with handler-cond]]
             [simplify-test :refer [expr<?]]
-            [matches.r3.core :refer [rule success success:env]]
-            [matches.match.predicator :refer [*pattern-replace* make-abbr-predicator]]
-            [matches.r3.rewrite :refer [sub quo pure-pattern with-env-args]])
-  (:use matches.r3.combinators))
+            [pattern.r3.core :refer [rule success success:env]]
+            [pattern.match.predicator :refer [*pattern-replace* make-abbr-predicator]]
+            [pattern.r3.rewrite :refer [sub quo pure-pattern with-env-args]])
+  (:use pattern.r3.combinators))
 
 
 (deftest rules-etc
@@ -94,7 +94,7 @@
            (rule-list [(rule '(+ (?:* ?->a ??!->b))
                              ;; ?->a produces a sequence because it's captured within ?:*
                              (sub (+ (+ ??a c) ??b)))
-                       ;; ??b within the ?:* match above produces a list of vectors of matches.
+                       ;; ??b within the ?:* match above produces a list of vectors of pattern.
                        (rule '[?x] (* (descend 10) (descend x)))
                        (rule '(* ??->a)
                              (sub (* (+ ?a c))))
@@ -447,7 +447,7 @@
 
 (deftest simple-syntax-quoted-pattern
   (is (= `(seq [1])
-         ((matches.r3.core/rule `(seq ?->s)
+         ((pattern.r3.core/rule `(seq ?->s)
                                 `(seq ~s))
           `(seq [1])))))
 

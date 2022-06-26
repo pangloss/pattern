@@ -1,7 +1,7 @@
 (ns compiler-course.pass08-remove-complex-opera
   (:require
    [compiler-course.pass07-expose-allocation :refer [m!]]
-   [matches :refer [=> dialects directed gennice rule rule-list sub subm]]))
+   [pattern :refer [=> dialects directed gennice rule rule-list sub subm]]))
 
 ;; Remove complex operators / operands
 

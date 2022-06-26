@@ -1,6 +1,6 @@
 (ns compiler-course.pass03-expose-functions
   (:require
-   [matches :refer [=> dialects directed in rule rule-list sub]]))
+   [pattern :refer [=> dialects directed in rule rule-list sub]]))
 
 ;; Find regular function calls and convert (f x) to ((funref f) x).
 
