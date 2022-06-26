@@ -154,10 +154,14 @@
   without transformation, but must be either a symbol or keyword. If using a
   keyword, it will be transformed to a symbol. Namespaces in matcher names are
   ignored.
-  If using the matcher in a context
 
-  and you can provide a restriction on the var in the
-  third position.
+  If the name is a single underscore, ?_ or (? _), the match will not be
+  included in the result and will not be unified with other matchers with the
+  same name.
+
+  You can provide a predicate on the var in the third position.
+
+     (? name pred?)
   "
   [variable comp-env]
   (let [[sat-mode sat?] (var-restriction variable comp-env)

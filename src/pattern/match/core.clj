@@ -455,9 +455,9 @@
   either nil or a result map of name -> value. For example, this pattern will match
   an unordered multiply expression:
 
-      (let [unordered (compile-pattern '(* ?b (? a < ?b)))]
-        (unordered '(* 1 2))  ;; => nil
-        (unordered '(* 2 1))) ;; => {'b 2, 'a 1}
+      (let [find-unordered (compile-pattern '(* ?b (? a < ?b)))]
+        (find-unordered '(* 1 2))  ;; => nil
+        (find-unordered '(* 2 1))) ;; => {'b 2, 'a 1}
 
   Experimental: Patterns may be altered and recompiled via a special call to the
   arity-1 matcher:
@@ -499,9 +499,9 @@
   The result is either nil if no match is made or a list of matches for each
   variable in the pattern in the order they are defined.
 
-  (let [unordered (matcher '(* ?b (? a < ?b)))]
-    (unordered '(* 1 2))  ;; => nil
-    (unordered '(* 2 1))) ;; => '(2 1)
+  (let [find-unordered (matcher '(* ?b (? a < ?b)))]
+    (find-unordered '(* 1 2))  ;; => nil
+    (find-unordered '(* 2 1))) ;; => '(2 1)
 
   This style is useful for short or simple patterns but it becomes more
   challenging to maintain matcher ordering between the pattern and the result as
@@ -535,8 +535,8 @@
   "Return a list of all of the variable names defined in the pattern in the
   order the values will be returned when using [[matcher]].
 
-      (let [unordered (matcher '(* ?b (? a < ?b)))]
-          (pattern-names unordered)) ;; => (b a)
+      (let [find-unordered (matcher '(* ?b (? a < ?b)))]
+          (pattern-names find-unordered)) ;; => (b a)
 
   This may be either passed a pattern directly or a pattern compiled either by
   [[compile-pattern]] or [[matcher]]"
