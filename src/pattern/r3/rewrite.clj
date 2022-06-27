@@ -360,6 +360,15 @@
                         simplify-more])))
 (reset! r/qsub* #'qsub*)
 
+(def qsub+
+  "Same as qsub* but keeps symbol namespaces"
+  (rule-name :qsub+
+             (in-order [scheme-style
+                        expand-pattern
+                        unwrap-list
+                        simplify-expr
+                        simplify-more])))
+
 (def splice*
   (rule-name :splice
              (in-order [(directed to-syntax-quote*)
@@ -383,6 +392,14 @@
   ([f form]
    (binding [*on-marked-insertion* f]
      (qsub* form))))
+
+(defmacro sub+
+  "Same as [[sub]] but retains symbol namespaces"
+  ([form]
+   (qsub+ form))
+  ([f form]
+   (binding [*on-marked-insertion* f]
+     (qsub+ form))))
 
 (defmacro rmeta
   "Expands to (meta (:rule/datom %env))"
@@ -412,6 +429,13 @@
    `(util/forward-meta (:rule/datum ~'%env) (sub ~form)))
   ([form orig]
    `(util/forward-meta orig (sub ~form))))
+
+(defmacro subm+!
+  "Same as [[subm!]] but retains symbol namespaces"
+  ([form]
+   `(util/forward-meta (:rule/datum ~'%env) (sub+ ~form)))
+  ([form orig]
+   `(util/forward-meta orig (sub+ ~form))))
 
 (defn eval-spliced
   "Experimental. Uses [[spliced]] to transform regular lists, then uses eval to

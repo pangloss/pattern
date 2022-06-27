@@ -166,6 +166,6 @@
                           (rule '(void) '(int 0)))))))
 
 (defn select-instructions
-  {:=>/from 'Uncovered :=>/to 'Selected}
+  {:=>/from 'Uncovered+ :=>/to 'Selected}
   [x]
   (select-instructions* x))
