@@ -63,7 +63,14 @@
   [rc]
   (zipper rule-combinator? child-rules recombine rc))
 
-(defn rule-list [& rules]
+(defn rule-list
+  "Try each of the rules in order top-down.
+
+  If any rule succeeds, return that result. If a rule matches but does not
+  succeed, continues down the list.
+
+  Each rule can itself be any rule-combinator."
+  [& rules]
   (let [rules (flatten rules)]
     (with-meta
       (fn do-rule-list
@@ -85,13 +92,24 @@
        `recombine (fn [_ rules]
                     (rule-list rules))})))
 
-(defn rule-list! [& rules]
+(defn rule-list!
+  "Like rule-list, but throws an exception if no rule matches.
+
+  Each rule can itself be any rule-combinator."
+  [& rules]
   (rule-list (concat rules [(@make-rule '?_ (fn [env dict]
                                               (throw (ex-info "No matching clause" env))))])))
 
 
-(defn in-order [rules]
-  (let [rc (count rules)]
+(defn in-order
+  "Runs each of the rules in the list in a chain. If any rule succeeds, the
+  subsequent rules are run with the new value. If a rule fails, the current
+  value does not change and the next rule is run.
+
+  Each rule can itself be any rule-combinator."
+  [& rules]
+  (let [rules (flatten rules)
+        rc (count rules)]
     (letfn [(per-rule [datum env events [r :as rules] n]
               (when *debug-rules* (println (str "#" (inc n) "/" rc " try" (:pattern (:rule (meta r))))))
               (if (seq rules)
@@ -147,7 +165,11 @@
                     (guard f (rule-list rules))
                     (guard f (first rules))))}))
 
-(defn n-times [n rule]
+(defn n-times
+  "Iteratively apply the rule n times.
+
+  The rule can be any rule-combinator."
+  [n rule]
   (vary-meta
    (in-order (repeat n rule))
    assoc-in [:rule :rule-type] ::n-times))
@@ -331,7 +353,11 @@
   arbitrary changes to rule metadata. The default is:
 
       (fn on-rule-meta [rule-meta-before rule-meta-after]
-        rule-meta-after)"
+        rule-meta-after)
+
+  The rule argument is typically a rule-list of simple rules, but in theory
+  any type of rule combinator should work, however determining the resulting
+  behavior may be tricky in some cases..."
   ([rule]
    (directed nil rule))
   ([opts raw-rule]

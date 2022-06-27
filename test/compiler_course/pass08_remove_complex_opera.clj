@@ -51,7 +51,12 @@
                  (rule '?other
                        {:value other}))))))
 
-(defmacro rco-atoms [vars exp]
+(defmacro simplify-to-atoms [vars subm-exp]
+  ;; This macro captures the subm in source state before the resulting structure
+  ;; is assembled. By re-binding the args symbol (~vars) used by the subm
+  ;; expression, it can change the contents of the result to the simplified
+  ;; expression. Then it wraps it in all of the wrappers via the composed wrap
+  ;; function.
   `(let [r# (reduce (fn [r# exp#]
                       (let [x# (simplify-to-atom exp#)
                             wrap# (:wrap x#)
@@ -62,8 +67,9 @@
                           r#)))
                     {:wrap identity :values []} ~vars)
          wrap# (:wrap r#)
+         ;; vars is just a symbol:
          ~vars (:values r#)]
-     (wrap# ~exp)))
+     (wrap# ~subm-exp)))
 
 (def simplify-to-exp
   (dialects
@@ -77,9 +83,9 @@
                  (rule '((?:= let) ([?v:a ?->e:b]) ?->e:body))
                  (rule '((? op #{vector-set! + < eq? vector-ref - not global-value})
                          ??e:args)
-                       (rco-atoms args (subm (?op ??args) (m!))))
+                       (simplify-to-atoms args (subm (?op ??args) (m!))))
                  (rule '(call ??guts)
-                       (rco-atoms guts (subm (call ??guts) (m!))))
+                       (simplify-to-atoms guts (subm (call ??guts) (m!))))
                  (rule '(?:letrec [maybe-not (?:as nots
                                                    (?:fresh [nots]
                                                             (| (not $maybe-not)

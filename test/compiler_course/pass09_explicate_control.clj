@@ -71,7 +71,7 @@
           {:s [(sub (tailcall ?v ??args))]})
     (rule '?other {:s [(sub (return ?other))]}))))
 
-(def explicate-control
+(def explicit-control-flow
   (dialects
    (=> Simplified Explicit)
    (directed

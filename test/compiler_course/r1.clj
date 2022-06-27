@@ -17,7 +17,7 @@
             [compiler-course.pass06-add-types :refer [add-types]]
             [compiler-course.pass07-expose-allocation :refer [expose-allocation]]
             [compiler-course.pass08-remove-complex-opera :refer [remove-complex-opera*]]
-            [compiler-course.pass09-explicate-control :refer [explicate-control]]
+            [compiler-course.pass09-explicate-control :refer [explicit-control-flow]]
             [compiler-course.pass10-uncover-locals :refer [uncover-locals]]
             [compiler-course.pass11-select-instructions :refer [select-instructions]]
             [compiler-course.pass12-allocate-registers :refer [allocate-registers]]
@@ -37,7 +37,7 @@
    #'add-types
    #'expose-allocation
    #'remove-complex-opera*
-   #'explicate-control
+   #'explicit-control-flow
    #'uncover-locals
    #'select-instructions
    #'allocate-registers
