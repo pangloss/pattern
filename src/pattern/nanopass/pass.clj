@@ -14,7 +14,8 @@
                                                   rule-list
                                                   guard
                                                   descend
-                                                  directed]]
+                                                  directed
+                                                  default]]
             [pattern.r3.core :refer [rule success]]
             [pattern.r3.rewrite :refer [quo sub add-env-args*]]))
 
@@ -89,15 +90,16 @@
 
 (def ^:private just-a-string? (compile-pattern '((? _ string?))))
 
-(defn- arrow? [x]
-  (when (and (list? x) (symbol? (first x)))
-    (#{"=>" "==>" "===>"} (name (first x)))))
+(def ^:private arrow?
+  (rule-list
+    (rule '(?:list (| => ==> ===>) (? _ symbol?) (?:? (? _ symbol?))))
+    (default false)))
 
 (def ^:private dialectify*
   (on-subexpressions
-   (rule-list [(rule `(let-rulefn ?arg ??args)
-                     (when-not (arrow? arg)
-                       `(let-rulefn* ~(:dialects %env) ~arg ~@args)))])))
+    (rule `(let-rulefn ?arg ??args)
+      (when-not (arrow? arg)
+        `(let-rulefn* ~(:dialects %env) ~arg ~@args)))))
 
 
 (defn dialectify
@@ -178,18 +180,16 @@
                                  {:fn? true
                                   :name name
                                   :fn-tail fn-tail}))
-                         (rule '(?name ?types (?:? ?env-args) ?rule-list)
-                               (when (and (symbol? name)
-                                          (or (nil? types)
-                                              (symbol? types)
-                                              (arrow? types))
-                                          (or (nil? env-args) (vector? env-args))
-                                          (vector? rule-list))
-                                 {:rule? true
-                                  :name name
-                                  :types types
-                                  :env-args env-args
-                                  :rule-list rule-list}))
+                         (rule '((? name symbol?)
+                                 (?:? (? types ~(some-fn symbol? arrow?)))
+                                 (?:? (? env-args vector?))
+                                 ??rule-list)
+                           (when (seq rule-list)
+                             {:rule? true
+                              :name name
+                              :types types
+                              :env-args env-args
+                              :rule-list rule-list}))
                          (rule '?expr {:failed? true :expr expr})]))
 
 (defmacro let-rulefn* [dialects rulefns & body]
@@ -233,7 +233,7 @@
 
   When used inside [[defpass]], this call is rewritten to use [[let-rulefn*]] with
   the dialect pair specified in the pass. If you don't want this behaviour, use
-  [[let-rulefn*]] directly."
+  [[let-rulefn*]] directly with nil for the dialects argument."
   [rulefns & body]
   `(let-rulefn* nil ~rulefns ~@body))
 
@@ -249,12 +249,4 @@
 (comment
   (defpass xyz (=> A B)
     (rule '(+ ?a ?a) (sub (* 2 ?a))))
-  (xyz '(+ 9 9))
-
-  (defpass xx-pass '(A B)
-    (let [a 1 b 2 c 3] <>)
-    "define a pass"
-    [a] (if (zero? a)
-          (+ b c)
-          (+ (xx-pass (dec a)) b c)))
-  (xx-pass 4))
+  (xyz '(+ 9 9)))

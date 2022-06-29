@@ -430,6 +430,11 @@
   ([form orig]
    `(util/forward-meta orig (sub ~form))))
 
+;; TODO: If the regular sub ... subm! methods all retained namespace, would that
+;; break anything? I think the behaviour may be leftover from the earliest
+;; versions of this functionality which tried to build off of stock
+;; backtick-quoted data, which was loaded with namespaces everywhere.
+
 (defmacro subm+!
   "Same as [[subm!]] but retains symbol namespaces"
   ([form]
