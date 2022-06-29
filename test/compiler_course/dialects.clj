@@ -5,6 +5,18 @@
             [pattern.types :refer [ok]]
             [pattern :refer [matcher]]))
 
+(defonce niceid (atom 0))
+
+(defn gennice
+  "Produce nice readable symbols with metadata.
+
+  Reset the counter with (reset! niceid 0)"
+  [sym]
+  (let [nice (symbol (str (name sym) \. (swap! niceid inc)))]
+    (with-meta nice
+        (assoc (meta sym)
+          :gennice/original sym))))
+
 (def cmp? #{'eq? '< '<= '> '>=})
 
 (def r1-keyword? (into cmp? '[define let if and or not void read + -

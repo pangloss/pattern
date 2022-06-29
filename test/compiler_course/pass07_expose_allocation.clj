@@ -1,6 +1,7 @@
 (ns compiler-course.pass07-expose-allocation
   (:require
-   [pattern :refer [=> dialects gennice rule rule-simplifier subm sub]]
+   [compiler-course.dialects :refer :all]
+   [pattern :refer [=> dialects rule rule-simplifier subm sub]]
    [compiler-course.pass06-add-types :refer [add-types]]))
 
 

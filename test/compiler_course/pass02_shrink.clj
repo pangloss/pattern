@@ -1,6 +1,7 @@
 (ns compiler-course.pass02-shrink
   (:require
-   [pattern :refer [=> dialects directed gennice on-subexpressions rule
+   [compiler-course.dialects :refer :all]
+   [pattern :refer [=> dialects directed on-subexpressions rule
                     rule-list sub success]]))
 
 

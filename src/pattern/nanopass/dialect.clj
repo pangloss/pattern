@@ -13,7 +13,6 @@
                                               make-abbr-predicator]]
             [pattern.nanopass.kahn :refer [kahn-sort]]
             [pattern.types :refer [->MetaBox ->Ok ok? obj? not-meta?]]
-            [genera :refer [defgenera defgen]]
             pattern.matchers
             [clojure.walk :as walk]))
 

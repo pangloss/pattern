@@ -1,5 +1,6 @@
 (ns compiler-course.pass13-remove-unallocated
   (:require
+   [compiler-course.dialects :refer :all]
    [pattern :refer [=> dialects on-subexpressions rule rule-list sub success]]))
 
 ;; Remove unallocated vars (if a var is set but never used)

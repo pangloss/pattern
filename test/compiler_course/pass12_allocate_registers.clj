@@ -1,5 +1,6 @@
 (ns compiler-course.pass12-allocate-registers
   (:require
+   [compiler-course.dialects :refer :all]
    [compiler-course.r1-allocator :refer [allocate-registers* liveness to-graph
                                          var-locations
                                          with-allocated-registers]]

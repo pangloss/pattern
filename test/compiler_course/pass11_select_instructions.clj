@@ -1,6 +1,7 @@
 (ns compiler-course.pass11-select-instructions
   (:require
-   [pattern :refer [=> descend dialects directed gennice on-subexpressions
+   [compiler-course.dialects :refer :all]
+   [pattern :refer [=> descend dialects directed on-subexpressions
                     rule rule-list rule-list! sub]]))
 
 

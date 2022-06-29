@@ -1,5 +1,6 @@
 (ns compiler-course.pass16-save-registers
   (:require
+   [compiler-course.dialects :refer :all]
    [compiler-course.r1-allocator :refer [callee-saved-registers]]
    [pattern :refer [=> dialects directed rule rule-list sub]]))
 

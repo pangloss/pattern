@@ -2,11 +2,12 @@
   (:require [clojure.set :as set]
             [fermor.core :as f :refer [build-graph add-edges add-vertices both-e forked]]
             [fermor.core :as g]
+            [compiler-course.dialects :refer :all]
             [pattern :refer [on-subexpressions rule rule-list sub matcher compile-pattern success
                              dialects =>]]))
 
 (def registers '[rbx rcx rdx rsi rdi r8 r9 r10 r11 r12 r13 r14])
-(def register-indices (into {} (map vector registers (range 20))))
+(def register-indices (zipmap registers (range 20)))
 (def caller-saved-registers (into #{} '[rax rcx rdx rsi rdi r8 r9 r10 r11]))
 (def callee-saved-registers (into #{} '[rsp rbp rbx r12 r13 r14 r15]))
 

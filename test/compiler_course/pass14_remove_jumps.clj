@@ -1,5 +1,6 @@
 (ns compiler-course.pass14-remove-jumps
   (:require
+   [compiler-course.dialects :refer :all]
    [pattern :refer [=> dialects directed rule rule-list sub success]]))
 
 

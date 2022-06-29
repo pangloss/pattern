@@ -40,7 +40,7 @@
               directed
               on-mutual
               rule-simplifier
-              in gennice niceid)
+              in)
              (pattern.nanopass.dialect
               def-dialect
               def-derived

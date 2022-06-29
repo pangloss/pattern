@@ -1,5 +1,6 @@
 (ns compiler-course.pass06-add-types
   (:require
+   [compiler-course.dialects :refer :all]
    [pattern :refer [=> dialects directed in rule rule-list sub subm success]]))
 
 

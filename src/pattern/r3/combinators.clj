@@ -2,7 +2,7 @@
   (:refer-clojure :exclude [trampoline])
   (:require [pattern.match.core :refer [run-matcher]]
             [pattern.substitute :refer [substitute]]
-            [pattern.types :refer [rule-combinator? child-rules recombine]]
+            [pattern.types :refer [rule-combinator? child-rules recombine ->Success]]
             [pattern.util :refer [meta?]]
             [clojure.string :as str]
             [genera :refer [trampoline bouncing]]
@@ -13,19 +13,6 @@
 (def ^:dynamic *debug-rules* false)
 
 (defonce make-rule (atom nil))
-
-(defonce niceid (atom 0))
-
-(defn gennice
-  "Produce nice readable symbols.
-
-  Reset the counter with (reset! niceid 0)"
-  [sym]
-  (let [nice (symbol (str (name sym) \. (swap! niceid inc)))]
-    (with-meta nice
-        (assoc (meta sym)
-          :gennice/old sym
-          :gennice/new nice))))
 
 (defn run-rule
   "Runs a rule and returns either the successfully updated value or the original
@@ -100,6 +87,11 @@
   (rule-list (concat rules [(@make-rule '?_ (fn [env dict]
                                               (throw (ex-info "No matching clause" env))))])))
 
+(defn default
+  "Returns a rule that takes any value"
+  [value]
+  (@make-rule '?_ (fn [env dict] (->Success value))
+   {:src (list 'success value)}))
 
 (defn in-order
   "Runs each of the rules in the list in a chain. If any rule succeeds, the

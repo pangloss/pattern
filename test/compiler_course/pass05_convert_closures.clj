@@ -1,6 +1,7 @@
 (ns compiler-course.pass05-convert-closures
   (:require
-   [pattern :refer [=> descend descend-all dialects directed gennice rule
+   [compiler-course.dialects :refer :all]
+   [pattern :refer [=> descend descend-all dialects directed rule
                     rule-list sub success]]))
 
   ;; Convert closures

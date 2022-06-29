@@ -1,5 +1,6 @@
 (ns compiler-course.pass17-stringify
   (:require
+   [compiler-course.dialects :refer :all]
    [pattern :refer [=> descend dialects directed matcher rule rule-list sub]]))
 
 
