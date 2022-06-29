@@ -3,6 +3,7 @@
   (:require [pattern.match.core :refer [matcher compile-pattern
                                         run-matcher pattern-names
                                         all-values value-dict]]
+            [pattern.util :refer [meta? deep-merge-meta]]
             pattern.matchers
             [genera.trampoline :refer [bounce?]]
             [pattern.substitute :refer [substitute]]
@@ -72,7 +73,7 @@
 
 (declare match-rule invoke-rule)
 
-(deftype Rule [match-procedure handler get-values metadata]
+(deftype Rule [match-procedure handler get-values post-process metadata]
   IFn
   (applyTo [rule args]
     (apply invoke-rule rule args))
@@ -87,9 +88,12 @@
 
   IObj
   (withMeta [rule metadata]
-    (Rule. match-procedure handler get-values metadata))
+    (Rule. match-procedure handler get-values post-process metadata))
   IMeta
   (meta [rule] metadata))
+
+(defn set-post-processor [rule pp]
+  (->Rule (.match-procedure rule) (.handler rule) (.get-values rule) (.post-process rule) (.metadata rule)))
 
 (defmethod print-method Rule [r ^java.io.Writer w]
   (.write w (prn-str
@@ -121,11 +125,97 @@
                                 (on-result rule r data dict env)
                                 r))))]
     (if (fn? r)
-      r
-      (let [[result env] r]
-        [(unwrap data result) (unwrap-env env result)]))
+      (do
+        (throw (ex-info "Congratulations! You hit a branch I thought was dead!"
+                 {:date "2022-06-29"
+                  :r r
+                  :info [rule data env on-match on-result succeed fail]}))
+        r)
+      (let [[result new-env] r
+            new-env (unwrap-env new-env result)
+            result (unwrap data result)]
+        (if (.post-process rule)
+          ((.post-process rule) rule result data new-env env)
+          [result new-env])))
     (fail)))
 
+(defn merge-metadata*
+  "Merge the original value's metadata into the new value's metadata.
+
+  If a merge strategy is attached to the new value as :rule/merge-meta, use that
+  fn to do the merge. The :rule/merge-meta key will be removed from the
+  resulting metadata."
+  ([rule]
+   (set-post-processor rule merge-metadata*))
+  ([rule value orig-value env orig-env]
+   (if (or (identical? value orig-value) (not (meta? value)))
+     [value env]
+     (if-let [orig-meta (meta orig-value)]
+       (if-let [m (meta value)]
+         (if-let [mm (:rule/merge-meta m)]
+           [(with-meta value (mm orig-meta (dissoc m :rule/merge-meta))) env]
+           [(with-meta value (merge orig-meta m)) env])
+         [(with-meta value orig-meta) env])
+       [value env]))))
+
+(defn deep-merge-metadata*
+  "Recursively merge as much of the metadata attached to the orig-value as
+  possible into the new value.
+
+  If a merge strategy is attached to the new value as :rule/merge-meta, use that
+  fn to do the merge at each level. If :rule/merge-meta is false, pass the new
+  value through unchanged. The :rule/merge-meta key will be removed from the
+  resulting metadata."
+  ([rule]
+   (set-post-processor rule deep-merge-metadata*))
+  ([rule value orig-value env orig-env]
+   (if (identical? value orig-value)
+     [value env]
+     (let [merge-meta (:rule/merge-meta (meta value) merge)]
+       (if merge-meta
+         [(deep-merge-meta orig-value (vary-meta value dissoc :rule/merge-meta) merge-meta)
+          env]
+         [(if (meta? value)
+            (vary-meta value dissoc :rule/merge-meta)
+            value)
+          env])))))
+
+(def ^:dynamic *post-processor*
+    "Transform the resulting value or env of a successful rule in the context of
+  the original value and env.
+
+  Argument and return signature:
+
+  (fn [rule value orig-value env orig-env]
+    [value env])
+
+  Set to nil to skip post-processing.
+
+  See also [[*identity-rule-post-processor*]], [[raw]], and [[deep-merge-metadata]]."
+  merge-metadata*)
+
+(defmacro deep-merge-metadata
+  "All rules defined within this form will perform a deep metadata merge. All
+  metadata recursively found in the matched data will be merged into the result
+  data. The idea is to preserve metadata in compiler transformations, etc."
+  [& forms]
+  `(binding [*post-processor* deep-merge-metadata*]
+     ~@forms))
+
+(def ^:dynamic *identity-rule-post-processor*
+  "Transform the resulting value or env of a successful identity rule.
+
+  See [[*post-processor*]] for details.
+
+  The value and orig-value arguments will be identical."
+  nil)
+
+(defmacro raw
+  "Don't attach any post-processing to rules defined within this form"
+  [& forms]
+  `(binding [*post-processor* nil
+             *identity-rule-post-processor* nil]
+     ~@forms))
 
 (defn make-rule
   "Compiler for rules. Returns a function that when called with a datum either
@@ -146,15 +236,15 @@
   syntax quoted lists into regular quoted lists by stripping the namespace from
   all symbols, or use regular syntax-quoted lists."
   ([orig-pattern orig-handler]
-   (make-rule orig-pattern orig-handler dict-handler {}))
+   (make-rule orig-pattern orig-handler dict-handler *post-processor* {}))
   ([orig-pattern orig-handler metadata]
-   (make-rule orig-pattern orig-handler dict-handler metadata))
-  ([orig-pattern orig-handler ->get-values metadata]
+   (make-rule orig-pattern orig-handler dict-handler *post-processor* metadata))
+  ([orig-pattern orig-handler ->get-values post-process metadata]
    (let [pattern (do-pattern-replace orig-pattern)
          match-procedure (compile-pattern pattern)
          handler (bound-fn* orig-handler)
          get-values (->get-values match-procedure)]
-     (->Rule match-procedure handler get-values
+     (->Rule match-procedure handler get-values post-process
              {:rule
               (merge (meta match-procedure)
                      {:rule-type :pattern/rule
@@ -264,13 +354,16 @@
          matches (gensym 'matches)]
      `(let [p# ~(@spliced pattern)]
         (make-rule p# (fn [env# ~matches] (success))
-          raw-matches {:may-call-success0? true
-                       :src '(success)}))))
+          raw-matches
+          *identity-rule-post-processor*
+          {:may-call-success0? true
+           :src '(success)}))))
   ([pattern handler-body]
    `(let [p# ~(@spliced (@scheme-style pattern))]
       (make-rule p#
         (rule-fn-body ~(pattern-args pattern) ~(:env-args (meta pattern))
           ~handler-body)
         raw-matches
+        *post-processor*
         {:may-call-success0? ~(may-call-success0? handler-body)
          :src '~handler-body}))))

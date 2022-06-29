@@ -426,9 +426,9 @@
   If called arity-1, use the rule's original matching form as the original form
   to capture metadata from."
   ([form]
-   `(util/forward-meta (:rule/datum ~'%env) (sub ~form)))
+   `(util/deep-merge-meta (:rule/datum ~'%env) (sub ~form)))
   ([form orig]
-   `(util/forward-meta orig (sub ~form))))
+   `(util/deep-merge-meta orig (sub ~form))))
 
 ;; TODO: If the regular sub ... subm! methods all retained namespace, would that
 ;; break anything? I think the behaviour may be leftover from the earliest
@@ -438,9 +438,9 @@
 (defmacro subm+!
   "Same as [[subm!]] but retains symbol namespaces"
   ([form]
-   `(util/forward-meta (:rule/datum ~'%env) (sub+ ~form)))
+   `(util/deep-merge-meta (:rule/datum ~'%env) (sub+ ~form)))
   ([form orig]
-   `(util/forward-meta orig (sub+ ~form))))
+   `(util/deep-merge-meta orig (sub+ ~form))))
 
 (defn eval-spliced
   "Experimental. Uses [[spliced]] to transform regular lists, then uses eval to

@@ -14,34 +14,22 @@
 
 (defonce make-rule (atom nil))
 
+(defn meta= [a b]
+  (= (meta a) (meta b)))
+
+;; TODO: I'm checking in many places whether the datum or env changed. Would things work
+;; if I consolidated that into a check for `identical?`?
+
 (defn run-rule
   "Runs a rule and returns either the successfully updated value or the original
   if the rule fails."
   ([rule datum env]
    (rule datum env nil
-     (fn rule-succeeded [d e _]
-       (if (meta? d)
-         (if-let [orig-meta (meta datum)]
-           (if-let [m (meta d)]
-             (if-let [mm (:rule/merge-meta m)]
-               [(with-meta d (mm orig-meta m)) e]
-               [(with-meta d (merge orig-meta m)) e])
-             [(with-meta d orig-meta) e])
-           [d e])
-         [d e]))
+     (fn rule-succeeded [d e _] [d e])
      (fn rule-failed [] [datum env])))
   ([rule datum events env]
    (rule datum env events
-     (fn rule-succeeded [d e _]
-       (if (meta? d)
-         (if-let [orig-meta (meta datum)]
-           (if-let [m (meta d)]
-             (if-let [mm (:rule/merge-meta m)]
-               [(with-meta d (mm orig-meta m)) e]
-               [(with-meta d (merge orig-meta m)) e])
-             [(with-meta d orig-meta) e])
-           [d e])
-         [d e]))
+     (fn rule-succeeded [d e _] [d e])
      (fn rule-failed [] [datum env]))))
 
 (defn rule-zipper
@@ -109,7 +97,7 @@
                    env events
                    (fn [result env _]
                      (when *debug-rules* (println (str "#" (inc n) "/" rc " succeded")))
-                     (bouncing (per-rule (if (= datum result)
+                     (bouncing (per-rule (if (and (= datum result) (meta= datum result))
                                            datum result)
                                          env events
                                          (next rules) (inc n))))
@@ -128,7 +116,7 @@
            (do-in-order data env nil succeed fail))
           ([orig-datum orig-env events succeed fail]
            (let [[result env] (trampoline per-rule orig-datum orig-env events rules 0)]
-             (if (and (= orig-datum result) (= orig-env env))
+             (if (and (= orig-datum result) (meta= orig-datum result) (= orig-env env))
                (fail)
                (succeed result env fail)))))
         {:rule {:rule-type ::in-order
@@ -385,7 +373,7 @@
             (binding [*descend* (partial apply-rules (inc (or *descent-depth* 0)))]
               (let [res (apply-rules (or *descent-depth* 0) orig-datum orig-env)
                     [result env] res]
-                (if (and (= orig-datum result) (= orig-env env))
+                (if (and (= orig-datum result) (meta= orig-datum result) (= orig-env env))
                   (n)
                   (y result env n)))))))
        (-> (meta rule)
@@ -429,7 +417,7 @@
            (binding [*do-mutual-descent* switch-branch]
              ;; TODO: how does events fit here?
              (let [[result env] (switch-branch {:form-name initial-form} 0 orig-datum orig-env)]
-               (if (and (= orig-datum result) (= orig-env env))
+               (if (and (= orig-datum result) (meta= orig-datum result) (= orig-env env))
                  (n)
                  (y result env n))))))
         {:rule {:rule-type ::on-mutual
@@ -445,7 +433,7 @@
                                    [(conj result r) env]))
                                [(empty datum) env] datum)
           result (if (list? result) (reverse result) result)]
-      [(if (= result datum)
+      [(if (and (= result datum) (meta= result datum))
          datum
          (if (meta result)
            result
@@ -454,7 +442,6 @@
              result)))
        env])
     [datum env]))
-
 
 (defn on-subexpressions
   "Run the given rule combinator on all subexpressions depth-first."
@@ -470,11 +457,11 @@
        (letfn [(on-expr [datum env events on-result fail]
                  (let [[done env] (try-subexpressions on-expr datum env events)
                        [answer env] (run-rule the-rule done events env)]
-                   (if (= done answer)
+                   (if (and (= done answer) (meta= done answer))
                      (on-result done env fail)
                      (on-result answer env fail))))]
          (let [[done env] (run-rule on-expr datum events orig-env)]
-           (if (and (= done datum) (= orig-env env))
+           (if (and (= done datum) (meta= done datum) (= orig-env env))
              (n)
              (y done env n))))))
     {:rule (assoc (meta the-rule)
@@ -498,11 +485,11 @@
       ([datum orig-env events y n]
        (letfn [(iterating [datum env events on-result f]
                  (let [[answer env] (run-rule the-rule datum events env)]
-                   (if (= datum answer)
+                   (if (and (= datum answer) (meta= datum answer))
                      (on-result datum env f)
                      (recur answer env events on-result f))))]
          (let [[done env] (run-rule iterating datum events orig-env)]
-           (if (and (= done datum) (= orig-env env))
+           (if (and (= done datum) (meta= done datum) (= orig-env env))
              (n)
              (y done env n))))))
     {:rule (assoc (meta the-rule)
@@ -529,11 +516,11 @@
        (letfn [(on-expr [datum env events on-result f]
                  (let [[done env] (try-subexpressions on-expr datum env events)
                        [answer env] (run-rule the-rule done events env)]
-                   (if (= done answer)
+                   (if (and (= done answer) (meta= done answer))
                      (on-result done env f)
                      (on-expr answer env events on-result f))))]
          (let [[done env] (run-rule on-expr datum events orig-env)]
-           (if (and (= done datum) (= orig-env env))
+           (if (and (= done datum) (meta= done datum) (= orig-env env))
              (n)
              (y done env n))))))
     {:rule (assoc (meta the-rule)

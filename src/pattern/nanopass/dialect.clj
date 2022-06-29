@@ -567,6 +567,7 @@
                                    ;; give the handler both the raw matches and the processed version for now
                                    (let [f (symbol-dict x)]
                                      (fn [m] [m (f m)])))
+                                 nil
                                  {}))))])))]
     (with-meta
       (fn dialect-checker
