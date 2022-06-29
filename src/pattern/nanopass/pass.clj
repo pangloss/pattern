@@ -125,7 +125,7 @@
           (let-rulefn [(M (=> Expr MExpr)
                           [(rule '(fn [?var] ?expr)
                                   (let [k (gensym 'k)]
-                                  (sub (fn [?var ?k] ~(T expr k)))))
+                                    (sub (fn [?var ?k] ~(T expr k)))))
                            (rule '(? s symbol?) s)])
                        (T* (=> Expr TExpr) [cont]
                           [(rule '(?:as expr (fn ??_))

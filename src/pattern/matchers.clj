@@ -89,9 +89,12 @@
   [pattern comp-env]
   (let [[list-pred pattern] (let [token (first pattern)]
                               ;; If list starts with ?:seq symbol, match any seqable type.
-                              (if (and (symbol? token) (= "?:seq" (name token)))
-                                [seqable? (rest pattern)]
-                                [(if (vector? pattern) vector? seqable?) pattern]))
+                              (cond (and (symbol? token) (= "?:seq" (name token)))
+                                    [seqable? (rest pattern)]
+                                    (and (symbol? token) (= "?:list" (name token)))
+                                    [list? (rest pattern)]
+                                    :else
+                                    [(if (vector? pattern) vector? seqable?) pattern]))
         matchers (first
                   (reduce (fn [[matchers comp-env] p]
                             (let [m (compile-pattern* p comp-env)]

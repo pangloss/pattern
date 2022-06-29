@@ -147,6 +147,8 @@
   all symbols, or use regular syntax-quoted lists."
   ([orig-pattern orig-handler]
    (make-rule orig-pattern orig-handler dict-handler {}))
+  ([orig-pattern orig-handler metadata]
+   (make-rule orig-pattern orig-handler dict-handler metadata))
   ([orig-pattern orig-handler ->get-values metadata]
    (let [pattern (do-pattern-replace orig-pattern)
          match-procedure (compile-pattern pattern)
