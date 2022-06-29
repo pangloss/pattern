@@ -114,6 +114,15 @@
                (unwrap-env env result)
                (constantly false)))))
 
+(defn post-process [rule value orig-value env orig-env]
+  (if (instance? Rule rule)
+    (if (.post-process rule)
+      ((.post-process rule) rule value orig-value env orig-env)
+      [value env])
+    (throw (ex-info "Not a rule" {:thing rule :meta (meta rule)}))))
+
+(reset! rc/post-process #'post-process)
+
 (defn invoke-rule [^Rule rule data env {:keys [on-match on-result]} succeed fail]
   (if-let [r (run-matcher (.match-procedure rule) data
                           (fn [dict]
@@ -125,18 +134,11 @@
                                 (on-result rule r data dict env)
                                 r))))]
     (if (fn? r)
-      (do
-        (throw (ex-info "Congratulations! You hit a branch I thought was dead!"
-                 {:date "2022-06-29"
-                  :r r
-                  :info [rule data env on-match on-result succeed fail]}))
-        r)
+      r ;; this does get hit when using `sub`, but don't recall why.
       (let [[result new-env] r
             new-env (unwrap-env new-env result)
             result (unwrap data result)]
-        (if (.post-process rule)
-          ((.post-process rule) rule result data new-env env)
-          [result new-env])))
+        (post-process rule result data new-env env)))
     (fail)))
 
 (defn merge-metadata*

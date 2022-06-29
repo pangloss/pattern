@@ -12,7 +12,10 @@
 
 (def ^:dynamic *debug-rules* false)
 
+;; Work around some circular references. The core ns will reset these atoms to
+;; the correct functions.
 (defonce make-rule (atom nil))
+(defonce post-process (atom nil))
 
 (defn meta= [a b]
   (= (meta a) (meta b)))
@@ -356,20 +359,26 @@
                     (when *debug-rules*
                       (prn (symbol (apply str (repeat depth " "))) '=== datum))
                     (rule datum env
-                          (assoc events
-                                 :on-match
-                                 (fn directed:on-match [r match-dict]
-                                   (let [[match-dict env subs]
-                                         (directed:descend-marked apply-rules (:rule (meta r))
-                                                                  match-dict env depth)
-                                         datum (if subs
-                                                 (with-meta
-                                                   (subs (fn [k none] (:value (match-dict k) none)) nil)
-                                                   (meta datum))
-                                                 datum)]
-                                     [datum match-dict env])))
-                          (fn [d env _] [d env])
-                          (fn [] [datum env])))]
+                      (assoc events
+                        :on-match
+                        (fn directed:on-match [r match-dict]
+                          (let [[match-dict env substitute]
+                                (directed:descend-marked apply-rules (:rule (meta r))
+                                  match-dict env depth)
+                                ;; Per the note in directed:extend-rule-metadata :
+                                ;; If the datum will change after the initial match, and it's possible
+                                ;; that (success) arity 0 will be called, the datum needs to have the
+                                ;; new values substituted into it:
+                                datum (if substitute
+                                        (first (@post-process r
+                                                (substitute
+                                                  (fn [k none] (:value (match-dict k) none))
+                                                  nil)
+                                                datum env env))
+                                        datum)]
+                            [datum match-dict env])))
+                      (fn [d env _] [d env])
+                      (fn [] [datum env])))]
             (binding [*descend* (partial apply-rules (inc (or *descent-depth* 0)))]
               (let [res (apply-rules (or *descent-depth* 0) orig-datum orig-env)
                     [result env] res]

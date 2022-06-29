@@ -1,9 +1,10 @@
 (ns compiler-course.r1-test
   (:require [compiler-course.r1-allocator :as a]
             [compiler-course.r1 :as r1 :refer :all]
+            [compiler-course.dialects :refer [niceid]]
             [compiler-course.pass06-add-types :refer [add-types]]
             [compiler-course.pass07-expose-allocation :refer [expose-allocation]]
-            [pattern :refer [valid? validate ok? sub subm niceid]]
+            [pattern :refer [valid? validate ok? sub subm]]
             [pattern.types :refer [ok]]
             [compiler-course.dialects :as d]
             [clojure.test :refer [deftest testing is are]]

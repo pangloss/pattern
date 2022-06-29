@@ -4,7 +4,7 @@
                                                   var-locations with-allocated-registers]]
             [compiler-course.dialects :refer [r1-keyword?]]
             [pattern.nanopass.dialect :refer [all-dialects =>:to show-parse]]
-            [pattern :refer [descend in gennice niceid directed on-subexpressions rule rule-list rule-list!
+            [pattern :refer [descend in directed on-subexpressions rule rule-list rule-list!
                              descend-all sub success subm rule-simplifier matcher
                              => dialects validate ok ok?]]
             [pattern.types :refer [child-rules]]
