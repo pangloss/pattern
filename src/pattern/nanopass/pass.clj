@@ -183,7 +183,7 @@
                          (rule '((? name symbol?)
                                  (?:? (? types ~(some-fn symbol? arrow?)))
                                  (?:? (? env-args vector?))
-                                 ??rule-list)
+                                 (| [??rule-list] ??rule-list))
                            (when (seq rule-list)
                              {:rule? true
                               :name name

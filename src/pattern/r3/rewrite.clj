@@ -488,25 +488,21 @@
   the rule macro runs. It uses the metadata to let-bind values from %env within
   rule-handlers."
   (directed
-   (rule-list (rule '((?:chain (? op symbol?) name (| "rule-list" "in-order" "on-subexpressions"))
-                      (?:* (| [??rules] ?->rule)))
-                    ;; FIXME: why didn't [??->rules] work in this context? The
-                    ;; rule should have worked with the following, without the
-                    ;; descend code below:
-                    ;; '((?:chain ?op name (| "rule-list" "in-order")) (?:* (| [??->rules] ?->rule)))
-                    (let [rules (map (fn [rs]
-                                       (map (fn [r] (first (descend r %env))) rs)) rules)]
-                      (sub (?op (?:* (| ?rule [??->rules]))))))
-              (rule '((?:chain (? op symbol?) name "rule") ?pattern ??more)
-                    ;; metadata-only change needs `success` to stick!
-                    (success
-                     (sub (?op ~(vary-meta pattern assoc :env-args (:env-args %env))
-                               ??more))))
-              (rule '(?combinator-name ?->rule)))))
+    (rule-list
+      (rule '((?:as op (| rule-list in-order on-subexpressions)) (| [??rules] ??rules))
+        (let [rules (for [rs rules
+                          r rs]
+                      (first (descend r %env)))]
+          (sub (?op ??->rules))))
+      (rule '(rule ?pattern ??more)
+        ;; metadata-only change needs `success` to stick!
+        (success
+          (sub (rule ~(vary-meta pattern assoc :env-args (:env-args %env))
+                 ??more))))
+      (rule '(?combinator-name ?->rule)))))
 
 (defmacro with-env-args
   "Attach :env-args metadata to rules to enable convenient binding of env data
   in the rule handlers."
   [bindings rules]
   (first (add-env-args* rules {:env-args bindings})))
-
