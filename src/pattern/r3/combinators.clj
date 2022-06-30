@@ -1,6 +1,7 @@
 (ns pattern.r3.combinators
   (:refer-clojure :exclude [trampoline])
   (:require [pattern.match.core :refer [run-matcher]]
+            [pattern.r3.rule :refer [*debug-rules* run-rule make-rule post-process]]
             [pattern.substitute :refer [substitute]]
             [pattern.types :refer [rule-combinator? child-rules recombine ->Success]]
             [pattern.util :refer [meta?]]
@@ -10,30 +11,13 @@
             [clojure.zip :as z :refer [zipper]])
   (:import clojure.lang.IObj))
 
-(def ^:dynamic *debug-rules* false)
-
 ;; Work around some circular references. The core ns will reset these atoms to
 ;; the correct functions.
-(defonce make-rule (atom nil))
-(defonce post-process (atom nil))
-
 (defn meta= [a b]
   (= (meta a) (meta b)))
 
 ;; TODO: I'm checking in many places whether the datum or env changed. Would things work
 ;; if I consolidated that into a check for `identical?`?
-
-(defn run-rule
-  "Runs a rule and returns either the successfully updated value or the original
-  if the rule fails."
-  ([rule datum env]
-   (rule datum env nil
-     (fn rule-succeeded [d e _] [d e])
-     (fn rule-failed [] [datum env])))
-  ([rule datum events env]
-   (rule datum env events
-     (fn rule-succeeded [d e _] [d e])
-     (fn rule-failed [] [datum env]))))
 
 (defn rule-zipper
   "Construct a zipper object for rule combinators to enable customization of rules, attaching
@@ -75,14 +59,14 @@
 
   Each rule can itself be any rule-combinator."
   [& rules]
-  (rule-list (concat rules [(@make-rule '?_ (fn [env dict]
-                                              (throw (ex-info "No matching clause" env))))])))
+  (rule-list (concat rules [(make-rule '?_ (fn [env dict]
+                                             (throw (ex-info "No matching clause" env))))])))
 
 (defn default
   "Returns a rule that takes any value"
   [value]
-  (@make-rule '?_ (fn [env dict] (->Success value))
-   {:src (list 'success value)}))
+  (make-rule '?_ (fn [env dict] (->Success value))
+    {:src (list 'success value)}))
 
 (defn in-order
   "Runs each of the rules in the list in a chain. If any rule succeeds, the
@@ -370,7 +354,7 @@
                                 ;; that (success) arity 0 will be called, the datum needs to have the
                                 ;; new values substituted into it:
                                 datum (if substitute
-                                        (first (@post-process r
+                                        (first (post-process r
                                                 (substitute
                                                   (fn [k none] (:value (match-dict k) none))
                                                   nil)

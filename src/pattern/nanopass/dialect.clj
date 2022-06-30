@@ -1,6 +1,7 @@
 (ns pattern.nanopass.dialect
-  (:require [pattern.r3.core :refer [rule make-rule success]]
-            [pattern.r3.combinators :refer [run-rule iterated rule-list on-subexpressions
+  (:require [pattern.r3.core :refer [rule success]]
+            [pattern.r3.rule :refer [make-rule run-rule]]
+            [pattern.r3.combinators :refer [iterated rule-list on-subexpressions
                                             on-mutual directed]]
             [pattern.match.core :refer [compile-pattern matcher compile-pattern match?
                                         symbol-dict

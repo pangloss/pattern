@@ -2,6 +2,7 @@
   (:require pattern.matchers
             pattern.substitute
             pattern.r3.core
+            pattern.r3.post-process
             pattern.r3.combinators
             pattern.r3.rewrite
             pattern.nanopass.dialect
@@ -28,7 +29,8 @@
               rule
               success
               success:env
-              rule-name
+              rule-name)
+             (pattern.r3.post-process
               deep-merge-metadata
               raw)
              (pattern.r3.combinators
