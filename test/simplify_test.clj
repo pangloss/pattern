@@ -1,8 +1,8 @@
 (ns simplify-test
   (:require [clojure.test :refer [deftest is testing]]
             [clojure.walk :as walk]
-            [pattern.r3.combinators :refer [*debug-rules*
-                                            rule-list rule-simplifier
+            [pattern.r3.rule :refer [*debug-rules*]]
+            [pattern.r3.combinators :refer [rule-list rule-simplifier
                                             iterated]]
             [pattern.r3.core :refer [rule
                                      rule-name]]

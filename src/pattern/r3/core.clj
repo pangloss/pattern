@@ -107,14 +107,11 @@
              ~@(extract-args matches args)]
          ~handler-body))))
 
-(def listy? (compile-pattern '(??_)))
-
 (defmacro rule
   "Create a single rule. There are 2 arities, both with unique behavior.
 
   Arity 1: [pattern] -> identity rule (see below)
-  Arity 2.a: [pattern body] -> simple replacement rule
-  Arity 2.b: [name pattern] -> named identity rule
+  Arity 2: [pattern body] -> simple replacement rule
   Arity 3: [name pattern body] -> named simple replacement rule
 
 
@@ -149,10 +146,12 @@
 
       (rule '?->expression)
 
-  Or the same rule, named:
+  Or the same rule, named must use the 3 arity:
 
-      (rule expression '?->expression)
-  "
+      (rule expression '?->expression (success))
+
+  Side note, `(rule name '?->e)` seems nice, and I tried it but sometimes one may
+  want `(rule symbol :found)`. It's a recipe for weird breakage so I removed it."
   ([pattern]
    (let [args (pattern-args pattern)
          matches (gensym 'matches)]
@@ -163,16 +162,14 @@
           {:may-call-success0? true
            :src '(success)}))))
   ([pattern handler-body]
-   (if (listy? pattern)
-     `(let [p# ~(@spliced (@scheme-style pattern))]
-        (make-rule p#
-          (rule-fn-body ~(pattern-args pattern) ~(:env-args (meta pattern))
-            ~handler-body)
-          raw-matches
-          *post-processor*
-          {:may-call-success0? ~(may-call-success0? handler-body)
-           :src '~handler-body}))
-     `(rule-name '~pattern (rule ~handler-body))))
+   `(let [p# ~(@spliced (@scheme-style pattern))]
+      (make-rule p#
+        (rule-fn-body ~(pattern-args pattern) ~(:env-args (meta pattern))
+          ~handler-body)
+        raw-matches
+        *post-processor*
+        {:may-call-success0? ~(may-call-success0? handler-body)
+         :src '~handler-body})))
   ([name pattern handler-body]
    `(rule-name '~name
       (let [p# ~(@spliced (@scheme-style pattern))]

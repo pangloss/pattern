@@ -426,7 +426,7 @@
                                    [(conj result r) env]))
                                [(empty datum) env] datum)
           result (if (list? result) (reverse result) result)]
-      [(if (identical? result datum)
+      [(if (and (= result datum) (meta= result datum))
          datum
          (if (meta result)
            result
