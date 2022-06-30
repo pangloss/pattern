@@ -84,11 +84,12 @@
                     :else (recur next-target-x)))))]
     (let-rulefn [(A (=> Program Program)
                    [(directed
-                      (rule-list [(rule '(letrec ((?:* [?l* ?->f*])) (?:+ ?c))
-                                    (sub
-                                      (letrec ((?:+ [?l* ?f*]))
-                                        ~@(vec (keep nil-if-move
-                                                 (map identify-move c))))))]))])
+                      (rule-list
+                        (rule '(letrec ((?:* [?l* ?->f*])) (?:+ ?c))
+                          (sub
+                            (letrec ((?:+ [?l* ?f*]))
+                              ~@(vec (keep nil-if-move
+                                       (map identify-move c))))))))])
                  (B (=> Lambda Lambda)
                    [(rule '(lambda (??x) ??c)
                       (sub

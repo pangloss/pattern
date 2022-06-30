@@ -490,8 +490,7 @@
   (directed
     (rule-list
       (rule '((?:as op (| rule-list in-order on-subexpressions)) (| [??rules] ??rules))
-        (let [rules (for [rs rules
-                          r rs]
+        (let [rules (for [r rules]
                       (first (descend r %env)))]
           (sub (?op ??->rules))))
       (rule '(rule ?pattern ??more)

@@ -171,9 +171,11 @@
                        ~(insert-defn (or compiled '<>) name fn-tail)))))))
 
 (defn -add-env-args [rule-list env-args]
-  (mapv (fn [rule]
-          (first (add-env-args* rule {:env-args env-args})))
-        rule-list))
+  (if (seq env-args)
+    (mapv (fn [rule]
+            (first (add-env-args* rule {:env-args env-args})))
+      rule-list)
+    rule-list))
 
 (def rulefn* (rule-list [(rule '(fn ?name ??fn-tail)
                                (when (symbol? name)
