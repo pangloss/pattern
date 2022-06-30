@@ -1,9 +1,41 @@
 (ns pattern.r3.post-process
   (:require [pattern.r3.rule :refer [->Rule *post-processor* *identity-rule-post-processor*]]
-            [pattern.util :refer [meta? deep-merge-meta]]))
+            [pattern.util :refer [meta? deep-merge-meta]])
+  (:import (pattern.r3.rule Rule)))
 
-(defn set-post-processor [rule pp]
-  (->Rule (.match-procedure rule) (.handler rule) (.get-values rule) (.post-process rule) (.metadata rule)))
+(defn with-post-processor
+  "Change the rule to use the given post processor, replacing the old one."
+  [pp ^Rule rule]
+  (->Rule (.match-procedure rule) (.handler rule) (.get-values rule) pp
+    (assoc-in (.metadata rule)
+      [:rule :post-processor] pp)))
+
+(defn post-processor [^Rule rule]
+  (.post-processor rule))
+
+(defn comp-post-processors
+  "Compose multiple post-processors together."
+  [& fs]
+  (reduce (fn [c f]
+            (fn [r v ov e oe]
+              (let [[v e] (f r v ov e oe)]
+                (c r v ov e oe))))
+    (remove nil? fs)))
+
+(defmacro use-post-processor
+  "Set all rules except identity rules in this scope to use the given post
+  processor."
+  [pp & forms]
+  `(binding [*post-processor* ~pp]
+     ~@forms))
+
+(defmacro use-post-processors
+  "Set all rules, including identity rules in this scope to use the given post
+  processor and identity post processor."
+  [pp ident-rule-pp & forms]
+  `(binding [*post-processor* ~pp
+             *identity-rule-post-processor* ~ident-rule-pp]
+     ~@forms))
 
 (defn merge-metadata*
   "Merge the original value's metadata into the new value's metadata.
@@ -12,7 +44,7 @@
   fn to do the merge. The :rule/merge-meta key will be removed from the
   resulting metadata."
   ([rule]
-   (set-post-processor rule merge-metadata*))
+   (with-post-processor rule merge-metadata*))
   ([rule value orig-value env orig-env]
    (if (or (identical? value orig-value) (not (meta? value)))
      [value env]
@@ -33,7 +65,7 @@
   value through unchanged. The :rule/merge-meta key will be removed from the
   resulting metadata."
   ([rule]
-   (set-post-processor rule deep-merge-metadata*))
+   (with-post-processor rule deep-merge-metadata*))
   ([rule value orig-value env orig-env]
    (if (identical? value orig-value)
      [value env]
@@ -46,17 +78,26 @@
             value)
           env])))))
 
+
 (defmacro deep-merge-metadata
   "All rules defined within this form will perform a deep metadata merge. All
   metadata recursively found in the matched data will be merged into the result
   data. The idea is to preserve metadata in compiler transformations, etc."
   [& forms]
-  `(binding [*post-processor* deep-merge-metadata*]
+  `(use-post-processor deep-merge-metadata*
      ~@forms))
 
 (defmacro raw
   "Don't attach any post-processing to rules defined within this form"
   [& forms]
-  `(binding [*post-processor* nil
-             *identity-rule-post-processor* nil]
+  `(use-post-processors nil nil
      ~@forms))
+
+(defn rule-name [rule]
+  (let [m (:rule (meta rule))]
+    (or (:name m) (:pattern m))))
+
+(defn mark-success
+  "Capture in the env that the rule succeeded."
+  [rule value _ env _]
+  [value (update env :rule/success (fnil conj []) (rule-name rule))])
