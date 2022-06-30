@@ -28,7 +28,9 @@
               rule
               success
               success:env
-              rule-name)
+              rule-name
+              deep-merge-metadata
+              raw)
              (pattern.r3.combinators
               rule-list
               rule-list!

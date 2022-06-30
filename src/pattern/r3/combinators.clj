@@ -442,7 +442,7 @@
                                    [(conj result r) env]))
                                [(empty datum) env] datum)
           result (if (list? result) (reverse result) result)]
-      [(if (and (= result datum) (meta= result datum))
+      [(if (identical? result datum)
          datum
          (if (meta result)
            result
