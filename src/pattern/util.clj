@@ -11,6 +11,7 @@
 (defn- build-coll [orig children]
   (with-meta
     (cond (instance? clojure.lang.Cons orig) (list* children)
+          (chunked-seq? orig) (list* orig)
           (list? orig) (list* children)
           :else (into (empty orig) children))
     (meta orig)))
