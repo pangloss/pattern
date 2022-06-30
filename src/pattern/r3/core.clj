@@ -1,6 +1,6 @@
 (ns pattern.r3.core
   "This namespace bootstraps the core rule macro and some utility functions."
-  (:require [pattern.match.core :refer [pattern-names]]
+  (:require [pattern.match.core :refer [pattern-names compile-pattern]]
             pattern.matchers
             [genera.trampoline :refer [bounce?]]
             [pattern.substitute :refer [substitute]]
@@ -107,11 +107,16 @@
              ~@(extract-args matches args)]
          ~handler-body))))
 
+(def listy? (compile-pattern '(??_)))
+
 (defmacro rule
   "Create a single rule. There are 2 arities, both with unique behavior.
 
   Arity 1: [pattern] -> identity rule (see below)
-  Arity 2: [pattern body] -> simple replacement rule
+  Arity 2.a: [pattern body] -> simple replacement rule
+  Arity 2.b: [name pattern] -> named identity rule
+  Arity 3: [name pattern body] -> named simple replacement rule
+
 
   If the `body` of arity 2 is nil/false the rule fails the same as if it had not
   matched at all. If the matcher can backtrack and make another match, it may
@@ -125,6 +130,10 @@
 
       (rule '(?a [?b]) (+ a b))
 
+  The same rule, named:
+
+      (rule add-a-to-b0 '(?a [?b]) (+ a b))
+
   Rules may have unquote and spliced unquote in their definitions even if they are
   defined as normal quoted lists. The functionality is provided by a ruleset in
   pattern.r3.rewrite/spliced. It allows the following, but note that splices in rule
@@ -133,9 +142,17 @@
       (rule '[(? a ~my-pred) ~@my-seq-of-things]
             {:matched a})
 
-  A rule with no handler will act as an identity rule, and will always match.
-  This may be useful within rule lists or for other higher level rule
-  combinators that make use of the rule metadata in the match expression."
+  A rule with no handler will act as an identity rule, and will always match if
+  the pattern matches.  This may be useful within rule lists or for other higher
+  level rule combinators that make use of the rule metadata in the match
+  expression. For example:
+
+      (rule '?->expression)
+
+  Or the same rule, named:
+
+      (rule expression '?->expression)
+  "
   ([pattern]
    (let [args (pattern-args pattern)
          matches (gensym 'matches)]
@@ -146,11 +163,23 @@
           {:may-call-success0? true
            :src '(success)}))))
   ([pattern handler-body]
-   `(let [p# ~(@spliced (@scheme-style pattern))]
-      (make-rule p#
-        (rule-fn-body ~(pattern-args pattern) ~(:env-args (meta pattern))
-          ~handler-body)
-        raw-matches
-        *post-processor*
-        {:may-call-success0? ~(may-call-success0? handler-body)
-         :src '~handler-body}))))
+   (if (listy? pattern)
+     `(let [p# ~(@spliced (@scheme-style pattern))]
+        (make-rule p#
+          (rule-fn-body ~(pattern-args pattern) ~(:env-args (meta pattern))
+            ~handler-body)
+          raw-matches
+          *post-processor*
+          {:may-call-success0? ~(may-call-success0? handler-body)
+           :src '~handler-body}))
+     `(rule-name '~pattern (rule ~handler-body))))
+  ([name pattern handler-body]
+   `(rule-name '~name
+      (let [p# ~(@spliced (@scheme-style pattern))]
+        (make-rule p#
+          (rule-fn-body ~(pattern-args pattern) ~(:env-args (meta pattern))
+            ~handler-body)
+          raw-matches
+          *post-processor*
+          {:may-call-success0? ~(may-call-success0? handler-body)
+           :src '~handler-body})))))
