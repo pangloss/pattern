@@ -49,6 +49,8 @@
   "According to the racket docs this is about primitive fns. I guess that's a clojure function in this context?"
   fn?)
 
+(def Let 'let)
+
 (defpass parse-scheme (=> nil Lsrc)
   (let [parse* (fn parse* [e*] (map parse-scheme e*))
         primitive->primitive-transformer
@@ -77,119 +79,120 @@
                       (primitive? x) (primitive->primitive-transformer x)
                       :else (throw (ex-info "unbound" {:x x}))))
 
-        make-var-transformer (fn [sym var]
-                               (fn [env x]
-                                 (match! [sym x]
-                                   '[?id ?id] var
-                                   '[?id (?id ??e*)] (sub (?var ~@(map #(parse-scheme % env) e*)))
-                                   '[?id (set! ?id ?e)] (sub (set! ?var ~(parse-scheme e env))))))
+         make-var-transformer (fn [sym var]
+                                (fn [env x]
+                                  (match! [sym x]
+                                    '[?id ?id] var
+                                    '[?id (?id ??e*)] (sub (?var ~@(map #(parse-scheme % env) e*)))
+                                    '[?id (set! ?id ?e)] (sub (set! ?var ~(parse-scheme e env))))))
 
-        extend-env (fn [env x transformer]
-                     (assoc env x transformer))
+         extend-env (fn [env x transformer]
+                      (assoc env x transformer))
 
-        extend-var-env (fn [env [x var]]
-                         (extend-env env x (make-var-transformer x var)))
+         extend-var-env (fn [env [x var]]
+                          (extend-env env x (make-var-transformer x var)))
 
-        extend-var-env* (fn [env x* var*]
-                          (reduce extend-var-env
-                            env
-                            (map vector x* var*)))
+         extend-var-env* (fn [env x* var*]
+                           (reduce extend-var-env
+                             env
+                             (map vector x* var*)))
 
-        ;; create an initial env with each of the following expressions added as pattern match functions of [env x].
-        ;; each group is (group-name [pattern handler] ...)
+         ;; create an initial env with each of the following expressions added as pattern match functions of [env x].
+         ;; each group is (group-name [pattern handler] ...)
 
-        ;; If the supplied x matches the pattern (the leading _ is the group-name). If it matches, the handler is called and
+         ;; If the supplied x matches the pattern (the leading _ is the group-name). If it matches, the handler is called and
 
-        ;; If it's marked with <- or ?:<- the result is wrapped in the output language construct (uses $top-level-value ),
-        ;; as is any value that's unquoted into the expression.
-        initial-env
-        (let [parse-marked-rules (fn [& rules]
-                                   (directed parse-scheme (rule-list rules)))
-              simple-rules (fn [& rules]
-                             (rule-list rules))]
-          ;; NOTE: below, >- indicates passing the value through parse-scheme because
-          ;;   (directed f ...) maps >- to its f argument.
-          {'quote
-           (simple-rules (rule '(quote ?d)
-                           (if (datum? d)
-                             (sub (quote ?d))
-                             (errorf who "expected datum, but got ~s" d))))
-           'if
-           (parse-marked-rules
-             (rule '(if ?>-e0 ?>-e1) (sub (if ?e0 ?e1 (?:<- ~'(void-pr)))))
-             (rule '(if ?>-e0 ?>-e1 ?>-e2) (sub (if ?e0 ?e1 ?e2))))
-           'and
-           (parse-marked-rules
-             (rule '(and) '(quote true))
-             (rule '(and ?>-e) e)
-             (rule '(and ?>-e0 ?e1 ??e*)
-               (sub (if ?e0
-                      ~(descend (sub (and ?e1 ??e*)))
-                      (quote false)))))
-           'or
-           (parse-marked-rules
-             (rule '(or) '(quote false))
-             (rule '(or ?>-e) e)
-             (rule '(or ?>-e0 ?e1 ??e*)
-               (let [t (gensym "t")]
-                 (sub (let [?t ?e0]
-                        (if ?t ?t ~(descend (sub (or ?e1 ??e*)))))))))
-           'not
-           (parse-marked-rules
-             (rule '(not ?e) (sub (if ?e (quote false) (quote true)))))
-           'begin
-           (parse-marked-rules
-             (rule '(begin ?>-e) e)
-             (rule '(begin ??>-e* ?>-e) (sub (begin ??e* ?e))))
-           'lambda
-           (parse-marked-rules
-             (rule '(lambda (??x*) ?>-e)
-               (let [v* (mapv make-var x*)
-                     env (extend-var-env* %env x* v*)]
-                 (sub (lambda (??<-v*) ?e))))
-             ;; FIXME: >- is called but does not have the env update that happens in the body so it's useless.
-             ;; also, env is built and thrown away now because the parse hidden in >- doesn't get recursively fed with it.
-             (rule '(lambda (??x*) ??>-e* ?>-e)
-               (let [v* (mapv make-var x*)
-                     env (extend-var-env* %env x* v*)]
-                 (sub (lambda (??<-v*) (?:<- (begin ??e* ?e)))))))
-           'let
-           (parse-marked-rules
-             (rule '(let ((?:* [?x0* ?>-e0*])) ?>-e)
-               (let [v0* (map make-var x0*)
-                     env (extend-var-env* %env x0* v0*)]
-                 (sub (let ((?:* [?v0* ?e0*])) ?e))))
-             (rule '(let ((?:* [?x0* ?>-e0*])) ??>-e* ?>-e)
-               (let [v0* (map make-var x0*)
-                     env (extend-var-env* %env x0* v0*)]
-                 (sub (let ((?:* [?v0* ?e0*])) (?:<- (begin ??e* ?e)))))))
-           'letrec
-           (parse-marked-rules
-             (rule '(letrec ((?:* [?x0* ?>-e0*])) ?>-e)
-               (let [v0* (map make-var x0*)
-                     env (extend-var-env* %env x0* v0*)]
-                 (sub (letrec ((?:* [?v0* ?e0*]))
-                        ?e))))
-             (rule '(letrec ((?:* [?x0* ?>-e0*])) ??>-e* ?>-e)
-               (let [v0* (map make-var x0*)
-                     env (extend-var-env* %env x0* v0*)]
-                 (sub (letrec ((?:* [?v0* ?e0*]))
-                        (?:<- (begin ??e* ?e)))))))
-           'set!
-           (rule '(set! ?x ?e)
-             (let [t (apply-env %env x)]
-               (t %env (sub (set! ?x ?e)))))})]
-    (let-rulefn [(parse (===> nil Expr) [env]
-                   [(rule '(? imm immed?) (sub (quote ?imm)))
-                    ;; if these two rules match, use the rules stored in the env, above.
-                    (rule '(? sym ~initial-env) ((apply-env env sym) env sym))
-                    (rule '((? sym ~initial-env) ??e*) ((apply-env env sym) env (sub (?sym ??e*))))
-                    (rule '(?->e ??->e*) (sub (?e ??e*)))
-                    (rule '?x (throw (ex-info "expected Expr but got:" {:x x})))])
-                 #_ ;; example...
-                 (my-group (=> nil Expr) [ir env]
-                   [(rule-group [parse other])])]
-      <>))
+         ;; If it's marked with <- or ?:<- the result is wrapped in the output language construct (uses $top-level-value ),
+         ;; as is any value that's unquoted into the expression.
+         initial-env
+         (let [parse-marked-rules (fn [& rules]
+                                    (directed parse-scheme (rule-list rules)))
+               simple-rules (fn [& rules]
+                              (rule-list rules))]
+           ;; NOTE: below, >- indicates passing the value through parse-scheme because
+           ;;   (directed f ...) maps >- to its f argument.
+           {'quote
+            (simple-rules (rule '(quote ?d)
+                            (if (datum? d)
+                              (sub (quote ?d))
+                              (errorf who "expected datum, but got ~s" d))))
+            'if
+            (parse-marked-rules
+              (rule '(if ?>-e0 ?>-e1) (sub (if ?e0 ?e1 (?:<- ~'(void-pr)))))
+              (rule '(if ?>-e0 ?>-e1 ?>-e2) (sub (if ?e0 ?e1 ?e2))))
+            'and
+            (parse-marked-rules
+              (rule '(and) '(quote true))
+              (rule '(and ?>-e) e)
+              (rule '(and ?>-e0 ?e1 ??e*)
+                (sub (if ?e0
+                       ~(descend (sub (and ?e1 ??e*)))
+                       (quote false)))))
+            'or
+            (parse-marked-rules
+              (rule '(or) '(quote false))
+              (rule '(or ?>-e) e)
+              (rule '(or ?>-e0 ?e1 ??e*)
+                (let [t (gensym "t")]
+                  (sub (let [?t ?e0]
+                         (if ?t ?t ~(descend (sub (or ?e1 ??e*)))))))))
+            'not
+            (parse-marked-rules
+              (rule '(not ?e) (sub (if ?e (quote false) (quote true)))))
+            'begin
+            (parse-marked-rules
+              (rule '(begin ?>-e) e)
+              (rule '(begin ??>-e* ?>-e) (sub (begin ??e* ?e))))
+            'lambda
+            (parse-marked-rules
+              (rule '(lambda (??x*) ?>-e)
+                (let [v* (mapv make-var x*)
+                      env (extend-var-env* %env x* v*)]
+                  (sub (lambda (??<-v*) ?e))))
+              ;; FIXME: >- is called but does not have the env update that happens in the body so it's useless.
+              ;; also, env is built and thrown away now because the parse hidden in >- doesn't get recursively fed with it.
+              (rule '(lambda (??x*) ??>-e* ?>-e)
+                (let [v* (mapv make-var x*)
+                      env (extend-var-env* %env x* v*)]
+                  (sub (lambda (??<-v*) (?:<- (begin ??e* ?e)))))))
+            'let
+            (parse-marked-rules
+              (rule '(~Let ((?:* [?x0* ?>-e0*])) ?>-e)
+                (let [v0* (map make-var x0*)
+                      env (extend-var-env* %env x0* v0*)]
+                  (sub (?Let ((?:* [?v0* ?e0*])) ?e))))
+              (rule '(~Let ((?:* [?x0* ?>-e0*])) ??>-e* ?>-e)
+                (let [v0* (map make-var x0*)
+                      env (extend-var-env* %env x0* v0*)]
+                  (sub (?Let ((?:* [?v0* ?e0*])) (?:<- (begin ??e* ?e)))))))
+            'letrec
+            (parse-marked-rules
+              (rule '(letrec ((?:* [?x0* ?>-e0*])) ?>-e)
+                (let [v0* (map make-var x0*)
+                      env (extend-var-env* %env x0* v0*)]
+                  (sub (letrec ((?:* [?v0* ?e0*]))
+                         ?e))))
+              (rule '(letrec ((?:* [?x0* ?>-e0*])) ??>-e* ?>-e)
+                (let [v0* (map make-var x0*)
+                      env (extend-var-env* %env x0* v0*)]
+                  (sub (letrec ((?:* [?v0* ?e0*]))
+                         (?:<- (begin ??e* ?e)))))))
+            'set!
+            (rule '(set! ?x ?e)
+              (let [t (apply-env %env x)]
+                (t %env (sub (set! ?x ?e)))))})]
+     (let-rulefn [(parse (===> nil Expr)
+                    [(rule '(? imm immed?) (sub (quote ?imm)))
+                     ;; if these two rules match, use the rules stored in the env, above.
+                     (rule '(? sym ~initial-env) ((apply-env (:env %env) sym) (:env %env) sym))
+                     (rule '((? sym ~initial-env) ??e*) ((apply-env (:env %env) sym) (:env %env) (sub (?sym ??e*))))
+                     (rule '(?->e ??->e*) (sub (?e ??e*)))
+                     (rule '?x (throw (ex-info "expected Expr but got:" {:x x})))])
+                  #_ ;; example...
+                  (my-group (=> nil Expr) [ir env]
+                    [(rule-group [parse other])])]
+       <>))
+  ;; NOTE: this block must be OUTSIDE of the above let block
   ([ir]
    (parse ir initial-env)))
 
