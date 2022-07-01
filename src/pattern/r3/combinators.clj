@@ -419,12 +419,19 @@
                                               (assoc m k (meta v)))
                                             {} name-rule-pairs)}}))))
 
+(defn empty!
+  "Map entries don't implement empty, vectors retain their metadata."
+  [x]
+  (if (map-entry? x)
+    []
+    (empty x)))
+
 (defn- try-subexpressions [the-rule datum env events]
   (if (and (seqable? datum) (not (string? datum)))
     (let [[result env] (reduce (fn [[result env] d]
                                  (let [[r env] (run-rule the-rule d events env)]
                                    [(conj result r) env]))
-                               [(empty datum) env] datum)
+                         [(empty! datum) env] datum)
           result (if (list? result) (reverse result) result)]
       [(if (and (= result datum) (meta= result datum))
          datum
@@ -447,13 +454,13 @@
        (do-on-subexpr data env nil succeed fail))
       ([datum orig-env events y n]
        ;; TODO: how does events fit?
-       (letfn [(on-expr [datum env events on-result fail]
-                 (let [[done env] (try-subexpressions on-expr datum env events)
+       (letfn [(on-subex-expr [datum subex-env events on-result fail]
+                 (let [[done env] (try-subexpressions on-subex-expr datum subex-env events)
                        [answer env] (run-rule the-rule done events env)]
                    (if (and (= done answer) (meta= done answer))
                      (on-result done env fail)
                      (on-result answer env fail))))]
-         (let [[done env] (run-rule on-expr datum events orig-env)]
+         (let [[done env] (run-rule on-subex-expr datum events orig-env)]
            (if (and (= done datum) (meta= done datum) (= orig-env env))
              (n)
              (y done env n))))))
@@ -506,14 +513,15 @@
       ([data env succeed fail]
        (enter-simplifier data env nil succeed fail))
       ([datum orig-env events y n]
-       (letfn [(on-expr [datum env events on-result f]
-                 (let [[done env] (try-subexpressions on-expr datum env events)
-                       [answer env] (run-rule the-rule done events env)]
-                   (if (and (= done answer) (meta= done answer))
-                     (on-result done env f)
-                     (on-expr answer env events on-result f))))]
-         (let [[done env] (run-rule on-expr datum events orig-env)]
-           (if (and (= done datum) (meta= done datum) (= orig-env env))
+       (let [on-simplifier-expr
+             (fn on-simplifier-expr [datum simp-env events on-result f]
+               (let [[done env] (try-subexpressions on-simplifier-expr datum simp-env events)
+                     [answer env] (run-rule the-rule done events env)]
+                 (if (and (= done answer) (meta= done answer))
+                   (on-result done env f)
+                   (on-simplifier-expr answer env events on-result f))))]
+         (let [[done env] (run-rule on-simplifier-expr datum events orig-env)]
+           (if (and (= done datum) (meta= done datum) (= env orig-env))
              (n)
              (y done env n))))))
     {:rule (assoc (meta the-rule)

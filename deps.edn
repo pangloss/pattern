@@ -16,6 +16,8 @@
  {:test {:extra-paths ["test"]
          :extra-deps {org.clojure/test.check {:mvn/version "1.1.0"}}
          :jvm-opts ["-XX:-OmitStackTraceInFastThrow"]}
+  :repl {:extra-deps {com.github.jpmonettas/flow-storm-dbg {:mvn/version "2.2.99"}
+                      com.github.jpmonettas/flow-storm-inst {:mvn/version "2.2.99"}}}
   :runner
   {:extra-deps {com.cognitect/test-runner
                 {:git/url "https://github.com/cognitect-labs/test-runner"

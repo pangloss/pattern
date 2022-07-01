@@ -47,6 +47,7 @@
               descend
               descend-all
               on-subexpressions
+              iterated
               simplifier
               directed
               on-mutual
