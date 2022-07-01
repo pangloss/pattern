@@ -1,5 +1,6 @@
 (ns pattern.r3.post-process
-  (:require [pattern.r3.rule :refer [->Rule *post-processor* *identity-rule-post-processor*]]
+  (:require [pattern.r3.rule :refer [->Rule rule-name
+                                     *post-processor* *identity-rule-post-processor*]]
             [pattern.util :refer [meta? deep-merge-meta]])
   (:import (pattern.r3.rule Rule)))
 
@@ -37,6 +38,11 @@
              *identity-rule-post-processor* ~ident-rule-pp]
      ~@forms))
 
+(defn post-processors
+  "Get the currently active default post-processors"
+  []
+  [*post-processor* *identity-rule-post-processor*])
+
 (defn merge-metadata*
   "Merge the original value's metadata into the new value's metadata.
 
@@ -67,7 +73,7 @@
   ([rule]
    (with-post-processor rule deep-merge-metadata*))
   ([rule value orig-value env orig-env]
-   (if (identical? value orig-value)
+   (if (or (identical? value orig-value) (not (meta? value)))
      [value env]
      (let [merge-meta (:rule/merge-meta (meta value) merge)]
        (if merge-meta
@@ -92,10 +98,6 @@
   [& forms]
   `(use-post-processors nil nil
      ~@forms))
-
-(defn rule-name [rule]
-  (let [m (:rule (meta rule))]
-    (or (:name m) (:pattern m))))
 
 (defn mark-success
   "Capture in the env that the rule succeeded."

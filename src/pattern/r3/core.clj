@@ -41,7 +41,7 @@
   [env]
   (success (success) env))
 
-(defn rule-name
+(defn name-rule
   "Attach a rule name to the given object's metadata."
   [name rule]
   (vary-meta rule assoc-in [:rule :name] name))
@@ -171,7 +171,7 @@
         {:may-call-success0? ~(may-call-success0? handler-body)
          :src '~handler-body})))
   ([name pattern handler-body]
-   `(rule-name '~name
+   `(name-rule '~name
       (let [p# ~(@spliced (@scheme-style pattern))]
         (make-rule p#
           (rule-fn-body ~(pattern-args pattern) ~(:env-args (meta pattern))

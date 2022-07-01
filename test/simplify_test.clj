@@ -5,7 +5,7 @@
             [pattern.r3.combinators :refer [rule-list rule-simplifier
                                             iterated]]
             [pattern.r3.core :refer [rule
-                                     rule-name]]
+                                     name-rule]]
             [pattern.match.predicator :refer [*pattern-replace* make-abbr-predicator]]
             [pattern.r3.rewrite :refer [sub quo pure-pattern]]))
 ;;; Helper functions for an algebraic simplifier
@@ -50,18 +50,18 @@
         x))
 
 (defn unary-elimination [& ops]
-  (rule-name :unary-elimination
+  (name-rule :unary-elimination
              (rule `((? op ~(set ops)) ?x)
                    x)))
 
 (defn constant-elimination [op constant]
-  (rule-name :constant-elimination
+  (name-rule :constant-elimination
              (rule `(~op ??items)
                    (let [items (remove #{constant} items)]
                      (sub (?op ??items))))))
 
 (defn constant-promotion [op constant]
-  (rule-name :constant-promotion
+  (name-rule :constant-promotion
              (rule `(~op ??x*)
                    (when (some #(= % constant) x*)
                      (sub (?op ?constant))))))
@@ -73,14 +73,14 @@
            (sub (?op ??a ??b ??c))))))
 
 (defn commutative [& ops]
-  (rule-name :commutative
+  (name-rule :commutative
              (rule `((? op ~(set ops)) ??exprs)
                    (let [sorted (sort-expressions exprs)]
                      (when (not= sorted exprs)
                        (sub (?op ??sorted)))))))
 
 (defn idempotent [& ops]
-  (rule-name :idempotent
+  (name-rule :idempotent
              (rule `((? op ~(set ops)) ??exprs)
                    (let [exprs (distinct exprs)]
                      (sub (?op ??exprs))))))

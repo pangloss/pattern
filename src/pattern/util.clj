@@ -8,16 +8,23 @@
     (instance? IMeta x)
     (instance? IObj x)))
 
-(defn- build-coll [orig children]
+(defn build-coll [orig children]
   (with-meta
     (cond (instance? clojure.lang.Cons orig) (list* children)
           (chunked-seq? orig) (list* orig)
+          (instance? clojure.lang.LazySeq orig) (list* orig)
           (list? orig) (list* children)
-          :else (into (empty orig) children))
+          (map-entry? orig) (vec children)
+          (map? orig) (into {} children)
+          (vector? orig) (into [] children)
+          :else (throw (ex-info "unknown coll" {:type (type orig) :orig orig})))
     (meta orig)))
 
-(defn- make-zipper [x]
+(defn make-zipper [x]
   (zip/zipper sequential? seq build-coll x))
+
+(defn make-zipper+map [x]
+  (zip/zipper (some-fn sequential? map? map-entry?) seq build-coll x))
 
 (defn- find-last-equiv-node [ot nt]
   (loop [oz (make-zipper ot)

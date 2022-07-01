@@ -23,7 +23,7 @@
   (:require [pattern.match.core :refer [matcher-type-for-dispatch var-name matcher-mode
                                         named-matcher? simple-named-var?]]
             pattern.matchers ;; just to ensure the ns is loaded
-            [pattern.r3.core :as r :refer [rule success rule-name pattern-args]]
+            [pattern.r3.core :as r :refer [rule success name-rule pattern-args]]
             [clojure.walk :as walk]
             [pattern.r3.combinators :refer [descend
                                             rule-list in-order rule-simplifier
@@ -36,7 +36,7 @@
 (def remove-expressions
   "Replace all unquoted expressions with 'identity but leave the structure of the
   expression unmodified."
-  (rule-name :remove-expressions
+  (name-rule :remove-expressions
              (directed
               (rule-list [(rule `(seq ?->s)
                                 `(seq ~s))
@@ -62,7 +62,7 @@
   "Evaluate syntax quoted forms "
   ;; The result will run through `sub` and would match, but by using
   ;; `success` to wrap the result, it should not get any substitutions done:
-  (rule-name :evaluate-structure
+  (name-rule :evaluate-structure
              (directed
               (rule-list [(rule `(seq ?->s) s)
                           (rule `(sequence ?->s) s)
@@ -89,7 +89,7 @@
           If you call this directly outside of a macro, the input needs to be
           _double syntax quoted_ or you will just get `identity` back!"
     :arglists '([pattern])}
-  (rule-name :pure-pattern
+  (name-rule :pure-pattern
              (in-order [remove-expressions
                         evaluate-structure])))
 
@@ -114,7 +114,7 @@
         (apply array-map items)))))
 
 (def remove-symbol-namespaces
-  (rule-name :remove-symbol-namespaces
+  (name-rule :remove-symbol-namespaces
              (directed
               (rule-list [(rule `(list ?->item)
                                 `(list ~item))
@@ -177,7 +177,7 @@
    []))
 
 (def do-unquote*
-  (rule-name :do-unquote
+  (name-rule :do-unquote
              (rule-list [(rule '((?:literal clojure.core/unquote) ?x)
                                `(list ~x))
                          (rule '((?:literal clojure.core/unquote-splicing) ?x)
@@ -188,7 +188,7 @@
   (simplifier do-unquote*))
 
 (def to-syntax-quote*
-  (rule-name :to-syntax-quote
+  (name-rule :to-syntax-quote
              (rule-list [;; vector
                          (rule '[(?:* ?items)]
                                `(list (apply vector ~(seq (second (descend (seq items)))))))
@@ -219,7 +219,7 @@
 (def ^:dynamic *on-marked-insertion* identity)
 
 (def expand-pattern
-  (rule-name :expand-pattern
+  (name-rule :expand-pattern
              (directed
               (rule-list [do-unquote*
 
@@ -310,7 +310,7 @@
                           to-syntax-quote*]))))
 
 (def simplify-expr
-  (rule-name :simplify-expr
+  (name-rule :simplify-expr
              (rule-simplifier
               [(rule `(seq (concat)) nil)
                (rule `(seq (concat (?:* (list ?item))))
@@ -321,7 +321,7 @@
                (rule '(quote (? x number?)) x)])))
 
 (def simplify-more
-  (rule-name :simplify-more
+  (name-rule :simplify-more
              (rule-simplifier
               [(rule `(list (?:* (?:or (~'quote ?x*) (? x* number?))))
                      `(~'quote (~@x*)))
@@ -333,13 +333,13 @@
                      `(~'quote {~@[] ~@x*}))])))
 
 (def unwrap-list
-  (rule-name :unwrap-list
+  (name-rule :unwrap-list
              (rule-list [(rule `(list ?x) x)
                          (rule `(?:as expr ((? op #{if let seq}) ??rest))
                                `(first ~expr))
                          (rule `(? x symbol?) `(first ~x))])))
 
-(def unwrap-quote (rule-name :unwrap-quote (rule `(~'quote ?x) x)))
+(def unwrap-quote (name-rule :unwrap-quote (rule `(~'quote ?x) x)))
 
 (def scheme-style
   (on-subexpressions
@@ -351,7 +351,7 @@
 (reset! r/scheme-style #'scheme-style)
 
 (def qsub*
-  (rule-name :qsub
+  (name-rule :qsub
              (in-order [scheme-style
                         expand-pattern
                         remove-symbol-namespaces
@@ -362,7 +362,7 @@
 
 (def qsub+
   "Same as qsub* but keeps symbol namespaces"
-  (rule-name :qsub+
+  (name-rule :qsub+
              (in-order [scheme-style
                         expand-pattern
                         unwrap-list
@@ -370,7 +370,7 @@
                         simplify-more])))
 
 (def splice*
-  (rule-name :splice
+  (name-rule :splice
              (in-order [(directed to-syntax-quote*)
                         unquote-all*
                         unwrap-list

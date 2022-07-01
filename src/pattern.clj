@@ -2,6 +2,7 @@
   (:require pattern.matchers
             pattern.substitute
             pattern.r3.core
+            pattern.r3.rule
             pattern.r3.post-process
             pattern.r3.combinators
             pattern.r3.rewrite
@@ -29,9 +30,15 @@
               rule
               success
               success:env
-              rule-name)
+              name-rule)
+             (pattern.r3.rule
+               rule-name)
              (pattern.r3.post-process
               deep-merge-metadata
+              mark-success
+              use-post-processors
+              use-post-processor
+              post-processors
               raw)
              (pattern.r3.combinators
               rule-list

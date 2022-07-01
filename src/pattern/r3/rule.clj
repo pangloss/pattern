@@ -46,6 +46,12 @@
     (.env ^SuccessEnv x)
     env))
 
+(defn rule-name
+  "Get the name or pattern to identify the rule."
+  [rule]
+  (let [m (:rule (meta rule))]
+    (or (:name m) (:pattern m))))
+
 (defn run-rule
   "Runs a rule and returns either the successfully updated value or the original
   if the rule fails."
