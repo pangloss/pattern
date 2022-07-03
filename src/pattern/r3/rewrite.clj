@@ -296,6 +296,11 @@
                                               ~(with-meta `(seq (concat ~@(interleave k v)))
                                                  {::ordered true}))))
 
+                          (rule '((?:literal ?:*map) ?ks ?vs)
+                                `(list (apply array-map
+                                         ~(with-meta `(interleave ~(var-name ks) ~(var-name vs))
+                                                 {::ordered true}))))
+
                           ;; if
                           (rule '((?:literal ?:if) ?pred ?->then (?:? ?->else))
                                 `(let [then# ~then]
