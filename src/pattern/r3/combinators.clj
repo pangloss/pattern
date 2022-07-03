@@ -419,12 +419,12 @@
                                               (assoc m k (meta v)))
                                             {} name-rule-pairs)}}))))
 
-(defn empty!
-  "Map entries don't implement empty, vectors retain their metadata."
+(defn- empty!
+  "Map entries don't implement empty. I need vectors without their metadata."
   [x]
-  (if (map-entry? x)
-    []
-    (empty x)))
+  (cond (map-entry? x) []
+        (vector? x) []
+        :else (empty x)))
 
 (defn- try-subexpressions [the-rule datum env events]
   (if (and (seqable? datum) (not (string? datum)))

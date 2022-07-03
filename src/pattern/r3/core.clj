@@ -114,7 +114,6 @@
   Arity 2: [pattern body] -> simple replacement rule
   Arity 3: [name pattern body] -> named simple replacement rule
 
-
   If the `body` of arity 2 is nil/false the rule fails the same as if it had not
   matched at all. If the matcher can backtrack and make another match, it may
   attempt tho body/dict expression multiple times.  Once the expression returns
@@ -151,7 +150,13 @@
       (rule expression '?->expression (success))
 
   Side note, `(rule name '?->e)` seems nice, and I tried it but sometimes one may
-  want `(rule symbol :found)`. It's a recipe for weird breakage so I removed it."
+  want `(rule symbol :found)`. It's a recipe for weird breakage so I removed it.
+
+  Environment args:
+
+  A rule can bind arguments from its environment by attaching metadata to the input rule as follows:
+
+      (rule set-var ^{:env-args [var-name]} '?form (sub (set ?var-name ?form)))"
   ([pattern]
    (let [args (pattern-args pattern)
          matches (gensym 'matches)]
