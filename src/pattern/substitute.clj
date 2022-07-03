@@ -164,26 +164,32 @@
   (let [fail-token (->SubFail pattern)
         my-fail (constantly fail-token)
         s (sub-optional pattern my-fail)]
-    (fn [dict fail]
-      (let [r (s dict nil)]
-        (if (= fail-token r)
-          (if fail
-            (fail dict nil pattern)
-            [pattern])
-          (apply hash-map r))))))
+    (if (odd? (count (rest pattern)))
+      (throw (ex-info "Invalid map pattern. Must have an even number of pattern elements"
+               {:pattern pattern}))
+      (fn [dict fail]
+        (let [r (s dict nil)]
+          (if (= fail-token r)
+            (if fail
+              (fail dict nil pattern)
+              [pattern])
+            [(apply hash-map r)]))))))
 
 (defn- sub-many-map [[_ k* v* :as pattern]]
   (let [kf (sub* k*)
         vf (sub* v*)]
-    (fn [dict fail]
-      (let [k (kf dict fail)
-            v (vf dict fail)]
-        (cond (instance? SubFail k) k
-              (instance? SubFail v) v
-              (and (sequential? (first k)) (sequential? (first v)))
-              [(zipmap (first k) (first v))]
-              fail (fail dict nil pattern)
-              :else [pattern])))))
+    (if (not= 3 (count pattern))
+      (throw (ex-info "Invalid zipmap pattern. Must have exactly 2 pattern elements"
+               {:pattern pattern}))
+      (fn [dict fail]
+        (let [k (kf dict fail)
+              v (vf dict fail)]
+          (cond (instance? SubFail k) k
+                (instance? SubFail v) v
+                (and (sequential? (first k)) (sequential? (first v)))
+                [(zipmap (first k) (first v))]
+                fail (fail dict nil pattern)
+                :else [pattern]))))))
 
 (defn- sub-many
   ([pattern]

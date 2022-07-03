@@ -2,7 +2,8 @@
   (:require [clojure.test :refer :all]
             [pattern.substitute :refer [substitute]]
             [pattern.match.core :refer [matcher var-name *disable-modes*]]
-            [pure-conditioning :as c :refer [manage restart-with handler-cond]]))
+            [pure-conditioning :as c :refer [manage restart-with handler-cond]]
+            [clojure.test :as t]))
 
 
 (deftest sub-optional
@@ -65,6 +66,35 @@
   (is (= []
          (substitute '[(?:when symbol? ?b ?a)] {'a 'x 'b 999}))))
 
+(deftest sub-map-variants
+  (is (= [{1 2}]
+        (substitute ['(?:map ?a ?b)] {'a 1 'b 2})))
+  (is (= ['(?:map ?a ?b)]
+        (substitute ['(?:map ?a ?b)] {'a 1})))
+  (is (= ['(?:map ?a ?b)]
+        (substitute ['(?:map ?a ?b)] {'b 2})))
+  (is (= [{1 2 2 1}]
+        (substitute ['(?:map ?a ?b ?b ?a)] {'a 1 'b 2})))
+  (is (= ['(?:*map ?a ?b)]
+        (substitute ['(?:*map ?a ?b)] {'a 1 'b 2})))
+  (is (= [{1 2}]
+        (substitute ['(?:*map ?a ?b)] {'a [1] 'b [2]})))
+  (is (= [{1 2 3 4}]
+        (substitute ['(?:*map ?a ?b)] {'a [1 3] 'b [2 4]})))
+  (is (= ['(?:*map ?a ?b)]
+        (substitute ['(?:*map ?a ?b)] {'a [1] 'b 2})))
+  (is (= ['(?:*map ?a ?b)]
+        (substitute ['(?:*map ?a ?b)] {'a 1 'b [2]})))
+  (testing "wrong arities"
+    (is (thrown-with-msg? Exception #"Invalid zipmap pattern.*"
+          (substitute ['(?:*map ?a)] {'a [1]})))
+    (is (thrown-with-msg? Exception #"Invalid zipmap pattern.*"
+          (substitute ['(?:*map)] {'a [1]})))
+    (is (thrown-with-msg? Exception #"Invalid zipmap pattern.*"
+          (substitute ['(?:*map ?a ?b ?c)] {'a [1] 'b [2]})))
+    (is (thrown-with-msg? Exception #"Invalid map pattern.*"
+          (substitute ['(?:map ?a)] {'a 1})))))
+
 
 
 (deftest sub-multi-recursive
@@ -80,10 +110,8 @@
     (is (= '[<> 0 hi <> 1 hi <> 2 hi <> 3 hi]
            (substitute '[(?:* (?:* <> ?x ?y))] {'x [[0 1] [2 3]] 'y 'hi}))))
 
-  (testing "nanopass example (both quoting styles"
+  (testing "nanopass example (both quoting styles)"
     ;; nanopass example
-    ;;      (let ([ef* (map (lambda (x e) `(set! ,x ,e)) x* e*)])
-    ;;        `(begin ,ef* ... ,body)))
     (is (= `(begin (set! a 1) (set! b 2) (set! c 3) (...) ...)
            (substitute `(begin (?:* (set! ?x ?e)) ??body)
                        {'x `[a b c] 'e [1 2 3] 'body `[(...) ...]})))
