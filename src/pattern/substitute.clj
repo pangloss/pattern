@@ -62,7 +62,48 @@
                                         pattern)
                                 {:pattern pattern :value r}))))))))
 
-(defn- sub-or-reduced [acc dict fail fail-token]
+(defn- sub-or [[_ & alts :as pattern]]
+  (let [alts (map sub* alts)
+        my-fail (->SubFail pattern)]
+    (fn [dict fail]
+      (let [fail (or fail (constantly my-fail))
+            r (reduce
+                (fn [r alt]
+                  (let [v (alt dict fail)]
+                    (if (instance? SubFail v)
+                      v
+                      (reduced v))))
+                [] alts)]
+        (if (= r my-fail)
+          [pattern]
+          r)))))
+
+(defn- sub-and [[_ & alts :as pattern]]
+  (let [alts (map sub* alts)
+        my-fail (->SubFail pattern)]
+    (fn [dict fail]
+      (let [fail (or fail (constantly my-fail))
+            r (reduce
+                (fn [r alt]
+                  (let [v (alt dict fail)]
+                    (if (instance? SubFail v)
+                      (reduced v)
+                      v)))
+                [] alts)]
+        (if (= r my-fail)
+          [pattern]
+          r)))))
+
+(defn- sub-or-reduced
+  "Returns a reducer function with the following behavior.
+
+  If substitution succeeds, the result will be the appended to the resultset.
+
+  Otherwise, if (= fail-token (fail)), the result of the reduce operation will
+  be an empty resultset because this will return (reduced []). But if
+  (not= fail-token (fail)), the result will be (reduced (fail)), ie. some other fail
+  token. "
+  [acc dict fail fail-token]
   (fn [r f]
     (let [s (f dict fail)]
       (if (instance? SubFail s)
@@ -72,6 +113,11 @@
         (acc r s)))))
 
 (defn- sub-optional
+  "Will try to make substitutions for the pattern, but if substitution fails,
+  returns an empty resultset.
+
+  The behavior can be modified if given a parent-fail function, in which case
+  the fail token will be returned to be handled at the parent level. "
   ([pattern]
    (sub-optional pattern nil))
   ([pattern parent-fail]
@@ -126,6 +172,19 @@
             [pattern])
           (apply hash-map r))))))
 
+(defn- sub-many-map [[_ k* v* :as pattern]]
+  (let [kf (sub* k*)
+        vf (sub* v*)]
+    (fn [dict fail]
+      (let [k (kf dict fail)
+            v (vf dict fail)]
+        (cond (instance? SubFail k) k
+              (instance? SubFail v) v
+              (and (sequential? (first k)) (sequential? (first v)))
+              [(zipmap (first k) (first v))]
+              fail (fail dict nil pattern)
+              :else [pattern])))))
+
 (defn- sub-many
   ([pattern]
    (sub-many pattern 0))
@@ -170,8 +229,6 @@
           r
           [(finalize r)])))))
 
-(defn- sub-many-map [pattern])
-  ;; TODO zipmap the key/value)
 (defn- sub-at-least-one-map [pattern])
 
 (defmethod* sub* :value #'sub-value)
@@ -184,7 +241,7 @@
 (defmethod* sub* '?:1 #'sub-optional)
 (defmethod* sub* '?:* #'sub-many)
 (defmethod* sub* '?:+ #'sub-at-least-one)
-;;(defmethod* sub* '?:*map #'sub-many-map)
+(defmethod* sub* '?:*map #'sub-many-map)
 ;;(defmethod* sub* '?:+map #'sub-at-least-one-map)
 (defmethod* sub* '?:chain #'sub-chain)
 (defmethod* sub* '?:as #'sub-as)
@@ -192,6 +249,8 @@
 (defmethod* sub* '?:restartable #'sub-restartable)
 (defmethod* sub* '?:if #'sub-if)
 (defmethod* sub* '?:when #'sub-when)
+(defmethod* sub* '| #'sub-or)
+(defmethod* sub* '& #'sub-and)
 (defmethod sub* :default [pattern]
   (if (seqable? pattern)
     (sub-list pattern)
