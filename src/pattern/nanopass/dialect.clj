@@ -21,6 +21,13 @@
 (def ^:dynamic *from-dialect* nil)
 (def ^:dynamic *to-dialect* nil)
 
+(defn dialect
+  "Look up a dialect if d is a symbol, otherwise return d."
+  [d]
+  (if (symbol? d)
+      (@all-dialects d)
+      d))
+
 (defmacro =>
   ([from]
    `{:=>/from '~from :=> true :=>/type '~'=>})
@@ -433,23 +440,22 @@
   and expressions resolved. This is a useful tool for debugging, especially for
   dialects that go through many layers of derivation."
   [dialect & {:keys [full-names]}]
-  `(~'def-dialect ~(:name dialect)
-    (~'terminals ~@(map (fn [{:keys [abbr predicate]}]
-                          [abbr predicate])
-                        (vals (:terminals dialect))))
-    ~@(when (:enter dialect)
-        [`(~'enter ~(:enter dialect))])
-    ~@(map (fn [{:keys [name abbr exprs flags metadata-pattern]}]
-             (let [etc (remove nil? (cons metadata-pattern (seq flags)))]
-               `(~(if full-names name (second name)) [~abbr ~@etc]
-                 ~@(map :orig-expr exprs))))
-           (vals (:forms dialect)))))
+  (let [dialect (pattern.nanopass.dialect/dialect dialect)]
+    `(~'def-dialect ~(:name dialect)
+      (~'terminals ~@(map (fn [{:keys [abbr predicate]}]
+                            [abbr predicate])
+                       (vals (:terminals dialect))))
+      ~@(when (:enter dialect)
+          [`(~'enter ~(:enter dialect))])
+      ~@(map (fn [{:keys [name abbr exprs flags metadata-pattern]}]
+               (let [etc (remove nil? (cons metadata-pattern (seq flags)))]
+                 `(~(if full-names name (second name)) [~abbr ~@etc]
+                   ~@(map :orig-expr exprs))))
+          (vals (:forms dialect))))))
 
 (defn from-dialect* [dialect f]
   (if dialect
-    (let [dialect (if (symbol? dialect)
-                    (@all-dialects dialect)
-                    dialect)]
+    (let [dialect (pattern.nanopass.dialect/dialect dialect)]
       (with-bindings* {#'*from-dialect* dialect
                        #'*pattern-replace* (into (or *pattern-replace* [])
                                                  (:predicators dialect))}
@@ -463,9 +469,7 @@
 
 (defn to-dialect* [dialect f]
   (if dialect
-    (let [dialect (if (symbol? dialect)
-                    (@all-dialects dialect)
-                    dialect)]
+    (let [dialect (pattern.nanopass.dialect/dialect dialect)]
       (with-bindings* {#'*to-dialect* dialect}
         f))
     (f)))
