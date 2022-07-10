@@ -1,5 +1,5 @@
 {:paths ["src" "resources"]
- :deps {org.clojure/clojure {:mvn/version "1.10.3"}
+ :deps {org.clojure/clojure {:mvn/version "1.11.1"}
         com.xn--lgc/pure-conditioning {:git/url "https://github.com/pangloss/pure-conditioning"
                                        :sha "f605800bcbdf80a408c60d8e60bb6cd8222f17c6"
                                        #_#_
@@ -7,29 +7,29 @@
         com.xn--lgc/fermor {:local/root "../fermor"}
         #_{:git/url "https://github.com/pangloss/fermor"
            :sha "..."}
-        org.clojure/core.memoize {:mvn/version "1.0.236"}
+        org.clojure/core.memoize {:mvn/version "1.0.257"}
         com.xn--lgc/genera {:git/url "https://github.com/pangloss/genera"
                             :sha "02f3629e054237e676f569d273b7e7a0d1fae6d9"}
         uncomplicate/fluokitten {:mvn/version "0.9.1"}
         potemkin/potemkin {:mvn/version "0.4.5"}}
  :aliases
  {:test {:extra-paths ["test"]
-         :extra-deps {org.clojure/test.check {:mvn/version "1.1.0"}}
+         :extra-deps {org.clojure/test.check {:mvn/version "1.1.1"}}
          :jvm-opts ["-XX:-OmitStackTraceInFastThrow"]}
-  :repl {:extra-deps {com.github.jpmonettas/flow-storm-dbg {:mvn/version "2.2.99"}
-                      com.github.jpmonettas/flow-storm-inst {:mvn/version "2.2.99"}}}
+  :repl {:extra-deps {com.github.jpmonettas/flow-storm-dbg {:mvn/version "2.2.114"}
+                      com.github.jpmonettas/flow-storm-inst {:mvn/version "2.2.114"}}}
   :runner
   {:extra-deps {com.cognitect/test-runner
                 {:git/url "https://github.com/cognitect-labs/test-runner"
-                 :sha "b6b3193fcc42659d7e46ecd1884a228993441182"}}
+                 :sha "a85b3b02765fb68684ab9ee4a8598eacf7e471d2"}}
    :main-opts ["-m" "cognitect.test-runner"
                "-d" "test"]}
-  :jar {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.0.211"}}
+  :jar {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.1.303"}}
         :exec-fn hf.depstar/jar
         :exec-args {:jar "pattern.jar" :sync-pom true}}
-  :install {:replace-deps {slipset/deps-deploy {:mvn/version "0.1.5"}}
+  :install {:replace-deps {slipset/deps-deploy {:mvn/version "0.2.0"}}
             :exec-fn deps-deploy.deps-deploy/deploy
             :exec-args {:installer :local :artifact "pattern.jar"}}
-  :deploy {:replace-deps {slipset/deps-deploy {:mvn/version "0.1.5"}}
+  :deploy {:replace-deps {slipset/deps-deploy {:mvn/version "0.2.0"}}
            :exec-fn deps-deploy.deps-deploy/deploy
            :exec-args {:installer :remote :artifact "pattern.jar"}}}}
