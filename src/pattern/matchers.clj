@@ -266,15 +266,24 @@
 
       (?:as name [?some ?pattern]) or (?:as name ??seq)
 
+  DEPRECATED BEHAVIOR:
   May result in being either a sequence or a single element matcher, depending
   on the behavior of the child matcher.  If the capture length is 1, it assumes
-  that it is not a sequence matcher in that case.
+  that it is not a sequence matcher in that case. When I fix this it'll likely
+  be a breaking change.
+
+  To capture a sequence, use ?:as*, which will not behave differently depending on
+  the matched sequence length.
+
+      (?:as* name (?:* some pattern))
 
   Strictly, (?:as x ?y) could be replaced by (& ?x ?y)...
 
   Allows a restriction to be added, similar to [[match-element]]."
-  [[_ name pattern :as as-pattern] comp-env]
-  (let [m (compile-pattern* pattern comp-env)
+  [[t name pattern :as as-pattern] comp-env]
+  (let [multi? (= '?:as* t)
+        ;; TODO: can I look at the compiled pattern to automate the ?:as / ?:as* annoyance?
+        m (compile-pattern* pattern comp-env)
         [sat-mode sat?] (var-restriction as-pattern comp-env)
         name (if (namespace name) (symbol (clojure.core/name name)) name)]
     (with-meta
@@ -282,9 +291,11 @@
         (if (seq data)
           (m data dictionary (assoc env :succeed
                                     (fn [dict n]
-                                      (let [datum (if (= 1 n)
-                                                    (first data)
-                                                    (vec (take n data)))]
+                                      ;; FIXME: remove the length check and update all relevant
+                                      ;; rules, etc to use either ?:as or ?:as*.
+                                      (let [datum (if (or multi? (not= 1 n))
+                                                    (vec (take n data))
+                                                    (first data))]
                                         (if (sat? dict datum)
                                           (if-let [{v :value} ((.lookup env) name dict env)]
                                             (if (= v datum)
@@ -411,9 +422,20 @@
 
       (?:+ 1 2 3) ;; min 1 group of 3
 
+      (?:* ?x (?:* ?y ?z) ?w) ;; sequence matcher within sequence matcher.
+
+  A nicer way to specify min/max may be to use (?:n [2 10] ?x ?y). The effect
+  is the same
+
       (?:* ^{:min 2 :max 10} ?x ?y) ;; between 2 and 10 (inclusive) pairs.
 
-      (?:* ?x (?:* ?y ?z) ?w) ;; sequence matcher within sequence matcher.
+  NOTE, to capture an entire sequence use ?:as*
+
+      (?:as* x (?:* inner pattern))
+
+  If you use ?:as instead, a match of a single repetition will return the first
+  element of the collection instead of the collection of length 1, causing
+  an annoying bug hunt.
 
   Like [[match-optional]] (which this builds upon), the repeating pattern may be
   a sequence of multiple matchers.
@@ -520,6 +542,13 @@
   [pattern comp-env]
   (match-sequence 1 nil pattern comp-env))
 
+(defn- match-n-times
+  "See [[match-sequence]]"
+  [[t n & pattern] comp-env]
+  (let [[low high] (if (vector? n)
+                     n
+                     [n nil])]
+    (match-sequence low high (cons t pattern) comp-env)))
 
 (defn- match-chain
   "This is the power tool matcher. It alternates, working left to right between
@@ -923,10 +952,12 @@
 (register-matcher '?:+map #'match-+map)
 (register-matcher '?:*map #'match-*map)
 (register-matcher '?:as match-as {:named? true :restriction-position 3})
+(register-matcher '?:as* match-as {:named? true :restriction-position 3})
 (register-matcher '?:? #'match-optional {:aliases ['?:optional]})
 (register-matcher '?:1 #'match-one {:aliases ['?:one]})
 (register-matcher '?:* #'match-many {:aliases ['?:many]})
 (register-matcher '?:+ #'match-at-least-one {:aliases ['?:at-least-one]})
+(register-matcher '?:n #'match-n-times {:aliases []})
 (register-matcher '?:chain match-chain {:aliases ['??:chain]})
 (register-matcher '| #'match-or {:aliases ['?:or]})
 (register-matcher '& match-and {:aliases ['?:and]})
