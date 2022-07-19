@@ -4,9 +4,10 @@
 (defmacro make-terminal [pred]
   ;; assume a ? at the end...
   (let [name (apply str (butlast (name pred)))
-        tname (symbol (str name "-terminal"))]
+        tname (symbol (str name "-terminal"))
+        value 'value]
     `(do
-       (defrecord ~tname [unknown#])
+       (defrecord ~tname [~value])
        (defn ~pred [x#] (instance? ~tname x#)))))
 
 (make-terminal datum?)

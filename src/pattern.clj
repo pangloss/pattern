@@ -14,7 +14,8 @@
 (import-vars (pattern.match.core
               matcher
               compile-pattern
-              pattern-names)
+              pattern-names
+              listy?)
              (pattern.substitute
               substitute)
              (pattern.r3.rewrite

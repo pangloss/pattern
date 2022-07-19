@@ -91,6 +91,7 @@
                    (:src (:rule (meta r)) '...)))))
 
 (defn- match-rule [^Rule rule data env dict succeed]
+  (when env (assert (map? env)))
   (let [env (assoc env :rule/datum data
                    #_#_:match/dict dict)]
     (when-let [result (apply (.handler rule)

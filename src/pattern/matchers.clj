@@ -277,6 +277,10 @@
 
       (?:as* name (?:* some pattern))
 
+  Note also that ?:as will terminate matching on an empty sequence even if it contains
+  a sequence matcher. ?:as* will allow the search to continue into the empty sequence,
+  allowing the above to correctly match an empty sequence.
+
   Strictly, (?:as x ?y) could be replaced by (& ?x ?y)...
 
   Allows a restriction to be added, similar to [[match-element]]."
@@ -288,7 +292,7 @@
         name (if (namespace name) (symbol (clojure.core/name name)) name)]
     (with-meta
       (fn as-matcher [data dictionary ^Env env]
-        (if (seq data)
+        (if (or multi? (seq data))
           (m data dictionary (assoc env :succeed
                                     (fn [dict n]
                                       ;; FIXME: remove the length check and update all relevant
@@ -949,8 +953,8 @@
 (register-matcher '? #'match-element {:named? true})
 (register-matcher '?? #'match-segment {:named? true})
 (register-matcher '?:map match-map)
-(register-matcher '?:+map #'match-+map)
-(register-matcher '?:*map #'match-*map)
+(register-matcher '?:+map #'match-+map {:aliases ['?:map+]})
+(register-matcher '?:*map #'match-*map {:aliases ['?:map*]})
 (register-matcher '?:as match-as {:named? true :restriction-position 3})
 (register-matcher '?:as* match-as {:named? true :restriction-position 3})
 (register-matcher '?:? #'match-optional {:aliases ['?:optional]})

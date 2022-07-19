@@ -269,7 +269,8 @@
 (defpass convert-closures (=> Lfree Lclosure)
   (letfn [(make-label [x])]
     (let-rulefn [(Expr (===> Expr Expr)
-                   [(rule '(letrec ((?:* [?x* ?->f*])) ?->e)
+                   [(rule letrec
+                      '(letrec ((?:* [?x* ?->f*])) ?->e)
                       (let [free** (mapv (comp :free* meta) f*)
                             l* (map make-label x*)]
                         (sub (letrec ((?:* [?l* ?f*]))

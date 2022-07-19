@@ -156,7 +156,12 @@
 
   A rule can bind arguments from its environment by attaching metadata to the input rule as follows:
 
-      (rule set-var ^{:env-args [var-name]} '?form (sub (set ?var-name ?form)))"
+      (rule set-var ^{:env-args [var-name]} '?form (sub (set ?var-name ?form)))
+
+  Rules can also be called with succeed and fail callbacks
+
+      (my-rule data env succeed fail)
+  "
   ([pattern]
    (let [args (pattern-args pattern)
          matches (gensym 'matches)]
