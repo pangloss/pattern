@@ -1,15 +1,15 @@
 {:paths ["src" "resources"]
  :deps {org.clojure/clojure {:mvn/version "1.11.1"}
-        com.xn--lgc/pure-conditioning {:git/url "https://github.com/pangloss/pure-conditioning"
-                                       :sha "f605800bcbdf80a408c60d8e60bb6cd8222f17c6"
+        horse.no/pure-conditioning {:git/url "https://github.com/pangloss/pure-conditioning"
+                                    :sha "f605800bcbdf80a408c60d8e60bb6cd8222f17c6"
                                        #_#_
                                        :local/root "../pure-conditioning"}
-        com.xn--lgc/fermor {:local/root "../fermor"}
+        horse.no/fermor {:local/root "../fermor"}
         #_{:git/url "https://github.com/pangloss/fermor"
            :sha "..."}
-        org.clojure/core.memoize {:mvn/version "1.0.257"}
-        com.xn--lgc/genera {:git/url "https://github.com/pangloss/genera"
-                            :sha "02f3629e054237e676f569d273b7e7a0d1fae6d9"}
+        horse.no/genera {:git/url "https://github.com/pangloss/genera"
+                         :sha "02f3629e054237e676f569d273b7e7a0d1fae6d9"}
+        diffit/diffit {:mvn/version "1.0.0"}
         uncomplicate/fluokitten {:mvn/version "0.9.1"}
         potemkin/potemkin {:mvn/version "0.4.5"}}
  :aliases
