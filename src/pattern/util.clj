@@ -2,6 +2,19 @@
   (:require [clojure.zip :as zip])
   (:import [clojure.lang IMeta IObj]))
 
+(defn ints?
+  "Return true if x is an int array
+
+  The Java byte-array / bytes? type is signed. That makes a mess, so we use ints."
+  [x] (if (nil? x)
+        false
+        (instance? clojure.lang.ArraySeq$ArraySeq_int (seq x))))
+
+(defn array? [x]
+  (if (nil? x)
+    false
+    (instance? clojure.lang.ArraySeq (seq x))))
+
 
 (defn meta? [x]
   (or
@@ -9,16 +22,19 @@
     (instance? IObj x)))
 
 (defn build-coll [orig children]
-  (with-meta
-    (cond (instance? clojure.lang.Cons orig) (list* children)
-          (chunked-seq? orig) (list* orig)
-          (instance? clojure.lang.LazySeq orig) (list* orig)
-          (list? orig) (list* children)
-          (map-entry? orig) (vec children)
-          (map? orig) (into {} children)
-          (vector? orig) (into [] children)
-          :else (throw (ex-info "unknown coll" {:type (type orig) :orig orig})))
-    (meta orig)))
+  (let [coll (cond (instance? clojure.lang.Cons orig) (list* children)
+                   (chunked-seq? orig) (list* orig)
+                   (instance? clojure.lang.LazySeq orig) (list* orig)
+                   (list? orig) (list* children)
+                   (map-entry? orig) (vec children)
+                   (map? orig) (into {} children)
+                   (vector? orig) (into [] children)
+                   (ints? orig) (int-array children)
+                   (array? orig) children
+                   :else (throw (ex-info "unknown coll" {:type (type orig) :orig orig})))]
+    (if (meta? coll)
+      (with-meta coll (meta orig))
+      coll)))
 
 (defn make-zipper [x]
   (zip/zipper sequential? seq build-coll x))
