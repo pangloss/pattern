@@ -25,6 +25,16 @@
   [rc]
   (zipper rule-combinator? child-rules recombine rc))
 
+(defn all-equal?
+  ([mode]
+   (case mode
+     :data+meta
+     (fn [datum orig-env done env]
+       (and (= done datum) (meta= done datum)))))
+
+  ([datum orig-env done env]
+   (and (= done datum) (meta= done datum) (= orig-env env))))
+
 (defn rule-list
   "Try each of the rules in order top-down.
 
@@ -74,27 +84,31 @@
   value does not change and the next rule is run.
 
   Each rule can itself be any rule-combinator."
-  [& rules]
-  (let [rules (flatten rules)
+  [opts & rules]
+  (let [[opts rules] (if (map? opts)
+                       [opts rules]
+                       [{} (cons opts rules)])
+        equiv? (:equiv? opts all-equal?)
+        rules (flatten rules)
         rc (count rules)]
-    (letfn [(per-rule [datum env events [r :as rules] n]
+    (letfn [(per-rule [datum prev-env events [r :as rules] n]
               (when *debug-rules* (println (str "#" (inc n) "/" rc " try" (:pattern (:rule (meta r))))))
               (if (seq rules)
                 (r datum
-                   env events
+                   prev-env events
                    (fn [result env _]
                      (when *debug-rules* (println (str "#" (inc n) "/" rc " succeded")))
-                     (bouncing (per-rule (if (and (= datum result) (meta= datum result))
-                                           datum result)
-                                         env events
-                                         (next rules) (inc n))))
+                     (let [[datum env] (if ((equiv? :data+meta) datum prev-env result env)
+                                         ;; BUG? returning the modified env even if returning the old value
+                                         [datum env] [result env])]
+                       (bouncing (per-rule datum env events
+                                   (next rules) (inc n)))))
                    (fn []
                      (when *debug-rules* (println (str "#" (inc n) "/" rc " failed")))
-                     (bouncing (per-rule datum env events (next rules) (int n)))))
+                     (bouncing (per-rule datum prev-env events (next rules) (int n)))))
                 (do
                   (when *debug-rules* (println (str "#" (inc n) "/" rc " ran out of rules")))
-                  [datum env])))]
-
+                  [datum prev-env])))]
       (with-meta
         (fn do-in-order
           ([data] (first (run-rule do-in-order data nil)))
@@ -103,14 +117,15 @@
            (do-in-order data env nil succeed fail))
           ([orig-datum orig-env events succeed fail]
            (let [[result env] (trampoline per-rule orig-datum orig-env events rules 0)]
-             (if (and (= orig-datum result) (meta= orig-datum result) (= orig-env env))
+             (if (equiv? orig-datum orig-env result env)
                (fail)
                (succeed result env fail)))))
         {:rule {:rule-type ::in-order
+                :opts opts
                 :rules (mapv meta rules)}
          `child-rules (fn [_] rules)
          `recombine (fn [_ rules]
-                      (in-order rules))}))))
+                      (in-order opts rules))}))))
 
 (defn guard [f rule]
   (with-meta
@@ -331,6 +346,7 @@
    (let [opts (if (fn? opts)
                 {:fn-map {">-" opts}}
                 opts)
+         equiv? (:equiv? opts all-equal?)
          rule (directed:extended raw-rule opts)]
      (with-meta
        (fn do-on-marked
@@ -366,7 +382,7 @@
             (binding [*descend* (partial apply-rules (inc (or *descent-depth* 0)))]
               (let [res (apply-rules (or *descent-depth* 0) orig-datum orig-env)
                     [result env] res]
-                (if (and (= orig-datum result) (meta= orig-datum result) (= orig-env env))
+                (if (equiv? orig-datum orig-env result env)
                   (n)
                   (y result env n)))))))
        (-> (meta rule)
@@ -387,37 +403,42 @@
   This is currently done in a somewhat simplistic way with bound variables
   because I'm not exactly sure how it should be structured but eventually it
   should be done without the need for extra global state like this.  "
-  [initial-form name-rule-pairs]
-  (let [forms (if (map? name-rule-pairs)
-                name-rule-pairs
-                (apply hash-map name-rule-pairs))]
-    (letfn [(switch-branch [{:keys [form-name]} depth datum env]
-              (let [rule (or (forms form-name)
-                             (when (vector? form-name) (forms (second form-name))))]
-                ;; TODO: probably want to just keep on the same branch if there
-                ;; is no option? Or maybe don't descend?
-                (if rule
-                  (binding [*descent-depth* depth]
-                    (run-rule rule datum env))
-                  [datum env])))]
-      (with-meta
-        (fn do-mutual
-          ([data] (first (run-rule do-mutual data nil)))
-          ([data env] (run-rule do-mutual data env))
-          ([data env succeed fail]
-           (do-mutual data env nil succeed fail))
-          ([orig-datum orig-env events y n]
-           (binding [*do-mutual-descent* switch-branch]
-             ;; TODO: how does events fit here?
-             (let [[result env] (switch-branch {:form-name initial-form} 0 orig-datum orig-env)]
-               (if (and (= orig-datum result) (meta= orig-datum result) (= orig-env env))
-                 (n)
-                 (y result env n))))))
-        {:rule {:rule-type ::on-mutual
-                :initial-form initial-form
-                :name-rule-pairs (reduce-kv (fn [m k v]
-                                              (assoc m k (meta v)))
-                                            {} name-rule-pairs)}}))))
+  ([initial-form name-rule-pairs]
+   (on-mutual all-equal? initial-form name-rule-pairs))
+  ([equiv? initial-form name-rule-pairs]
+   (let [forms (if (map? name-rule-pairs)
+                 name-rule-pairs
+                 (apply hash-map name-rule-pairs))]
+     (letfn [(switch-branch [{:keys [form-name]} depth datum env]
+               (let [rule (or (forms form-name)
+                            (when (vector? form-name) (forms (second form-name))))]
+                 ;; TODO: probably want to just keep on the same branch if there
+                 ;; is no option? Or maybe don't descend?
+                 (if rule
+                   (binding [*descent-depth* depth]
+                     (run-rule rule datum env))
+                   [datum env])))]
+       (with-meta
+         (fn do-mutual
+           ([data] (first (run-rule do-mutual data nil)))
+           ([data env] (run-rule do-mutual data env))
+           ([data env succeed fail]
+            (do-mutual data env nil succeed fail))
+           ([orig-datum orig-env events y n]
+            (binding [*do-mutual-descent* switch-branch]
+              ;; TODO: how does events fit here?
+              (let [[result env] (switch-branch {:form-name initial-form} 0 orig-datum orig-env)]
+                (if (equiv? orig-datum orig-env result env)
+                  (n)
+                  (y result env n))))))
+         ;; TODO: how does recombine work for this combinator? Or does it at all??
+         {:rule {:rule-type ::on-mutual
+                 :initial-form initial-form
+                 :name-rule-pairs (reduce-kv (fn [m k v]
+                                               (assoc m k (meta v)))
+                                    {} name-rule-pairs)}})))))
+
+;; TODO: add equiv to meta, and use it in rebuild
 
 (defn- empty!
   "Map entries don't implement empty. I need vectors without their metadata."
@@ -426,116 +447,132 @@
         (vector? x) []
         :else (empty x)))
 
-(defn- try-subexpressions [the-rule datum env events]
+(defn- try-subexpressions [equiv? the-rule datum orig-env events]
   (if (and (seqable? datum) (not (string? datum)))
-    (let [[result env] (reduce (fn [[result env] d]
-                                 (let [[r env] (run-rule the-rule d events env)]
+    (let [[result env] (reduce (fn [[result prev-env] d]
+                                 (let [[r env] (run-rule the-rule d events prev-env)]
                                    [(conj result r) env]))
-                         [(empty! datum) env] datum)
+                         [(empty! datum) orig-env] datum)
           result (if (list? result) (reverse result) result)]
-      [(if (and (= result datum) (meta= result datum))
-         datum
-         (if (meta result)
+      (if ((equiv? :data+meta) datum orig-env result env)
+        ;; BUG? returning modified env even on no change
+        [datum env #_orig-env]
+        [(if (meta result)
            result
            (if (instance? IObj result)
              (with-meta result (meta datum))
-             result)))
-       env])
-    [datum env]))
+             result))
+         env]))
+    [datum orig-env]))
 
 (defn on-subexpressions
   "Run the given rule combinator on all subexpressions depth-first."
-  [the-rule]
-  (with-meta
-    (fn do-on-subexpr
-      ([data] (first (run-rule do-on-subexpr data nil)))
-      ([data env] (run-rule do-on-subexpr data env))
-      ([data env succeed fail]
-       (do-on-subexpr data env nil succeed fail))
-      ([datum orig-env events y n]
-       ;; TODO: how does events fit?
-       (letfn [(on-subex-expr [datum subex-env events on-result fail]
-                 (let [[done env] (try-subexpressions on-subex-expr datum subex-env events)
-                       [answer env] (run-rule the-rule done events env)]
-                   (if (and (= done answer) (meta= done answer))
-                     (on-result done env fail)
-                     (on-result answer env fail))))]
-         (let [[done env] (run-rule on-subex-expr datum events orig-env)]
-           (if (and (= done datum) (meta= done datum) (= orig-env env))
-             (n)
-             (y done env n))))))
-    {:rule (assoc (meta the-rule)
-                  :rule-type ::on-subexpressions)
-     `child-rules (fn [_] [the-rule])
-     `recombine (fn [_ rules]
-                  (if (next rules)
-                    (on-subexpressions (rule-list rules))
-                    (on-subexpressions (first rules))))}))
+  ([the-rule]
+   (on-subexpressions all-equal? the-rule))
+  ([equiv? the-rule]
+   (with-meta
+     (fn do-on-subexpr
+       ([data] (first (run-rule do-on-subexpr data nil)))
+       ([data env] (run-rule do-on-subexpr data env))
+       ([data env succeed fail]
+        (do-on-subexpr data env nil succeed fail))
+       ([datum orig-env events y n]
+        ;; TODO: how does events fit?
+        (letfn [(on-subex-expr [datum subex-env events on-result fail]
+                  (let [[done sx-env] (try-subexpressions equiv? on-subex-expr datum subex-env events)
+                        ;; BUG? no equiv? check against the orig datum/subex-env here?
+                        [answer env] (run-rule the-rule done events sx-env)]
+                    ;; Which env would even be compared in equiv? is undefined in original code...
+                    (if ((equiv? :data+meta) done sx-env answer env)
+                      (on-result done sx-env fail)
+                      (on-result answer env fail))))]
+          (let [[done env] (run-rule on-subex-expr datum events orig-env)]
+            (if (equiv? datum orig-env done env)
+              (n)
+              (y done env n))))))
+     {:rule (assoc (meta the-rule)
+              :equiv? equiv?
+              :rule-type ::on-subexpressions)
+      `child-rules (fn [_] [the-rule])
+      `recombine (fn [_ rules]
+                   (if (next rules)
+                     (on-subexpressions equiv? (rule-list rules))
+                     (on-subexpressions equiv? (first rules))))})))
 
 (defn iterated
   "Run the given rule combinator repeatedly until running the rule makes no
   further changes."
-  [the-rule]
-  (with-meta
-    (fn do-iter
-      ([data] (first (run-rule do-iter data nil)))
-      ([data env] (run-rule do-iter data env))
-      ([data env succeed fail]
-       (do-iter data env nil succeed fail))
-      ([datum orig-env events y n]
-       (letfn [(iterating [datum env events on-result f]
-                 (let [[answer env] (run-rule the-rule datum events env)]
-                   (if (and (= datum answer) (meta= datum answer))
-                     (on-result datum env f)
-                     (recur answer env events on-result f))))]
-         (let [[done env] (run-rule iterating datum events orig-env)]
-           (if (and (= done datum) (meta= done datum) (= orig-env env))
-             (n)
-             (y done env n))))))
-    {:rule (assoc (meta the-rule)
-                  :rule-type ::iterated)
-     `child-rules (fn [_] [the-rule])
-     `recombine (fn [_ rules]
-                  (if (next rules)
-                    (iterated (rule-list rules))
-                    (iterated (first rules))))}))
+  ([the-rule]
+   (iterated all-equal? the-rule))
+  ([equiv? the-rule]
+   (with-meta
+     (fn do-iter
+       ([data] (first (run-rule do-iter data nil)))
+       ([data env] (run-rule do-iter data env))
+       ([data env succeed fail]
+        (do-iter data env nil succeed fail))
+       ([datum orig-env events y n]
+        (letfn [(iterating [datum prev-env events on-result f]
+                  (let [[answer env] (run-rule the-rule datum events prev-env)]
+                    (if ((equiv? :data+meta) datum prev-env answer env)
+                      ;; BUG? returning modified env?
+                      (on-result datum env #_prev-env f)
+                      (recur answer env events on-result f))))]
+          (let [[done env] (run-rule iterating datum events orig-env)]
+            (if (equiv? datum orig-env done env)
+              (n)
+              (y done env n))))))
+     {:rule (assoc (meta the-rule)
+              :equiv? equiv?
+              :rule-type ::iterated)
+      `child-rules (fn [_] [the-rule])
+      `recombine (fn [_ rules]
+                   (if (next rules)
+                     (iterated equiv? (rule-list rules))
+                     (iterated equiv? (first rules))))})))
 
 (defn simplifier
   "Run the given rule combinator repeatedly depth-first on all subexpressions
-  until running the rule makes no further changes at each level.
-
-  See also [[rule-simplifer]]."
-  [the-rule]
-  (with-meta
-    (fn enter-simplifier
-      ([data] (first (run-rule enter-simplifier data nil)))
-      ([data env] (run-rule enter-simplifier data env))
-      ([data env succeed fail]
-       (enter-simplifier data env nil succeed fail))
-      ([datum orig-env events y n]
-       (let [on-simplifier-expr
-             (fn on-simplifier-expr [datum simp-env events on-result f]
-               (let [[done env] (try-subexpressions on-simplifier-expr datum simp-env events)
-                     [answer env] (run-rule the-rule done events env)]
-                 (if (and (= done answer) (meta= done answer))
-                   (on-result done env f)
-                   (on-simplifier-expr answer env events on-result f))))]
-         (let [[done env] (run-rule on-simplifier-expr datum events orig-env)]
-           (if (and (= done datum) (meta= done datum) (= env orig-env))
-             (n)
-             (y done env n))))))
-    {:rule (assoc (meta the-rule)
-                  :rule-type ::simplifier)
-     `child-rules (fn [_] [the-rule])
-     `recombine (fn [_ rules]
-                  (if (next rules)
-                    (simplifier (rule-list rules))
-                    (simplifier (first rules))))}))
+  until running the rule makes no further changes at each level."
+  ([the-rule]
+   (simplifier all-equal? the-rule))
+  ([equiv? the-rule]
+   (with-meta
+     (fn enter-simplifier
+       ([data] (first (run-rule enter-simplifier data nil)))
+       ([data env] (run-rule enter-simplifier data env))
+       ([data env succeed fail]
+        (enter-simplifier data env nil succeed fail))
+       ([datum orig-env events y n]
+        (let [on-simplifier-expr
+              (fn on-simplifier-expr [datum simp-env events on-result f]
+                (let [[done sub-env] (try-subexpressions equiv? on-simplifier-expr datum simp-env events)
+                      ;; odd there is no equiv check here...
+                      [answer env] (run-rule the-rule done events sub-env)]
+                  (if ((equiv? :data+meta) done sub-env answer env)
+                    ;; BUG? returning modified env?
+                    (on-result done env #_sub-env f)
+                    (on-simplifier-expr answer env events on-result f))))]
+          (let [[done env] (run-rule on-simplifier-expr datum events orig-env)]
+            (if (equiv? datum orig-env done env)
+              (n)
+              (y done env n))))))
+     {:rule (assoc (meta the-rule)
+              :equiv? equiv?
+              :rule-type ::simplifier)
+      `child-rules (fn [_] [the-rule])
+      `recombine (fn [_ rules]
+                   (if (next rules)
+                     (simplifier equiv? (rule-list rules))
+                     (simplifier equiv? (first rules))))})))
 
 (defn rule-simplifier
   "Run a list of rule combinators repeatedly on all subexpressions until running
-  them makes no further changes."
+  them makes no further changes.
+
+  DEPRECATED, use [[simplifier]] instead. This one does not let you set [[equiv?]]."
   [& rules]
+  {:deprecated "0.0"}
   (vary-meta
    (simplifier (apply rule-list rules))
    assoc-in [:rule :rule-type] ::rule-simplifier))

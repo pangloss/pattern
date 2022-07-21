@@ -206,7 +206,7 @@
   (is (= '(+ (* 1 3) (* 1 2))
          (algebra-1 '(* 1 (+ 3 2))))))
 
-(defn all-equal? [xs]
+(defn every-equal? [xs]
   (and (< 1 (count xs))
        (apply = xs)))
 
@@ -250,14 +250,14 @@
                     (rule '(* (? x number?) (? y number?) ??z)
                           (sub (* ~(* x y) ??z)))
 
-                    (rule '(+ ??a (??! x (on-all all-equal?)) ??b)
+                    (rule '(+ ??a (??! x (on-all every-equal?)) ??b)
                           (sub (+ ??a (* ~(count x) ~(first x)) ??b)))
 
                     (rule '(* ??a (expt ?x ?e1) (expt ?x ?e2) ??b)
                           (sub (* ??a (expt ?x (+ ?e1 ?e2)) ??b)))
                     (rule '(* ??a ?x ??b (expt ?x ?e) ??c)
                           (sub (* ??a ??b (expt ?x (+ 1 ?e)) ??c)))
-                    (rule '(* ??a (??! x (on-all all-equal?)) ??b)
+                    (rule '(* ??a (??! x (on-all every-equal?)) ??b)
                           (sub (* ??a (expt ~(first x) ~(count x)) ??b)))]))
 
 (deftest predicates
