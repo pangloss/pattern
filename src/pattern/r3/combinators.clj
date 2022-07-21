@@ -484,7 +484,8 @@
                         [answer env] (run-rule the-rule done events sx-env)]
                     ;; Which env would even be compared in equiv? is undefined in original code...
                     (if ((equiv? :data+meta) done sx-env answer env)
-                      (on-result done sx-env fail)
+                      ;; BUG? using the modified env even with no changes???
+                      (on-result done env #_sx-env fail)
                       (on-result answer env fail))))]
           (let [[done env] (run-rule on-subex-expr datum events orig-env)]
             (if (equiv? datum orig-env done env)
