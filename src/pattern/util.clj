@@ -23,6 +23,43 @@
     (instance? IMeta x)
     (instance? IObj x)))
 
+(defn meta= [a b]
+  (= (meta a) (meta b)))
+
+(defn all-equiv?
+  "For use as the equiv? argument in rule combinators.
+
+  Data, metadata on the data, and env must all be equal.
+
+  In :no-env mode, ignore env difference.
+
+  See also [[equiv?]]"
+  ([mode]
+   (case mode
+     :no-env
+     (fn [datum orig-env done env]
+       (and (= done datum) (meta= done datum)))
+     all-equiv?))
+  ([datum orig-env done env]
+   (and (= done datum) (meta= done datum) (= orig-env env))))
+
+(defn equiv?
+  "For use as the equiv? argument in rule combinators.
+
+  Data and env should be equal, but ignore metadata.
+
+  In :no-env mode, just look at data, ignore both env and metadata.
+
+  See also [[all-equiv?]]"
+  ([mode]
+   (case mode
+     :no-env
+     (fn [datum orig-env done env]
+       (= done datum))
+     equiv?))
+  ([datum orig-env done env]
+   (and (= done datum) (= orig-env env))))
+
 (defn build-coll [orig children]
   (let [coll (cond (instance? clojure.lang.Cons orig) (list* children)
                    (chunked-seq? orig) (list* orig)

@@ -4,17 +4,12 @@
             [pattern.r3.rule :refer [*debug-rules* run-rule make-rule post-process]]
             [pattern.substitute :refer [substitute]]
             [pattern.types :refer [rule-combinator? child-rules recombine ->Success]]
-            [pattern.util :refer [meta?]]
+            [pattern.util :refer [meta? equiv?]]
             [clojure.string :as str]
             [genera :refer [trampoline bouncing]]
             [clojure.walk :as walk]
             [clojure.zip :as z :refer [zipper]])
   (:import clojure.lang.IObj))
-
-;; Work around some circular references. The core ns will reset these atoms to
-;; the correct functions.
-(defn meta= [a b]
-  (= (meta a) (meta b)))
 
 ;; TODO: I'm checking in many places whether the datum or env changed. Would things work
 ;; if I consolidated that into a check for `identical?`?
@@ -24,16 +19,6 @@
   custom metadata, etc."
   [rc]
   (zipper rule-combinator? child-rules recombine rc))
-
-(defn all-equal?
-  ([mode]
-   (case mode
-     :data+meta
-     (fn [datum orig-env done env]
-       (and (= done datum) (meta= done datum)))))
-
-  ([datum orig-env done env]
-   (and (= done datum) (meta= done datum) (= orig-env env))))
 
 (defn rule-list
   "Try each of the rules in order top-down.
@@ -83,12 +68,16 @@
   subsequent rules are run with the new value. If a rule fails, the current
   value does not change and the next rule is run.
 
-  Each rule can itself be any rule-combinator."
+  Each rule can itself be any rule-combinator.
+
+  opts:
+
+    :equiv? default: [[equiv?]]"
   [opts & rules]
   (let [[opts rules] (if (map? opts)
                        [opts rules]
                        [{} (cons opts rules)])
-        equiv? (:equiv? opts all-equal?)
+        equiv? (:equiv? opts equiv?)
         rules (flatten rules)
         rc (count rules)]
     (letfn [(per-rule [datum prev-env events [r :as rules] n]
@@ -98,7 +87,7 @@
                    prev-env events
                    (fn [result env _]
                      (when *debug-rules* (println (str "#" (inc n) "/" rc " succeded")))
-                     (let [[datum env] (if ((equiv? :data+meta) datum prev-env result env)
+                     (let [[datum env] (if ((equiv? :no-env) datum prev-env result env)
                                          ;; BUG? returning the modified env even if returning the old value
                                          [datum env] [result env])]
                        (bouncing (per-rule datum env events
@@ -346,7 +335,7 @@
    (let [opts (if (fn? opts)
                 {:fn-map {">-" opts}}
                 opts)
-         equiv? (:equiv? opts all-equal?)
+         equiv? (:equiv? opts equiv?)
          rule (directed:extended raw-rule opts)]
      (with-meta
        (fn do-on-marked
@@ -404,7 +393,7 @@
   because I'm not exactly sure how it should be structured but eventually it
   should be done without the need for extra global state like this.  "
   ([initial-form name-rule-pairs]
-   (on-mutual all-equal? initial-form name-rule-pairs))
+   (on-mutual equiv? initial-form name-rule-pairs))
   ([equiv? initial-form name-rule-pairs]
    (let [forms (if (map? name-rule-pairs)
                  name-rule-pairs
@@ -454,7 +443,7 @@
                                    [(conj result r) env]))
                          [(empty! datum) orig-env] datum)
           result (if (list? result) (reverse result) result)]
-      (if ((equiv? :data+meta) datum orig-env result env)
+      (if ((equiv? :no-env) datum orig-env result env)
         ;; BUG? returning modified env even on no change
         [datum env #_orig-env]
         [(if (meta result)
@@ -468,7 +457,7 @@
 (defn on-subexpressions
   "Run the given rule combinator on all subexpressions depth-first."
   ([the-rule]
-   (on-subexpressions all-equal? the-rule))
+   (on-subexpressions equiv? the-rule))
   ([equiv? the-rule]
    (with-meta
      (fn do-on-subexpr
@@ -483,7 +472,7 @@
                         ;; BUG? no equiv? check against the orig datum/subex-env here?
                         [answer env] (run-rule the-rule done events sx-env)]
                     ;; Which env would even be compared in equiv? is undefined in original code...
-                    (if ((equiv? :data+meta) done sx-env answer env)
+                    (if ((equiv? :no-env) done sx-env answer env)
                       ;; BUG? using the modified env even with no changes???
                       (on-result done env #_sx-env fail)
                       (on-result answer env fail))))]
@@ -504,7 +493,7 @@
   "Run the given rule combinator repeatedly until running the rule makes no
   further changes."
   ([the-rule]
-   (iterated all-equal? the-rule))
+   (iterated equiv? the-rule))
   ([equiv? the-rule]
    (with-meta
      (fn do-iter
@@ -515,7 +504,7 @@
        ([datum orig-env events y n]
         (letfn [(iterating [datum prev-env events on-result f]
                   (let [[answer env] (run-rule the-rule datum events prev-env)]
-                    (if ((equiv? :data+meta) datum prev-env answer env)
+                    (if ((equiv? :no-env) datum prev-env answer env)
                       ;; BUG? returning modified env?
                       (on-result datum env #_prev-env f)
                       (recur answer env events on-result f))))]
@@ -536,7 +525,7 @@
   "Run the given rule combinator repeatedly depth-first on all subexpressions
   until running the rule makes no further changes at each level."
   ([the-rule]
-   (simplifier all-equal? the-rule))
+   (simplifier equiv? the-rule))
   ([equiv? the-rule]
    (with-meta
      (fn enter-simplifier
@@ -550,7 +539,7 @@
                 (let [[done sub-env] (try-subexpressions equiv? on-simplifier-expr datum simp-env events)
                       ;; odd there is no equiv check here...
                       [answer env] (run-rule the-rule done events sub-env)]
-                  (if ((equiv? :data+meta) done sub-env answer env)
+                  (if ((equiv? :no-env) done sub-env answer env)
                     ;; BUG? returning modified env?
                     (on-result done env #_sub-env f)
                     (on-simplifier-expr answer env events on-result f))))]
