@@ -50,7 +50,7 @@
        (vector-ref ?e ?i) (vector-set! ?e0 ?i ?e1)
        (void)
        ;; FIXME: this list should not unify with a vector... but it does if I don't add the (? _ seq?) rule.
-       (& (?e:f ??e:args) (? _ seq?)))
+       (?:list ?e:f ??e:args))
   (Define [define]
     (define (?v:name ??argdef*) ?type ?e))
   (Program [p]
@@ -74,7 +74,7 @@
        - (or ?e0 ?e1)
        ;; put this in here early because without call, fns are inconvenient.
        + (call ?e:f ??e:args)
-       - (& (?e:f ??e:args) (? _ seq?))))
+       - (?:list ?e:f ??e:args)))
 
 (def-derived Exposed Shrunk
   (Exp [e]
