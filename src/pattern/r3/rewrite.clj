@@ -209,6 +209,9 @@
                          (rule '((?:literal clojure.core/unquote-splicing) ?x)
                                (list 'clojure.core/unquote-splicing x))
 
+                         (rule '((?:literal ?:list) (?:* ?->items))
+                               `(list (seq (concat ~@items))))
+
                          ;; list (must be placed after matchers since matchers can be lists)
                          (rule '((?:* ?->items))
                                `(list (seq (concat ~@items))))
@@ -225,15 +228,21 @@
 
                           ;; var
                           (rule '(?:chain ?var matcher-type-for-dispatch ?)
+                            (let [n (var-name var)]
+                              (if (= '_ n)
+                                ()
                                 (if (str/includes? (or (matcher-mode var) "") "<-")
                                   `(list (~*on-marked-insertion* ~(var-name var)))
-                                  `(list ~(var-name var))))
+                                  `(list ~(var-name var))))))
 
                           ;; segment
                           (rule '(?:chain ?var matcher-type-for-dispatch ??)
+                            (let [n (var-name var)]
+                              (if (= '_ n)
+                                ()
                                 (if (str/includes? (or (matcher-mode var) "") "<-")
                                   `(map ~*on-marked-insertion* ~(var-name var))
-                                  (var-name var)))
+                                  (var-name var)))))
 
                           (rule '((?:literal ?:<-) ?->x)
                                 `(map ~*on-marked-insertion* ~x))
@@ -297,9 +306,13 @@
                                                  {::ordered true}))))
 
                           (rule '((?:literal ?:*map) ?ks ?vs)
+                            (let [ks (var-name ks)
+                                  vs (var-name vs)]
+                              (if (or (= '_ ks) (= '_ vs))
+                                ()
                                 `(list (apply array-map
                                          ~(with-meta `(interleave ~(var-name ks) ~(var-name vs))
-                                                 {::ordered true}))))
+                                                 {::ordered true}))))))
 
                           ;; if
                           (rule '((?:literal ?:if) ?pred ?->then (?:? ?->else))

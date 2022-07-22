@@ -55,7 +55,9 @@
 (defmacro sub
   "Use the version in the pattern.r3.rewrite namespace."
   [form]
-  (@qsub* form))
+  (if @qsub*
+    (@qsub* form)
+    nil))
 
 (defn pattern-args
   "Return the correctly ordered list of variable names in the pattern for use in
@@ -91,9 +93,10 @@
 
 (defn- extract-env-args [env-args]
   (when (seq env-args)
-    (mapcat (fn [arg]
-              [(symbol (name arg)) `(~'%env ~(keyword arg))])
-            env-args)))
+    (doall
+      (mapcat (fn [arg]
+                [(symbol (name arg)) `(~'%env ~(keyword arg))])
+        env-args))))
 
 (defn- may-call-success0? [body]
   (boolean (some #{'(success) 'success:env
@@ -164,13 +167,15 @@
   "
   ([pattern]
    (let [args (pattern-args pattern)
-         matches (gensym 'matches)]
-     `(let [p# ~(@spliced pattern)]
-        (make-rule p# (fn [env# ~matches] (success))
+         matches (gensym 'matches)
+         p (@spliced (@scheme-style pattern))]
+     `(let [p# ~p]
+        (make-rule p#
+          (rule-fn-body ~(pattern-args pattern) ~(:env-args (meta pattern))
+            (sub ~(second pattern)))
           raw-matches
-          *identity-rule-post-processor*
-          {:may-call-success0? true
-           :src '(success)}))))
+          *post-processor*
+          {:src '(sub ~(second pattern))}))))
   ([pattern handler-body]
    `(let [p# ~(@spliced (@scheme-style pattern))]
       (make-rule p#
