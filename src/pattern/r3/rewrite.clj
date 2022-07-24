@@ -446,7 +446,7 @@
   ([form]
    `(util/deep-merge-meta (:rule/datum ~'%env) (sub ~form)))
   ([form orig]
-   `(util/deep-merge-meta orig (sub ~form))))
+   `(util/deep-merge-meta ~orig (sub ~form))))
 
 ;; TODO: If the regular sub ... subm! methods all retained namespace, would that
 ;; break anything? I think the behaviour may be leftover from the earliest
