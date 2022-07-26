@@ -239,9 +239,11 @@
                                                 (keys (:transform? r))))
                                    (:var-names rule-meta)))]
        (cond-> r
-         ;; If the datum will change after the initial match, and it's possible
-         ;; that (success) arity 0 will be called, the datum needs to have the
-         ;; new values substituted into it:
+         ;; If the datum will change after the initial match (via ?->x style
+         ;; rules), and it's possible that (success) arity 0 will be called, the
+         ;; datum needs to have the new values substituted into it.
+         ;; The primary use case for this used to be pattern-only rules, but it is
+         ;; also possible for rules to return (success).
          (and (:may-call-success0? r)
               (seq (:active r)))
          (assoc :substitute (substitute (:pattern rule-meta))))))))
