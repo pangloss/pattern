@@ -24,8 +24,8 @@
                                    [[] {:closures [] :free-vars #{}}] define*)]
                        (sub (program ??defs ??closures))))
                (rule '(define (?v:n ??argdef*) ?type ?->e)
-                     (let [_ (gennice '_)]
-                       (sub (define (?n [?_ Closure] ??argdef*) ?type ?e))))
+                     (let [ignore (gennice '_)]
+                       (sub (define (?n [?ignore Closure] ??argdef*) ?type ?e))))
                (rule '(lambda (??argdef*) ?type ?e)
                      (let [[e {:keys [free-vars] :as env}] (descend e %env)
                            free-vars (apply disj free-vars (map first argdef*))

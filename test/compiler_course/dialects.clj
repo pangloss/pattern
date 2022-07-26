@@ -31,7 +31,7 @@
         (?:letrec [simple   (| Integer Boolean Void)
                    compound (Vector (?:* $type))
                    function ((?:* $type) -> $type)
-                   closure  (Vector #_closure-fn       ((| (Vector ??_) Void)
+                   closure  (Vector #_closure-fn       ((| (Vector ??__) Void)
                                                         (?:* $type) -> $type)
                                     #_closed-over-vars (?:* $type))
                    type     (| $simple $compound $function $closure)]
@@ -49,8 +49,7 @@
        (vector ??e*) (vector-length ?e)
        (vector-ref ?e ?i) (vector-set! ?e0 ?i ?e1)
        (void)
-       ;; FIXME: this list should not unify with a vector... but it does if I don't add the (? _ seq?) rule.
-       (?:list ?e:f ??e:args))
+       (& (?e:f ??e:args) (? _ seq?)))
   (Define [define]
     (define (?v:name ??argdef*) ?type ?e))
   (Program [p]
@@ -74,7 +73,7 @@
        - (or ?e0 ?e1)
        ;; put this in here early because without call, fns are inconvenient.
        + (call ?e:f ??e:args)
-       - (?:list ?e:f ??e:args)))
+       - (& (?e:f ??e:args) (? _ seq?))))
 
 (def-derived Exposed Shrunk
   (Exp [e]
@@ -83,11 +82,11 @@
 (def-derived Closures Exposed
   - Type
   (Type [type :enforce]
-        (?:letrec [simple   (| Integer Boolean Void Closure (delay-type ??_))
+        (?:letrec [simple   (| Integer Boolean Void Closure (delay-type ??__))
                    compound (Vector (?:* $type))
                    function ((?:* $type) -> $type)
                    ;; closure is a vector whose first arg contains itself recursively (or Void)
-                   closure  (Vector #_closure-fn       ((| (Vector ??_) Void)
+                   closure  (Vector #_closure-fn       ((| (Vector ??__) Void)
                                                         (?:* $type) -> $type)
                                     #_closed-over-vars (?:* $type))
                    type     (| $simple $compound $function $closure)]
@@ -208,11 +207,11 @@
              [i int?]
              [jc `jmp-cond])
   (Type [type :enforce]
-        (?:letrec [simple   (| Integer Boolean Void Closure (delay-type ??_))
+        (?:letrec [simple   (| Integer Boolean Void Closure (delay-type ??__))
                    compound (Vector (?:* $type))
                    function ((?:* $type) -> $type)
                    ;; closure is a vector whose first arg contains itself recursively (or Void)
-                   closure  (Vector #_closure-fn       ((| (Vector ??_) Void)
+                   closure  (Vector #_closure-fn       ((| (Vector ??__) Void)
                                                         (?:* $type) -> $type)
                                     #_closed-over-vars (?:* $type))
                    type     (| $simple $compound $function $closure)]
