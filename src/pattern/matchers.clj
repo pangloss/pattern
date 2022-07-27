@@ -191,6 +191,39 @@
          :var-abbrs {name (if abbr [abbr] [])}
          :length (len 1)}))))
 
+(defn- force-match
+  "Experimental matcher for use within ?:chain to replace the matched value with
+  the result of the chain expression. May be useful in other places, too. May
+  just cause chaos.
+
+  Example:
+
+     ((rule '(?:chain ?x reverse (?:force x))) '(b a)) ;; => (a b)
+
+  BUT WATCH OUT! Here, ?x is bound to (b a), matches the second instance inside
+  ?:chain and gets reversed. Next, it matches (reverse x) with the final (a b) form.
+
+  The tricky thing is that when the result is generated, ?x is used in all 3
+  places, so the counterintuitive result is that ?x is reversed in all matched
+  locations:
+
+     ((rule '[?x (?:chain ?x reverse (?:force x)) ?x])
+     '[(b a) (b a) (a b)])
+     ;; => [(a b) (a b) (a b)]
+
+  I don't know how this will behave in backtracking situations, but it may turn
+  out to be an effective backtrack prevention mechanism..."
+  [[_ name] comp-env]
+  (with-meta
+    (fn force-matcher [data dictionary ^Env env]
+      (if (seq data)
+        (let [datum (first data)
+              abbr nil] ;; TODO: get existing abbr from existing match if it exists
+          ((.succeed env) ((.store env) name datum '?:force abbr dictionary env) 1))
+        (on-failure :missing name dictionary env 0 data nil)))
+    {:var-names [name]
+     :length (len 1)}))
+
 (defn- segment-equal? [orig-data value ok pattern dictionary env]
   (if (seqable? value)
     (loop [data orig-data
@@ -963,6 +996,7 @@
 (register-matcher '?:+ #'match-at-least-one {:aliases ['?:at-least-one]})
 (register-matcher '?:n #'match-n-times {:aliases []})
 (register-matcher '?:chain match-chain {:aliases ['??:chain]})
+(register-matcher '?:force force-match)
 (register-matcher '| #'match-or {:aliases ['?:or]})
 (register-matcher '& match-and {:aliases ['?:and]})
 (register-matcher '?:not match-not)
