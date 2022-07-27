@@ -12,18 +12,28 @@
         false
         (instance? clojure.lang.ArraySeq$ArraySeq_int (seq x))))
 
-(defn array? [x]
+(defn arrayseq?
+  "Returns true if the object is any sort of non-empty Java Array.
+
+  Will return false if the array is empty.
+
+  This may still need to be extened to be complete."
+  [x]
   (if (nil? x)
     false
     (instance? clojure.lang.ArraySeq (seq x))))
 
 
-(defn meta? [x]
+(defn meta?
+  "Returns true if the object supports attaching metadata via with-meta."
+  [x]
   (or
     (instance? IMeta x)
     (instance? IObj x)))
 
-(defn meta= [a b]
+(defn meta=
+  "Returns true if the metadata attached to a is equal to the metadata attached to b."
+  [a b]
   (= (meta a) (meta b)))
 
 (defn all-equiv?
@@ -69,16 +79,21 @@
                    (map? orig) (into {} children)
                    (vector? orig) (into [] children)
                    (ints? orig) (int-array children)
-                   (array? orig) children
+                   (arrayseq? orig) children
                    :else (throw (ex-info "unknown coll" {:type (type orig) :orig orig})))]
     (if (meta? coll)
       (with-meta coll (meta orig))
       coll)))
 
-(defn make-zipper [x]
+(defn make-zipper
+  "Make a zipper that will descend into any type of sequential objects except maps."
+  [x]
   (zip/zipper sequential? seq build-coll x))
 
-(defn make-zipper+map [x]
+(defn make-zipper+map
+  "Make a zipper that will descend into any type of sequential objects,
+  including maps."
+  [x]
   (zip/zipper (some-fn sequential? map? map-entry?) seq build-coll x))
 
 (defn- find-last-equiv-node [ot nt]
@@ -136,7 +151,9 @@
           (or (zip/right (zip/up p)) (recur (zip/up p)))
           [(zip/node p) :end])))))
 
-(defn zpos [z]
+(defn- zpos
+  "Return the raw position construct in the zipper."
+  [z]
   (z 1))
 
 (defn walk-equal-subtree [oz rz on-same]
