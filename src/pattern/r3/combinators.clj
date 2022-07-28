@@ -225,10 +225,12 @@
                  ;; marked with $ for mutual recursion.
                  (detect-name :descending? (:name descend))
                  (detect-meta :descending? :var-abbrs identity (:abbr descend))
+                 (detect-meta :descending? :var-abbrs identity (:abbr (:descend rule-meta)))
                  (detect-meta :descending? :var-prefixes #(map symbol %) (:prefix descend))
                  (detect-mode :mutual? "$" meta)
                  (detect-name :mutual? (:name mutual))
                  (detect-meta :mutual? :var-abbrs identity (:abbr mutual))
+                 (detect-meta :mutual? :var-abbrs identity (:abbr (:mutual rule-meta)))
                  (detect-meta :mutual? :var-prefixes #(map symbol %) (:prefix mutual))
                  (assoc :transform? {}))
            r (reduce (fn [rule-meta [mode-string f]]
