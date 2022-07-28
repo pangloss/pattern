@@ -266,8 +266,13 @@
                                                           "repeat pattern.")
                                                      {:expression '~expr})))))
 
-                          ;; group
-                          (rule '((? op #{?:? ?:1}) ??->pattern)
+                          ;; optional
+                          (rule '((?:literal ?:?) ??->pattern)
+                            `(let [p# (seq (apply concat ~pattern))]
+                               (when (some identity p#)
+                                 p#)))
+
+                          (rule '((?:literal ?:1) ??->pattern)
                                 `(seq (apply concat ~pattern)))
 
                           ;; and

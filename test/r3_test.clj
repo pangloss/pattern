@@ -833,3 +833,13 @@
          ((rule '[1 2 ... n]
                 'matched)
           '[1 2 2 2 2 2 n]))))
+
+(deftest optional
+  (is (= '(a b)
+        ((rule '(a (?:? ?x) ?b)) '(a b))))
+  (is (= '(a b c)
+        ((rule '(a (?:? ?x) ?b)) '(a b c)))))
+
+(deftest chain+force
+  (is (= '(a b)
+        ((rule '(?:chain ?x reverse (?:force x))) '(b a)))))
