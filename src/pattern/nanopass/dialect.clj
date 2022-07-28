@@ -7,6 +7,7 @@
                                         symbol-dict
                                         matcher-type matcher-type-for-dispatch]]
             [pattern.r3.rewrite :refer [sub quo spliced scheme-style]]
+            [pattern.substitute :refer [substitute]]
             [pattern.match.predicator :refer [with-predicates
                                               *pattern-replace*
                                               apply-replacements
@@ -605,3 +606,32 @@
   parses it successfully."
   [dialect expr]
   ((:validate (@all-dialects dialect dialect)) expr {:raw true}))
+
+(defn descend-into
+  "Add default rules that allow directed descent through all of the valid forms
+  within a given form type for the given dialect."
+  ;; TODO: this needs a clearer explanation or examples. Update some sample passes to use it.
+  ([dialect forms]
+   (descend-into dialect forms (into #{}
+                                 (map #(get-in dialect [:forms % :abbr]))
+                                 forms)))
+  ([dialect forms descend-abbrs]
+   (if (= :all forms)
+     (descend-into dialect (keys (:forms dialect)) descend-abbrs)
+     (let [abbrs (set descend-abbrs)]
+       (->> forms
+         (mapcat #(get-in dialect [:forms % :exprs]))
+         (remove :is-terminal)
+         (keep (fn [{:keys [match orig-expr] :as x}]
+                 (when match
+                   (vary-meta
+                     (make-rule
+                       match
+                       (fn [env matches]
+                         (success (substitute orig-expr matches)))
+                       #(comp list (symbol-dict %))
+                       nil
+                       {:src orig-expr})
+                     assoc-in [:rule :descend :abbr]
+                     abbrs))))
+         vec)))))

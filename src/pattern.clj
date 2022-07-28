@@ -62,7 +62,8 @@
               from-dialect to-dialect dialects
               show-dialect
               show-parse
-              valid? validate)
+              valid? validate
+              descend-into)
              (pattern.types ok ok?)
              (pattern.nanopass.pass
               defpass
