@@ -607,31 +607,70 @@
   [dialect expr]
   ((:validate (@all-dialects dialect dialect)) expr {:raw true}))
 
+(defn- get-forms [dialect forms]
+  (if (= :all forms) (keys (:forms dialect)) forms))
+
 (defn descend-into
-  "Add default rules that allow directed descent through all of the valid forms
-  within a given form type for the given dialect."
-  ;; TODO: this needs a clearer explanation or examples. Update some sample passes to use it.
+  "Creates a rule-list based on the valid expressions in the given dialect. The
+  rules do not make any change to the expressions they match, but they enable
+  correct descent through those expressions.
+
+  Each `form` in the dialect has a list of expressions. You can either specify
+  a list of forms to include, or specify `:all`.
+
+  Descent through the forms is based on the `abbr` of the expression. If a
+  form's abbreviation is included in the list of `descend-abbrs`, then for each
+  included expression, the vars that have that abbr will be descended through.
+  If no descend-abbr is provided, the abbr of each selected form will be used.
+
+  Note that terminals are never included in the list by default, but sometimes
+  it may be useful to include them in the `descend-abbrs` list.
+
+  Example dialect
+
+      (def-dialect D1
+        (Exp [e] (if ?e:cond ?e:then ?e:else) (prg ?p ??e*))
+        (Program [p] (program ?e))
+
+  Example usages
+
+      (descend-into D1)
+      ;; => rule list with 3 rules, descending into e and p abbrs.
+
+      (descend-into D1 '[Program])
+      ;; => rule list just matching (program ?e), but only descending into p
+      ;;    abbrs, so really does nothing.
+
+      (descend-into D1 '[Exp] '[p])
+      ;; => rule list matching the 2 forms in Exp, but only descending into
+      ;;    p abbrs. Equivalent to:
+      (rule-list
+        (rule '(if ?e0 ?e1 ?e2)) ;; does nothing but prevents other rules from matching
+        (rule '(prg ?->p ??e*))) ;; descends into ?->p but otherwise makes no change"
+  ([dialect]
+   (descend-into dialect :all))
   ([dialect forms]
-   (descend-into dialect forms (into #{}
-                                 (map #(get-in dialect [:forms % :abbr]))
-                                 forms)))
+   (let [forms (get-forms dialect forms)]
+     (descend-into dialect forms (into #{}
+                                   (map #(get-in dialect [:forms % :abbr]))
+                                   forms))))
   ([dialect forms descend-abbrs]
-   (if (= :all forms)
-     (descend-into dialect (keys (:forms dialect)) descend-abbrs)
-     (let [abbrs (set descend-abbrs)]
-       (->> forms
-         (mapcat #(get-in dialect [:forms % :exprs]))
-         (remove :is-terminal)
-         (keep (fn [{:keys [match orig-expr] :as x}]
-                 (when match
-                   (vary-meta
-                     (make-rule
-                       match
-                       (fn [env matches]
-                         (success (substitute orig-expr matches)))
-                       #(comp list (symbol-dict %))
-                       nil
-                       {:src orig-expr})
-                     assoc-in [:rule :descend :abbr]
-                     abbrs))))
-         vec)))))
+   (let [forms (get-forms dialect forms)
+         abbrs (set descend-abbrs)]
+     ;; TODO: should I filter out expressions that would not match any descend rules?
+     (->> forms
+       (mapcat #(get-in dialect [:forms % :exprs]))
+       (remove :is-terminal)
+       (keep (fn [{:keys [match orig-expr] :as x}]
+               (when match
+                 (vary-meta
+                   (make-rule
+                     match
+                     (fn [env matches]
+                       (success (substitute orig-expr matches)))
+                     #(comp list (symbol-dict %))
+                     nil
+                     {:src orig-expr})
+                   assoc-in [:rule :descend :abbr]
+                   abbrs))))
+       rule-list))))
