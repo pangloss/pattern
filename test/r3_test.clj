@@ -842,4 +842,7 @@
 
 (deftest chain+force
   (is (= '(a b)
-        ((rule '(?:chain ?x reverse (?:force x))) '(b a)))))
+        ((rule '(?:chain ?x reverse (?:force x))) '(b a))))
+  (is (= '[(a b) (a b) (a b)]
+        ((rule '[?x (?:chain ?x reverse (?:force x)) ?x])
+         '[(b a) (b a) (a b)]))))
