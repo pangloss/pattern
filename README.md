@@ -56,7 +56,7 @@ Unification increases the sophistication of patterns that can be defined.
 ```
 
 Unification works across different matcher types.
-The pattern `[?list [??list 3]`, could match `[[1 2] [1 2 3]]` or `[[:x] [:x 3]]`, etc. 
+The pattern `[?list [??list 3]]`, could match `[[1 2] [1 2 3]]` or `[[:x] [:x 3]]`, etc. 
 
 
 ### Pattern Matchers Available
