@@ -1,5 +1,6 @@
 (ns pattern
   (:require pattern.matchers
+            pattern.match.core
             pattern.substitute
             pattern.r3.core
             pattern.r3.rule
