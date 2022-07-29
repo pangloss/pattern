@@ -400,6 +400,14 @@
                           'seq (list '| nil (list (list '?:* [k v]))))
                     comp-env))
 
+(defn match-*set
+  "Create a ?:set matcher than can match the items in a set."
+  [[_ item] comp-env]
+  (compile-pattern* (list '?:chain
+                          (list '? '_ (some-fn nil? set?))
+                          'seq (list '| nil (list (list '?:* item))))
+                    comp-env))
+
 
 (defn- match-optional
   "Match the given form 0 or 1 times. There may be any number of separate
@@ -988,6 +996,7 @@
 (register-matcher '?:map match-map)
 (register-matcher '?:+map #'match-+map {:aliases ['?:map+]})
 (register-matcher '?:*map #'match-*map {:aliases ['?:map*]})
+(register-matcher '?:set #'match-*set)
 (register-matcher '?:as match-as {:named? true :restriction-position 3})
 (register-matcher '?:as* match-as {:named? true :restriction-position 3})
 (register-matcher '?:? #'match-optional {:aliases ['?:optional]})
