@@ -1,7 +1,6 @@
 (ns pattern.util
   (:require [clojure.zip :as zip]
-            [diffit.vec :as d]
-            [clojure.zip :as z])
+            [diffit.vec :as d])
   (:import [clojure.lang IMeta IObj]))
 
 (defn ints?
@@ -256,3 +255,74 @@
     (walk-diff (diff a b) (zip/down (make-zipper a)) (zip/down (make-zipper b))
       (fn same [z orig] (prn :same :from orig :to (zip/node z)) z)
       (fn changed [z orig] (prn :changed :from orig :to (zip/node z)) z))))
+
+
+
+
+
+(defn walk-with-paths
+  "Like [[clojure.walk/walk]] got combined with [[map-indexed]]. Calls
+  [[(inner idx element)]] and [[(outer idx element)]] where idx is a vector that
+  can be used with functions like [[get-in]] or [[update-in]]
+
+  Map keys are given the path to the map with :map/key appended. For instance, when
+  the traversing the below map gets to the :k element, the callbacks would be called
+  as shown:
+
+    [_ {:x [{:k :v}]}]
+
+    (inner [1 :x 0 :key] :k)"
+  [inner outer path form]
+  (let [inner* (fn [i x] (inner (conj path i) x))]
+    (cond
+      (list? form) (outer path (with-meta (apply list (map-indexed inner* form))
+                                  (meta form)))
+      (instance? clojure.lang.IMapEntry form)
+      (outer path (clojure.lang.MapEntry/create
+                     (inner (conj (subvec path 0 (dec (count path))) (key form) :map/key) (key form))
+                     (inner (conj (subvec path 0 (dec (count path))) (key form)) (val form))))
+      (seq? form) (outer path (with-meta (doall (map-indexed inner* form))
+                                (meta form)))
+      (instance? clojure.lang.IRecord form)
+      ;; I assume records maintain or update their metadata correctly:
+      (outer path (first (reduce
+                           (fn [[r i] x]
+                             [(conj r (inner (conj path i) x)) (inc i)])
+                           [form 0]
+                           form)))
+      (coll? form) (outer path (with-meta
+                                 (into (empty form) (map-indexed inner* form))
+                                 (meta form)))
+      :else (outer path form))))
+
+(defn postwalk-with-paths
+  "Performs a depth-first, post-order traversal of form.  Calls (f idx subform)
+  on each sub-form, uses f's return value in place of the original.
+  Recognizes all Clojure data structures. Consumes seqs as with doall.
+
+  See [[clojure.walk/postwalk]] and [[walk-with-paths]]."
+  {:added "1.1"}
+  ([f form]
+   (postwalk-with-paths f [] form))
+  ([f path form]
+   (walk-with-paths (partial postwalk-with-paths f) f path form)))
+
+
+(defn find-in
+  "Like get-in, but works with non-indexed collections, too.
+
+  Also handles :map/key in path that returns the actual key element from the
+  collection. The actual key may have different metadata than the value used to
+  look it up."
+  [[idx & path] form]
+  (let [item
+        (if (associative? form)
+          (if (= :map/key (first path))
+            (key (find form idx))
+            (get form idx))
+          (nth form idx))]
+    (if (and (seq path) (not= [:map/key] path))
+      (if (= :map/key (first path))
+        (recur (rest path) item)
+        (recur path item))
+      item)))

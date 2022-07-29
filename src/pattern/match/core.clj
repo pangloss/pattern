@@ -1,6 +1,6 @@
 (ns pattern.match.core
   (:refer-clojure :exclude [trampoline])
-  (:require [genera :refer [defgenera defgenera* defgenera= defgen defgen* defgen= defmethod* defmethod!
+  (:require [genera :refer [defgenera defgenera= defgen defgen* defgen= defmethod* defmethod!
                             trampoline trampolining bouncing]]
             [uncomplicate.fluokitten.core :as f]
             [pattern.types :refer [->Length map->Env]]
