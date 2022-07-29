@@ -1,11 +1,40 @@
 # Pattern
 
-Pattern is an extensible pattern matching, substitution, and rules engine.
+Pattern lets you transform data structures in amazing ways.
+
+The focus is on simplicity and expressivity.
+It works on immutable persistent data, greatly simplifying development and debugging of transformations.
 
 ``` clojure
 pangloss/pattern {:git/url "https://github.com/pangloss/pattern"
                   :sha "<use the current commit hash>"}
 ```
+
+## How can this be used?
+
+Here are a few examples of how it's been used already:
+
+* Create an infix math macro in a few lines of code in about 30 LOC
+* Define the simplification rules of a full computer algebra system (see a very similar engine in use in SICMUtils)
+* Create a Python to Clojure source-to-source converter in under 400 LOC
+* Compile Scheme to X86 assembly in about 1500 LOC
+
+## How does it work?
+
+Pattern is an collection of tools for pattern matching and substitution.
+Those tools can be extended and combined in flexible ways.
+
+The match pattern looks similar to the data structure it's matching on.
+That enables a very intuitive understanding of how the pattern will apply to the data being matched.
+
+A transformation is a match pattern with a substitution pattern.
+Combined, that is called a rule.
+
+The substitution pattern uses exactly the same syntax as the match pattern.
+Substitution supports all of core functionality of the matcher.
+That makes it much simpler to understand the behavior of a rule.
+
+In the spirit of Clojure, pattern maintains a high degree of simplicity in the interface.
 
 ## Pattern Matching
 
@@ -42,7 +71,7 @@ As you can see, it's more complex, less clear in intention, and easier to make a
 
 The advantages of these pattern matchers become even more apparent as the complexity of pattern increases.
 
-### Unification
+### Unification Within a Pattern
 
 If multiple matchers in a pattern have the same name, the values they match must unify.
 
@@ -76,7 +105,7 @@ Now it would match a vector of any length as long as it contains the sequence `1
 
 Patterns also do not need to be flat.
 For instance, I can match against Clojure S-Expressions. 
-Here I'll introduce a two more matcher types:
+Here I'll introduce a three more matcher types:
 
 ``` clojure
 (def let-bindings (compile-pattern '(let [(?:* (? binding* symbol?) ?_)] ??_)))
@@ -86,6 +115,11 @@ Here I'll introduce a two more matcher types:
                  ...))
 ;; => {:binding* [datum c]}
 ```
+
+`?_` and `??_` are special cases of unnamed matchers.
+These matchers do not unify with each other, and the value matched by them is not returned in the match results.
+They are useful for ignoring parts of the input data that are not relevant to what you are trying to do.
+Anywhere you can provide a matcher name, using `_` as the name has the same behavior.
 
 The `?:*` matcher is `match-many`.
 It matches a repeated subsequence within the sequence it is placed in.
@@ -104,11 +138,9 @@ That means the following does not match:
 ;; => nil
 ```
 
-We also use `?_` and `??_` in the pattern. In both cases, the single _ name signals for the matcher to
-discard the captured value.
+There are a lot more matchers and the list is gradually expanding with ever more weird and wonderful behaviors.
 
-
-Here is the full list of matchers available.
+Each matcher in the list has a matcher implementation function with detailed documentation.
 
 ``` clojure
 (register-matcher :value match-value)
@@ -145,7 +177,44 @@ Here is the full list of matchers available.
 
 ## Substitution
 
+The core substitution function is `sub`. 
+It is actually a macro that expands to be equivalent to just writing the substitution pattern as a literal value.
+
+``` clojure
+(let [x 2
+      y '[a b c]]
+  (sub (* (+ ??y) ?x)))
+;; => (* (+ a b c) 2)
+```
+
+Macroexpanded, you can see that the substitution overhead is effectively zero:
+
+``` clojure
+(let [x 2
+      y '[a b c]] 
+  (list '* (list* '+ y) x))
+```
+
+You may notice that instead of passing in a map of values to `sub`, it effectively looks in the current evaluation context for replacement values.
+This tends to be very convenient. 
+In practice, 99% of the time I use this method.
+
+For that last 1%, though, a more traditional data-driven substitution method is required.
+For that, we can use `substitute`:
+
+``` clojure
+(substitute 
+  '(* (+ ??y) ?x)
+  {'x 2 'y '[a b c]})
+;; => (* (+ a b c) 2)
+```
+
 ## Rules
+
+Rules combine pattern matching and substitution.
+In a rule, the matched symbols are let-bound, enabling very convenient use of `sub` to rebuild the matched data.
+
+...
 
 ## Rule Combinators
 

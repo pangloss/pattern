@@ -30,5 +30,5 @@
   :deploy {:replace-deps {slipset/deps-deploy {:mvn/version "0.2.0"}}
            :exec-fn deps-deploy.deps-deploy/deploy
            :exec-args {:installer :remote :artifact "pattern.jar"}}
-  :dev/dw {:replace-deps {horse.no/genera {:local/root "../genera"}
-                          horse.no/fermor {:local/root "../fermor"}}}}}
+  :dev/dw {:extra-deps {horse.no/genera {:local/root "../genera"}
+                        horse.no/fermor {:local/root "../fermor"}}}}}
