@@ -319,8 +319,12 @@
         (if (associative? form)
           (if (= :map/key (first path))
             (key (find form idx))
-            (get form idx))
-          (nth form idx))]
+            (if (map? form)
+              (get form idx)
+              (when (int? idx)
+                (get form idx nil))))
+          (when (int? idx)
+            (nth form idx)))]
     (if (and (seq path) (not= [:map/key] path))
       (if (= :map/key (first path))
         (recur (rest path) item)
