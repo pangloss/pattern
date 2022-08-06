@@ -72,6 +72,19 @@
                                         pattern)
                                 {:pattern pattern :value r}))))))))
 
+(defn- sub-as* [[_ as & [alt] :as pattern]]
+  (let [f (sub-sequence (list '?? (second pattern)))
+        altf (sub* alt)]
+    (fn [dict fail]
+      (f dict (fn fail-as [dict' name' pattern']
+                (let [r (altf dict
+                          (or fail
+                            (fn fail-as-alt [dict'' name'' pattern'']
+                              [pattern''])))]
+                  (if (= r [alt])
+                    [pattern]
+                    r)))))))
+
 (defn- sub-or [[_ & alts :as pattern]]
   (let [alts (map sub* alts)
         my-fail (->SubFail pattern)]
@@ -274,7 +287,7 @@
   (defmethod* sub* alias #'sub-many-map))
 (defmethod* sub* '?:chain #'sub-chain)
 (defmethod* sub* '?:as #'sub-as)
-(defmethod* sub* '?:as* #'sub-as)
+(defmethod* sub* '?:as* #'sub-as*)
 (defmethod* sub* '?:map #'sub-map)
 (defmethod* sub* '?:set #'sub-set)
 (defmethod* sub* '?:restartable #'sub-restartable)

@@ -67,38 +67,55 @@
          (substitute '[(?:when symbol? ?b ?a)] {'a 'x 'b 999}))))
 
 (deftest sub-map-variants
-  (is (= [{1 2}]
-        (substitute ['(?:map ?a ?b)] {'a 1 'b 2})))
-  (is (= ['(?:map ?a ?b)]
-        (substitute ['(?:map ?a ?b)] {'a 1})))
-  (is (= ['(?:map ?a ?b)]
-        (substitute ['(?:map ?a ?b)] {'b 2})))
-  (is (= [{1 2 2 1}]
-        (substitute ['(?:map ?a ?b ?b ?a)] {'a 1 'b 2})))
-  (is (= ['(?:*map ?a ?b)]
-        (substitute ['(?:*map ?a ?b)] {'a 1 'b 2})))
-  (is (= [{1 2}]
-        (substitute ['(?:*map ?a ?b)] {'a [1] 'b [2]})))
-  (is (= [{1 2 3 4}]
-        (substitute ['(?:*map ?a ?b)] {'a [1 3] 'b [2 4]})))
-  (is (= ['(?:*map ?a ?b)]
-        (substitute ['(?:*map ?a ?b)] {'a [1] 'b 2})))
-  (is (= ['(?:*map ?a ?b)]
-        (substitute ['(?:*map ?a ?b)] {'a 1 'b [2]})))
-  (is (= [#{1 2 3}]
-        (substitute ['(?:set ?x)] {'x [1 2 3]})))
-  (is (= [#{1 2 3}]
-        (substitute ['(?:set ?x)] {'x [1 2 3 3]})))
-  (is (= ['(?:set ?x)]
-        (substitute ['(?:set ?x)] {'x 1})))
-  (is (= [1]
-        (substitute ['(?:as x ?z)] {'x 1 'z 2})))
-  (is (= [2]
-        (substitute ['(?:as x ?z)] {'y 1 'z 2})))
-  (is (= ['[?a 1]]
-        (substitute ['(?:as x [?a ?z])] {'z 1})))
-  (is (= ['(?:as x [?a ?z])]
-        (substitute ['(?:as x [?a ?z])] {})))
+  (testing "map"
+    (is (= [{1 2}]
+          (substitute ['(?:map ?a ?b)] {'a 1 'b 2})))
+    (is (= ['(?:map ?a ?b)]
+          (substitute ['(?:map ?a ?b)] {'a 1})))
+    (is (= ['(?:map ?a ?b)]
+          (substitute ['(?:map ?a ?b)] {'b 2})))
+    (is (= [{1 2 2 1}]
+          (substitute ['(?:map ?a ?b ?b ?a)] {'a 1 'b 2}))))
+  (testing "*map"
+    (is (= ['(?:*map ?a ?b)]
+          (substitute ['(?:*map ?a ?b)] {'a 1 'b 2})))
+    (is (= [{1 2}]
+          (substitute ['(?:*map ?a ?b)] {'a [1] 'b [2]})))
+    (is (= [{1 2 3 4}]
+          (substitute ['(?:*map ?a ?b)] {'a [1 3] 'b [2 4]})))
+    (is (= ['(?:*map ?a ?b)]
+          (substitute ['(?:*map ?a ?b)] {'a [1] 'b 2})))
+    (is (= ['(?:map* ?a ?b)]
+          (substitute ['(?:map* ?a ?b)] {'a 1 'b [2]}))))
+  (testing "set"
+    (is (= [#{1 2 3}]
+          (substitute ['(?:set ?x)] {'x [1 2 3]})))
+    (is (= [#{1 2 3}]
+          (substitute ['(?:set ?x)] {'x [1 2 3 3]})))
+    (is (= ['(?:set ?x)]
+          (substitute ['(?:set ?x)] {'x 1}))))
+  (testing "as"
+    (is (= [1]
+          (substitute ['(?:as x ?z)] {'x 1 'z 2})))
+    (is (= [2]
+          (substitute ['(?:as x ?z)] {'y 1 'z 2})))
+    (is (= ['[?a 1]]
+          (substitute ['(?:as x [?a ?z])] {'z 1})))
+    (is (= ['(?:as x [?a ?z])]
+          (substitute ['(?:as x [?a ?z])] {}))))
+  (testing "as*"
+    (is (= [1 2]
+          (substitute ['(?:as* x ?z)] {'x [1 2] 'z [3 4]})))
+    (is (= [[3 4]]
+          (substitute ['(?:as* x ?z)] {'y [1 2] 'z [3 4]})))
+    (is (= [3 4]
+          (substitute ['(?:as* x ??z)] {'y [1 2] 'z [3 4]})))
+    (is (= [] ;; no match on optional matcher.
+          (substitute ['(?:as* x (?:? ?a ?z))] {'z 1})))
+    (is (= []
+          (substitute ['(?:as* x (?:? ?a ?z))] {})))
+    (is (= ['(?:as* x [?a ?z])]
+          (substitute ['(?:as* x [?a ?z])] {}))))
   (testing "wrong arities"
     (is (thrown-with-msg? Exception #"Invalid zipmap pattern.*"
           (substitute ['(?:*map ?a)] {'a [1]})))
