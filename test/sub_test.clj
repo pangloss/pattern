@@ -85,6 +85,12 @@
         (substitute ['(?:*map ?a ?b)] {'a [1] 'b 2})))
   (is (= ['(?:*map ?a ?b)]
         (substitute ['(?:*map ?a ?b)] {'a 1 'b [2]})))
+  (is (= [#{1 2 3}]
+        (substitute ['(?:set ?x)] {'x [1 2 3]})))
+  (is (= [#{1 2 3}]
+        (substitute ['(?:set ?x)] {'x [1 2 3 3]})))
+  (is (= ['(?:set ?x)]
+        (substitute ['(?:set ?x)] {'x 1})))
   (testing "wrong arities"
     (is (thrown-with-msg? Exception #"Invalid zipmap pattern.*"
           (substitute ['(?:*map ?a)] {'a [1]})))

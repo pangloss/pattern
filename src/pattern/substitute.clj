@@ -191,6 +191,19 @@
                 fail (fail dict nil pattern)
                 :else [pattern]))))))
 
+(defn- sub-set [[_ item* :as pattern]]
+  (let [itemf (sub* item*)]
+    (if (not= 2 (count pattern))
+      (throw (ex-info "Invalid pattern. Must have exactly 1 pattern element"
+               {:pattern pattern}))
+      (fn [dict fail]
+        (let [item (itemf dict fail)]
+          (cond (instance? SubFail item) item
+                (sequential? (first item))
+                [(set (first item))]
+                fail (fail dict nil pattern)
+                :else [pattern]))))))
+
 (defn- sub-many
   ([pattern]
    (sub-many pattern 0))
@@ -252,6 +265,7 @@
 (defmethod* sub* '?:chain #'sub-chain)
 (defmethod* sub* '?:as #'sub-as)
 (defmethod* sub* '?:map #'sub-map)
+(defmethod* sub* '?:set #'sub-set)
 (defmethod* sub* '?:restartable #'sub-restartable)
 (defmethod* sub* '?:if #'sub-if)
 (defmethod* sub* '?:when #'sub-when)
