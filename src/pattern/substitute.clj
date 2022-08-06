@@ -43,8 +43,18 @@
             v
             [(dict name pattern)]))))))
 
-(defn- sub-as [pattern]
-  (sub-element (list '? (second pattern))))
+(defn- sub-as [[_ as & [alt] :as pattern]]
+  (let [f (sub-element (list '? (second pattern)))
+        altf (sub* alt)]
+    (fn [dict fail]
+      (f dict (fn fail-as [dict' name' pattern']
+                (let [r (altf dict
+                          (or fail
+                            (fn fail-as-alt [dict'' name'' pattern'']
+                              [pattern''])))]
+                  (if (= r [alt])
+                    [pattern]
+                    r)))))))
 
 (defn- sub-chain [pattern]
   (sub* (second pattern)))
@@ -260,10 +270,11 @@
 (defmethod* sub* '?:1 #'sub-optional)
 (defmethod* sub* '?:* #'sub-many)
 (defmethod* sub* '?:+ #'sub-at-least-one)
-(defmethod* sub* '?:*map #'sub-many-map)
-;;(defmethod* sub* '?:+map #'sub-at-least-one-map)
+(doseq [alias '[?:*map ?:+map ?:map* ?:map+]]
+  (defmethod* sub* alias #'sub-many-map))
 (defmethod* sub* '?:chain #'sub-chain)
 (defmethod* sub* '?:as #'sub-as)
+(defmethod* sub* '?:as* #'sub-as)
 (defmethod* sub* '?:map #'sub-map)
 (defmethod* sub* '?:set #'sub-set)
 (defmethod* sub* '?:restartable #'sub-restartable)
