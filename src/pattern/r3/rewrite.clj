@@ -297,13 +297,16 @@
                           (rule '((?:literal ?:=) ?value) `(list '~value))
                           (rule '((?:literal ?:restartable) ?->value) value)
                           (rule '((?:literal ?:chain) ?->value ??_) value)
-                          (rule '((?:literal ?:as) ?name ?value)
-                                (let [t (if (= '?? (matcher-type-for-dispatch value))
-                                          '?? '?)
-                                      name (if (= '? t)
-                                             `(list ~name)
-                                             name)]
-                                  `(expand-or (list '~t '~t) (list (list ~name) ~(descend (list value))))))
+                          (rule '((?:as op (| (?:literal ?:as) (?:literal ?:as*))) ?name ?value)
+                            (let [t (if (or (= '?:as* op)
+                                          ;; this behavior is a bit ambiguous but it's how ?:as was originally defined
+                                          ;; before ?:as* was invented.
+                                          (= '?? (matcher-type-for-dispatch value)))
+                                      '?? '?)
+                                  name (if (= '? t)
+                                         `(list ~name)
+                                         name)]
+                              `(expand-or (list '~t '~t) (list (list ~name) ~(descend (list value))))))
 
                           ;; map
                           (rule '((?:literal ?:map) (?:* ?->k ?->v))
