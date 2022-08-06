@@ -846,3 +846,32 @@
   (is (= '[(a b) (a b) (a b)]
         ((rule '[?x (?:chain ?x reverse (?:force x)) ?x])
          '[(b a) (b a) (a b)]))))
+
+(deftest as-tech
+  (testing "This is the ambiguous case where ?:as* is required. ?:as doesn't have the
+    information to know it should capture a sequence. ?:as* guarantees a
+    sequence."
+    (is (= {:got 2 :for [2]}
+          ((rule '[1 (?:as z (?:* ?a))] {:got z :for a})
+           [1 2])))
+
+    (is (= {:got [2] :for [2]}
+          ((rule '[1 (?:as* z (?:* ?a))] {:got z :for a})
+           [1 2]))))
+
+  (testing "?:as and ?:as* behave the same"
+    (is (= {:got [2 3] :for [[2] [3]]}
+          ((rule '[1 (?:as* z (?:* ?a ?b))] {:got z :for [a b]})
+           [1 2 3])))
+
+    (is (= {:got [2 3] :for [[2] [3]]}
+          ((rule '[1 (?:as z (?:* ?a ?b))] {:got z :for [a b]})
+           [1 2 3]))))
+
+  (is (= {:got [2 3]}
+        ((rule '[1 (?:as z (?:1 2 3))] {:got z})
+         [1 2 3])))
+
+  (is (= [1 2 3] ;; no match
+        ((rule '[1 (?:as z [2 3])] {:got z})
+         [1 2 3]))))

@@ -311,14 +311,21 @@
                                               ~(with-meta `(seq (concat ~@(interleave k v)))
                                                  {::ordered true}))))
 
-                          (rule '((?:literal ?:*map) ?ks ?vs)
+                          (rule '((| (?:literal ?:*map) (?:literal ?:map*) (?:literal ?:+map) (?:literal ?:map+)) ?ks ?vs)
                             (let [ks (var-name ks)
                                   vs (var-name vs)]
                               (if (or (= '_ ks) (= '_ vs))
-                                ()
+                                `(list (apply array-map (list)))
                                 `(list (apply array-map
-                                         ~(with-meta `(interleave ~(var-name ks) ~(var-name vs))
-                                                 {::ordered true}))))))
+                                         ~(with-meta `(interleave ~ks ~vs)
+                                            {::ordered true}))))))
+
+                          (rule '((?:literal ?:set) ?items)
+                            (let [items (var-name items)]
+                              (if (= '_ items)
+                                ;; TODO: should this be an empty set?
+                                `(list (set (list)))
+                                `(list (set ~items)))))
 
                           ;; if
                           (rule '((?:literal ?:if) ?pred ?->then (?:? ?->else))
