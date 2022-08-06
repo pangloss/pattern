@@ -248,7 +248,8 @@
                                 `(map ~*on-marked-insertion* ~x))
 
                           ;; sequence
-                          (rule '(?:as expr ((? op #{?:* ?:+}) ??pattern))
+                          (rule '(?:as expr (| ((? op #{?:* ?:+}) ??pattern)
+                                               ((? op #{?:n}) ?_ ??pattern)))
                                 (let [names (pattern-args pattern)
                                       seqs (doall (map (fn [n]
                                                          `(if (seqable? ~n)
