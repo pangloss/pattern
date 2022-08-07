@@ -151,6 +151,16 @@
        (reduce (sub-or-reduced into dict my-fail fail-token)
                [] subs)))))
 
+(defn- sub-one [pattern]
+  (let [subs (mapv sub* (rest pattern))
+        fail-token (->SubFail pattern)
+        my-fail (fn [dict name pattern] [pattern])]
+    (fn opt-sub [dict fail]
+      (let [r (reduce
+                (sub-or-reduced into dict my-fail fail-token)
+                [] subs)]
+        (if (= r (rest pattern)) [pattern] r)))))
+
 (defn- sub-if [[_ pred then else :as pattern]]
   (let [fail-token (->SubFail pattern)
         my-fail (constantly fail-token)
@@ -280,7 +290,7 @@
 (defmethod* sub* '?? #'sub-sequence)
 (defmethod* sub* :list #'sub-list)
 (defmethod* sub* '?:? #'sub-optional)
-(defmethod* sub* '?:1 #'sub-optional)
+(defmethod* sub* '?:1 #'sub-one)
 (defmethod* sub* '?:* #'sub-many)
 (defmethod* sub* '?:+ #'sub-at-least-one)
 (doseq [alias '[?:*map ?:+map ?:map* ?:map+]]

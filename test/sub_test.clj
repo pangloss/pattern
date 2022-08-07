@@ -112,8 +112,10 @@
           (substitute ['(?:as* x ??z)] {'y [1 2] 'z [3 4]})))
     (is (= [] ;; no match on optional matcher.
           (substitute ['(?:as* x (?:? ?a ?z))] {'z 1})))
-    (is (= []
+    (is (= [] ;; optional is successful with 0 matches.
           (substitute ['(?:as* x (?:? ?a ?z))] {})))
+    (is (= ['(?:as* x (?:1 ?a ?z))] ;; optional is successful with 0 matches.
+          (substitute ['(?:as* x (?:1 ?a ?z))] {})))
     (is (= ['(?:as* x [?a ?z])]
           (substitute ['(?:as* x [?a ?z])] {}))))
   (testing "wrong arities"
@@ -127,6 +129,13 @@
           (substitute ['(?:map ?a)] {'a 1})))))
 
 
+(deftest sub-one-splice
+  (is (= [99 1]
+        (substitute ['(?:1 ?a ?z)] {'z 1 'a 99})))
+  (is (= ['?a 1]
+        (substitute ['(?:1 ?a ?z)] {'z 1})))
+  (is (= ['(?:1 ?a ?z)]
+        (substitute ['(?:1 ?a ?z)] {}))))
 
 (deftest sub-multi-recursive
   (testing "with regular quote"
