@@ -127,8 +127,8 @@
   (not= fail-token (fail)), the result will be (reduced (fail)), ie. some other fail
   token. "
   [acc dict fail fail-token]
-  (fn [r f]
-    (let [s (f dict fail)]
+  (fn [r subf]
+    (let [s (subf dict fail)]
       (if (instance? SubFail s)
         (reduced (if (identical? s fail-token)
                    []
@@ -148,8 +148,11 @@
          fail-token (->SubFail pattern)
          my-fail (or parent-fail (constantly fail-token))]
      (fn opt-sub [dict fail]
-       (reduce (sub-or-reduced into dict my-fail fail-token)
-               [] subs)))))
+       (let [r (reduce (sub-or-reduced into dict my-fail fail-token)
+                 [] subs)]
+         (if (and (not parent-fail) (every? nil? r))
+           []
+           r))))))
 
 (defn- sub-one [pattern]
   (let [subs (mapv sub* (rest pattern))
