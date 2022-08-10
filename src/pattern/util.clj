@@ -179,53 +179,69 @@
 (defn simple-diff [a b]
   (mapv (fn [[side idx els]]
           (if (vector? els)
-            [side idx (dec (count els))]
-            [side idx (dec els)]))
+            [side idx (count els)]
+            [side idx els]))
     (second (d/diff a b))))
 
 (defn diff [a b]
   (let [d (simple-diff a b)]
     (first
       (reduce
-        (fn [[r a] b]
-          (if (and (not= (a 0) (b 0)) ;; add/remove
-                ;; ops are adjacent
-                (= (inc (+ (a 1) (a 2))) (b 1))
-                ;; same length
-                (= (a 2) (b 2)))
+        (fn [[r [sa ia ca]] [sb ib cb :as b]]
+          (if (or (and (= :+ sa) (= :- sb) ;; add/remove
+                    ;; ops are adjacent and same length
+                    (= (+ ia ca) ib) (= ca cb))
+                (and
+                  (= :- sa) (= :+ sb) ;; remove/add
+                  ;; same index and length
+                  (= ia ib) (= ca cb)))
             ;; it's a replacement
-            [(assoc r (dec (count r)) [:r (a 1) (a 2)])
-             b]
+            [(assoc r (dec (count r)) [:r ia ca])
+             [:placeholder -1 -1]]
             ;; regular change
             [(conj r b) b]))
         [[(first d)] (first d)]
         (rest d)))))
 
 
-(defn walk-diff [d oz rz on-same on-changed]
+(defn walk-diff
+  ""
+  [d oz rz on-same on-changed]
   (let [op (zip/path oz)
         rp (zip/path rz)]
     (loop [c 0
            [[side idx ec] :as d] d
            oz oz
            rz rz]
-      (if (or (zip/end? oz) (zip/end? rz)
-            ;; don't leave the current nesting level
-            (not= op (zip/path oz))
-            (not= rp (zip/path rz)))
+      (cond
+        (or (zip/end? rz)
+          ;; don't leave the current nesting level
+          (not= rp (zip/path rz)))
         rz
-        (if (< c idx)
+
+        (or (zip/end? oz)
+          ;; don't leave the current nesting level
+          (not= op (zip/path oz)))
+        ;; there is added stuff in rz not in oz
+        (recur (inc c) d oz (skip (if on-changed (on-changed :+ rz nil) rz)))
+
+        :else
+        (if (or (nil? idx) (< c idx))
           (recur (inc c) d (skip oz) (walk-equal-subtree oz rz on-same))
-          (let [d (if (= c (+ idx ec))
+          (let [d (if (= (inc c) (+ idx ec))
                     (rest d)
                     d)]
             (case side
               :r (recur (inc c) d (skip oz)
                    (if (and (zip/branch? oz) (zip/branch? rz))
                      (walk-diff (diff (zip/node oz) (zip/node rz)) (zip/down oz) (zip/down rz) on-same on-changed)
-                     (skip (if on-changed (on-changed rz (zip/node oz)) rz))))
-              :+ (recur (inc c) d oz (skip (if on-changed (on-changed rz nil) rz)))
-              :- (recur (inc c) d (skip oz) (if on-changed (on-changed rz oz) rz)))))))))
+                     (skip (if on-changed (on-changed side rz (zip/node oz)) rz))))
+              :+ (recur (inc c) d oz (skip (if on-changed (on-changed side rz nil) rz)))
+              :- (recur c (if (= 1 ec)
+                            d
+                            (cons [side idx (dec ec)] (rest d)))
+                   (skip oz) (if on-changed (on-changed side rz oz) rz)))))))))
+
 
 (defn deep-merge-meta2
   "Copy meta over from the elements in the old tree to the new tree until the trees diverge"
@@ -243,18 +259,6 @@
        (if (seq d)
          (zip/root (walk-diff d oz rz on-same nil))
          (zip/root (walk-equal-subtree oz rz on-same)))))))
-
-(comment
-  (diff [:a :b  1 2 3] [:x :y 1 2 3 4])
-  ;; => [[:r 1 0] [:+ 1 0] [:+ 1 0]]
-
-  (let [a '(program 0 9 2 3)
-        b '(program 0 9 9 3)
-        a [:a :b  1 2 3]
-        b [:x :y 1 2 3 4]]
-    (walk-diff (diff a b) (zip/down (make-zipper a)) (zip/down (make-zipper b))
-      (fn same [z orig] (prn :same :from orig :to (zip/node z)) z)
-      (fn changed [z orig] (prn :changed :from orig :to (zip/node z)) z))))
 
 
 
