@@ -101,3 +101,36 @@
         (test-walk
           [:x 2 2 3 4 5 6]
           [:a   1 3   5]))))
+
+(deftest merge-meta
+  (is (= '{a (b d f)}
+        (deep-merge-meta2
+          '{a ^:hi (^:x b ^:y c ^:z f)}
+          '{a (b d f)})))
+
+  (is (:x (meta
+            (find-in
+              '[a 0]
+              (deep-merge-meta2
+                '{a ^:hi (^:x b ^:y c ^:z f)}
+                '{a (b d f)})))))
+
+  (is (nil? (meta
+              (find-in
+                '[a 1]
+                (deep-merge-meta2
+                  '{a ^:hi (^:x b ^:y c ^:z f)}
+                  '{a (b d f)})))))
+
+  (is (:z (meta
+            (find-in
+              '[a 2]
+              (deep-merge-meta2
+                '{a ^:hi (^:x b ^:y c ^:z f)}
+                '{a (b d f)})))))
+
+  (is (:hi (meta
+             ((deep-merge-meta2
+                '{a ^:hi (^:x b ^:y c ^:z f)}
+                '{a (b d f)})
+              'a)))))

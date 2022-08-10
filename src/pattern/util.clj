@@ -89,11 +89,16 @@
   [x]
   (zip/zipper sequential? seq build-coll x))
 
+(defn collection?
+  "Is x a sequential collection, a map or a map-entry?"
+  [x]
+  (or (sequential? x) (map? x) (map-entry? x)))
+
 (defn make-zipper+map
   "Make a zipper that will descend into any type of sequential objects,
   including maps."
   [x]
-  (zip/zipper (some-fn sequential? map? map-entry?) seq build-coll x))
+  (zip/zipper collection? seq build-coll x))
 
 (defn- find-last-equiv-node [ot nt]
   (loop [oz (make-zipper ot)
@@ -163,7 +168,6 @@
         rz
         (let [on (zip/node oz)]
           (recur (zip/next oz)
-            ;; note this is identical
             (zip/next (if on-same
                         (on-same rz on)
                         rz))))))))
@@ -231,11 +235,12 @@
                     d)]
             (case side
               :r (recur (inc c) d (skip oz)
-                   (if (and (zip/branch? oz) (zip/branch? rz))
-                     (walk-diff*
-                       (diff (zip/node oz) (zip/node rz))
-                       (zip/down oz) (zip/down rz) on-same on-changed)
-                     (skip (if on-changed (on-changed side rz (zip/node oz)) rz))))
+                  (let [rz (if on-changed (on-changed side rz (zip/node oz)) rz)]
+                    (if (and (zip/branch? oz) (zip/branch? rz))
+                      (walk-diff*
+                        (diff (zip/node oz) (zip/node rz))
+                        (zip/down oz) (zip/down rz) on-same on-changed)
+                      (skip rz))))
               :+ (recur (inc c) d oz (skip (if on-changed (on-changed side rz nil) rz)))
               :- (recur c (if (= 1 ec)
                             d
@@ -253,22 +258,23 @@
   "Copy meta over from the elements in the old tree to the new tree until the trees diverge"
   ([old-tree new-tree]
    (deep-merge-meta2 old-tree new-tree merge))
-  ([old-tree new-tree f]
-   (if (and (sequential? old-tree) (sequential? new-tree))
+  ([old-tree new-tree combine-meta]
+   (if (and (collection? old-tree) (collection? new-tree))
      (let [oz (make-zipper+map old-tree)
            rz (make-zipper+map new-tree)
-           on-same (fn [rz on]
-                     (if (meta? on)
-                       (zip/edit rz #(with-meta (merge (meta on) (meta %))))
-                       rz))
            d (diff old-tree new-tree)]
-       (if (seq d)
-         (zip/root (walk-diff* d (zip/down oz) (zip/down rz) on-same nil))
-         (zip/root (walk-equal-subtree oz rz on-same)))))))
-
-
-
-
+       (letfn [(on-same [rz on]
+                 (if (meta? on)
+                   (zip/edit rz #(with-meta % (combine-meta (meta on) (meta %))))
+                   rz))
+               (on-changed [op rz orig]
+                 (tap> [(type orig) (type (zip/node rz))])
+                 (if (and (= :r op) (meta? orig) (collection? orig) (= (type orig) (type (zip/node rz))))
+                   (zip/edit rz #(with-meta % (combine-meta (meta orig) (meta %))))
+                   rz))]
+         (if (seq d)
+           (zip/root (walk-diff* d (zip/down oz) (zip/down rz) on-same on-changed))
+           (zip/root (walk-equal-subtree oz rz on-same))))))))
 
 (defn walk-with-paths
   "Like [[clojure.walk/walk]] got combined with [[map-indexed]]. Calls
