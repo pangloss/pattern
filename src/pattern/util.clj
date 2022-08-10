@@ -165,7 +165,7 @@
 (defn- zpos
   "Return the raw position construct in the zipper."
   [z]
-  (z 1))
+  (nth z 1))
 
 (defn walk-equal-subtree [oz rz on-same]
   (let [stop (zpos (skip oz))]
@@ -187,14 +187,23 @@
 ;; . + 4 [           [:+ 3 [(let [a 1] (let [b 2] (+ (+ (+ (+ a 36) b) 1) 2))) 8]] [:- 5 1]] c <= i + (len a), :+ advance R
 ;; + . 5 [                                                                         [:- 5 1]] c = i, :- advance L
 ;; ! ! 6 [] no diffs, all further nodes equal
-(defn simple-diff [a b]
+(defn- simple-diff
+  "See [[diff]]."
+  [a b]
   (mapv (fn [[side idx els]]
           (if (vector? els)
             [side idx (count els)]
             [side idx els]))
     (second (d/diff a b))))
 
-(defn diff [a b]
+(defn diff
+  "Starts with diffit.vec/diff, simplifies the representation and detects replacements.
+
+  Each entry is a tuple of [side idx length]. Side can be :+ :- or -r.
+
+  idx is the position with previous diff entries applied. A :- entry does not
+  increment the current index, but others do."
+  [a b]
   (let [d (simple-diff a b)]
     (first
       (reduce
@@ -214,8 +223,17 @@
         [[(first d)] (first d)]
         (rest d)))))
 
+;; TODO: better handling of changes and insertions/deletions in series. Now it
+;; treats them as adds/removes, but I should try to detect changed structures.
+;; Maybe a diff metric on the first level in? Maybe try to match up changes? Can
+;; I deal with reordering?
+;; TODO: add ability to skip a branch if it has a metadata marker. That can be used
+;; to mark that metadata has already been merged, or that metadata should not be merged.
 
-(defn walk-diff* [d oz rz on-same on-changed]
+(defn walk-diff*
+  "See [[walk-diff]]. This version takes a diff and a zipper which has been
+  traversed to the index 0 position relative to the diff."
+  [d oz rz on-same on-changed]
   (let [op (zip/path oz)
         rp (zip/path rz)]
     (loop [c 0
@@ -254,7 +272,22 @@
                             (cons [side idx (dec ec)] (rest d)))
                    (skip oz) (if on-changed (on-changed side rz (zip/node oz)) rz)))))))))
 
-(defn walk-diff [old new on-same on-changed]
+(defn walk-diff
+  "Walks zippers over the old and new data structures in tandem, accounting for
+  changes detected via [[diff]]. Calls a callback for either on-same or on-changed.
+
+  The callbacks must return the zipper which they may edit, but if they edit
+  they must ensure that the returned zipper is in the correct place so that when
+  [[skip]] is called it moves to the correct next element.
+
+  Note that values considered to be the same may not have the same metadata. This
+  tool was written to facilitate transferring metadata from one structure to another.
+
+  Callback signatures are:
+
+      (on-same result-zipper orig-value)
+      (on-changed change-type result-zipper orig-value-or-nil)"
+  [old new on-same on-changed]
   (zip/root
     (walk-diff* (diff old new)
       (zip/down (make-zipper+map old))
@@ -262,7 +295,8 @@
       on-same on-changed)))
 
 (defn deep-merge-meta2
-  "Copy meta over from the elements in the old tree to the new tree until the trees diverge"
+  "Copy metadata over from the elements in the old tree to the new tree as
+  comprehensively as possible."
   ([old-tree new-tree]
    (deep-merge-meta2 old-tree new-tree merge))
   ([old-tree new-tree combine-meta]
