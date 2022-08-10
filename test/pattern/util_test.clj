@@ -8,8 +8,8 @@
   (zip/root
     (walk-diff
       (diff a b)
-      (zip/down (make-zipper a))
-      (zip/down (make-zipper b))
+      (zip/down (make-zipper+map a))
+      (zip/down (make-zipper+map b))
       (fn same [z orig]
         (cond
           (sequential? (zip/node z))
@@ -35,7 +35,28 @@
   (is (= [":a" [-1 {:r [3 4]}] -5]
         (test-walk
           [:a [1 3] 5]
+          [:a [1 4] 5])))
+
+  (is (= [":a" [-1 {:r [3 4]}] -5]
+        (test-walk
+          [:a [1 3] 5]
           [:a [1 4] 5]))))
+
+(deftest walk-through-map
+  (is (= {":a" -1 ":b" -2}
+        (test-walk
+          {:a 1 :b 2}
+          {:a 1 :b 2})))
+
+  (is (= {":a" [-1 -2] ":b" -2}
+        (test-walk
+          {:a '(1 2) :b 2}
+          {:a '(1 2) :b 2})))
+
+  (is (= {":a" '({:- 1} -2 {:+ 1}) ":b" -2}
+        (test-walk
+          {:a '(1 2) :b 2}
+          {:a '(2 1) :b 2}))))
 
 (deftest walking-diffs
   ;; The test-walk fn makes these transformations:

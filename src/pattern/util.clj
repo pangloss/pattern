@@ -249,8 +249,8 @@
    (deep-merge-meta2 old-tree new-tree merge))
   ([old-tree new-tree f]
    (if (and (sequential? old-tree) (sequential? new-tree))
-     (let [oz (make-zipper old-tree)
-           rz (make-zipper new-tree)
+     (let [oz (make-zipper+map old-tree)
+           rz (make-zipper+map new-tree)
            on-same (fn [rz on]
                      (if (meta? on)
                        (zip/edit rz #(with-meta (merge (meta on) (meta %))))
