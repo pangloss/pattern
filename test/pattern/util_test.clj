@@ -4,27 +4,24 @@
             [clojure.test :refer [deftest testing is are]]
             [clojure.zip :as z]))
 
+
 (defn test-walk [a b]
-  (zip/root
-    (walk-diff
-      (diff a b)
-      (zip/down (make-zipper+map a))
-      (zip/down (make-zipper+map b))
-      (fn same [z orig]
-        (cond
-          (sequential? (zip/node z))
-          z
-          (int? (zip/node z))
-          (zip/edit z -)
-          :else
-          (zip/edit z str)))
-      (fn changed [side z orig]
-        (if (sequential? (zip/node z))
-          z
-          (case side
-            :- (zip/insert-left z {:- (zip/node orig)})
-            :+ (zip/edit z (constantly {:+ (zip/node z)}))
-            :r (zip/edit z (constantly {:r [orig (zip/node z)]}))))))))
+  (walk-diff a b
+    (fn same [z orig]
+      (cond
+        (sequential? (zip/node z))
+        z
+        (int? (zip/node z))
+        (zip/edit z -)
+        :else
+        (zip/edit z str)))
+    (fn changed [type z orig]
+      (if (sequential? (zip/node z))
+        z
+        (case type
+          :- (zip/insert-left z {:- (zip/node orig)})
+          :+ (zip/edit z (constantly {:+ (zip/node z)}))
+          :r (zip/edit z (constantly {:r [orig (zip/node z)]})))))))
 
 (deftest walking-recursive
   (is (= [":a" [-1 -3] -5]

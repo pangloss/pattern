@@ -204,9 +204,7 @@
         (rest d)))))
 
 
-(defn walk-diff
-  ""
-  [d oz rz on-same on-changed]
+(defn walk-diff* [d oz rz on-same on-changed]
   (let [op (zip/path oz)
         rp (zip/path rz)]
     (loop [c 0
@@ -234,7 +232,9 @@
             (case side
               :r (recur (inc c) d (skip oz)
                    (if (and (zip/branch? oz) (zip/branch? rz))
-                     (walk-diff (diff (zip/node oz) (zip/node rz)) (zip/down oz) (zip/down rz) on-same on-changed)
+                     (walk-diff*
+                       (diff (zip/node oz) (zip/node rz))
+                       (zip/down oz) (zip/down rz) on-same on-changed)
                      (skip (if on-changed (on-changed side rz (zip/node oz)) rz))))
               :+ (recur (inc c) d oz (skip (if on-changed (on-changed side rz nil) rz)))
               :- (recur c (if (= 1 ec)
@@ -242,6 +242,12 @@
                             (cons [side idx (dec ec)] (rest d)))
                    (skip oz) (if on-changed (on-changed side rz oz) rz)))))))))
 
+(defn walk-diff [old new on-same on-changed]
+  (zip/root
+    (walk-diff* (diff old new)
+      (zip/down (make-zipper+map old))
+      (zip/down (make-zipper+map new))
+      on-same on-changed)))
 
 (defn deep-merge-meta2
   "Copy meta over from the elements in the old tree to the new tree until the trees diverge"
@@ -257,7 +263,7 @@
                        rz))
            d (diff old-tree new-tree)]
        (if (seq d)
-         (zip/root (walk-diff d oz rz on-same nil))
+         (zip/root (walk-diff* d (zip/down oz) (zip/down rz) on-same nil))
          (zip/root (walk-equal-subtree oz rz on-same)))))))
 
 
