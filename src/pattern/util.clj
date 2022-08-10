@@ -98,7 +98,14 @@
   "Make a zipper that will descend into any type of sequential objects,
   including maps."
   [x]
-  (zip/zipper collection? seq build-coll x))
+  (zip/zipper collection?
+    (fn [x]
+      (if (map? x)
+        (try (sort-by key x)
+             (catch Exception e
+               (sort-by (comp hash key) x)))
+        (seq x)))
+    build-coll x))
 
 (defn- find-last-equiv-node [ot nt]
   (loop [oz (make-zipper ot)
