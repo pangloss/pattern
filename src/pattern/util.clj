@@ -240,7 +240,7 @@
               :- (recur c (if (= 1 ec)
                             d
                             (cons [side idx (dec ec)] (rest d)))
-                   (skip oz) (if on-changed (on-changed side rz oz) rz)))))))))
+                   (skip oz) (if on-changed (on-changed side rz (zip/node oz)) rz)))))))))
 
 (defn walk-diff [old new on-same on-changed]
   (zip/root

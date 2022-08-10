@@ -19,7 +19,7 @@
       (if (sequential? (zip/node z))
         z
         (case type
-          :- (zip/insert-left z {:- (zip/node orig)})
+          :- (zip/insert-left z {:- orig})
           :+ (zip/edit z (constantly {:+ (zip/node z)}))
           :r (zip/edit z (constantly {:r [orig (zip/node z)]})))))))
 
