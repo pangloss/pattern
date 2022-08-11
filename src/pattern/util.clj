@@ -238,36 +238,103 @@
         (let [end (+ pos len)]
           (case side
             :+ (recur (into adds (range pos end)) removes end opos (rest d))
-            :- (recur adds (into removes (range opos (+ opos len))) pos (+ opos len) (rest d))
-            :r (recur adds removes end (+ opos len) (rest d))))
+            :- (recur adds (into removes (range opos (+ opos len))) pos (+ opos len) (rest d))))
         (recur adds removes idx (+ opos (- idx pos)) d))
       {:adds adds :removes removes})))
 
 (defn find-moves
-  "Works best with simple-diff results as input"
+  "Works best with simple-diff results as input.
+
+  Returns a map from {new-pos [old-pos edit-distance old-value]}"
   [d old new]
   (if (and (sequential? old) (sequential? new))
     (let [old (vec old)
           new (vec new)
-          {:keys [adds removes]} (diff-indices d)
-          ak adds]
-      (loop [move []
-             [addkey :as ak] ak
+          {:keys [adds removes]} (diff-indices d)]
+      (loop [moves []
+             [addpos :as adds] adds
              ri 0
-             rk removes]
-        (if addkey
-          (if (= ri (count rk))
-            (recur move (next ak) 0 rk)
-            (let [removekey (rk ri)]
-              (if (= (nth new addkey) (nth old removekey))
-                (recur (conj move [removekey addkey])
-                  (next ak)
+             removes removes]
+        (if addpos
+          (if (= ri (count removes))
+            (recur moves (next adds) 0 removes)
+            (let [removepos (removes ri)]
+              (if (= (nth new addpos) (nth old removepos))
+                ;; TODO: find close matches
+                (recur (conj moves [addpos [removepos 0 (nth old removepos)]])
+                  (next adds)
                   0
-                  (into (subvec rk 0 ri) (subvec rk (inc ri))))
-                (recur move ak (inc ri) rk))))
-          move)))
+                  (into (subvec removes 0 ri) (subvec removes (inc ri))))
+                (recur moves adds (inc ri) removes))))
+          (into {} moves))))
     nil))
 
+(defn- map-intersection
+  "Return the portion of s1 where its keys intersect with s2's keys."
+  ([s1] s1)
+  ([s1 s2]
+   (persistent!
+     (reduce-kv (fn [result k v]
+                  (if (contains? s2 k)
+                    result
+                    (dissoc! result k)))
+       (transient s1) s1))))
+
+(defn- invert-move-map [dests sources]
+  (persistent!
+    (reduce-kv (fn [m k v]
+                 (assoc! m v [k 0 (sources k)]))
+      (transient {})
+      dests)))
+
+(do
+  #trace
+  (defn find-changes
+    [d old new]
+    (if (and (sequential? old) (sequential? new))
+      (let [old (vec old)
+            new (vec new)
+            {:keys [adds removes]} (diff-indices d)
+            removes (set removes)
+            adds (set adds)
+            old->pos (into {}
+                       (comp (remove nil?)
+                         (map-indexed (fn [i v] (when (removes i) [v i]))))
+                       old)
+            new->pos (into {}
+                       (comp (remove nil?)
+                         (map-indexed (fn [i v] (when (adds i) [v i]))))
+                       new)
+            move-sources (map-intersection old->pos new->pos)
+            removes (apply disj removes (vals move-sources))
+            move-dests (map-intersection new->pos move-sources)
+            adds (apply disj adds (vals move-dests))]
+        ;; look for changes
+        (loop [moves (invert-move-map move-dests move-sources)
+               [addpos :as adds] (when (seq removes) (vec adds))
+               ri 0
+               removes (vec removes)
+               removeset removes]
+          (if addpos
+            (if (= ri (count removes))
+              (recur moves (next adds) 0 removes removeset)
+              (let [removepos (removes ri)]
+                (if (= (nth new addpos) (nth old removepos))
+                  ;; TODO: find close matches
+                  (let [removeset (disj removeset removepos)]
+                    (recur (assoc moves addpos [removepos 0 (nth old removepos)])
+                      (next adds)
+                      0
+                      (vec removeset)
+                      removeset))
+                  (recur moves adds (inc ri) removes removeset))))
+            moves)))
+      nil))
+
+  #rtrace
+  (let [old '(a b (c d) (e f))
+        new '(b a z (e f) (c d) x)]
+    (find-changes (simple-diff old new) old new)))
 (defn diff
   "Starts with diffit.vec/diff, simplifies the representation and detects replacements.
 
