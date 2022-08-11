@@ -151,16 +151,30 @@
 (defn skip
   "Moves to the next sibling or next point in the hierarchy, depth-first. When
   reaching the end, returns a distinguished loc detectable via end?. If already
-  at the end, stays there."
-  [loc]
-  (if (= :end (loc 1))
-    loc
-    (or
-      (zip/right loc)
-      (loop [p loc]
-        (if (zip/up p)
-          (or (zip/right (zip/up p)) (recur (zip/up p)))
-          [(zip/node p) :end])))))
+  at the end, stays there.
+
+  When skipping backwards, skipping off the front will give you a nil zipper."
+  ([loc]
+   (skip loc 1))
+  ([loc distance]
+   (cond (zero? distance)
+         loc
+         (pos? distance)
+         (if (= :end (loc 1))
+           loc
+           (recur
+             (or
+               (zip/right loc)
+               (loop [p loc]
+                 (if (zip/up p)
+                   (or (-> p zip/up zip/right) (recur (zip/up p)))
+                   [(zip/node p) :end])))
+             (dec distance)))
+         :else
+         (when loc
+           (recur
+             (zip/left loc)
+             (inc distance))))))
 
 (defn- zpos
   "Return the raw position construct in the zipper."
@@ -196,6 +210,64 @@
             [side idx els]))
     (second (d/diff a b))))
 
+(defn with-old-idx [d]
+  (first
+    (reduce (fn [[r o] [s i c]]
+              [(conj r [s i c (+ o i)])
+               (if (= :+ s) (- o c) (+ o c))])
+      [[] 0]
+      d)))
+
+(let [old '(a b (c d) (e f))
+      new '(b a x z z c (e f) (c d) x)]
+  (with-old-idx (simple-diff old new))
+  #_
+  (find-moves (simple-diff old new)
+    old new))
+
+(defn diff-indices
+  "Return the indices of all added and all removed elements"
+  [d]
+  (loop [adds []
+         removes []
+         pos 0
+         opos 0
+         [[side idx len old-idx] :as d] d]
+    (if side
+      (if (= pos idx)
+        (let [end (+ pos len)]
+          (case side
+            :+ (recur (into adds (range pos end)) removes end opos (rest d))
+            :- (recur adds (into removes (range opos (+ opos len))) pos (+ opos len) (rest d))
+            :r (recur adds removes end (+ opos len) (rest d))))
+        (recur adds removes idx (+ opos (- idx pos)) d))
+      {:adds adds :removes removes})))
+
+(defn find-moves
+  "Works best with simple-diff results as input"
+  [d old new]
+  (if (and (sequential? old) (sequential? new))
+    (let [old (vec old)
+          new (vec new)
+          {:keys [adds removes]} (diff-indices d)
+          ak adds]
+      (loop [move []
+             [addkey :as ak] ak
+             ri 0
+             rk removes]
+        (if addkey
+          (if (= ri (count rk))
+            (recur move (next ak) 0 rk)
+            (let [removekey (rk ri)]
+              (if (= (nth new addkey) (nth old removekey))
+                (recur (conj move [removekey addkey])
+                  (next ak)
+                  0
+                  (into (subvec rk 0 ri) (subvec rk (inc ri))))
+                (recur move ak (inc ri) rk))))
+          move)))
+    nil))
+
 (defn diff
   "Starts with diffit.vec/diff, simplifies the representation and detects replacements.
 
@@ -203,25 +275,60 @@
 
   idx is the position with previous diff entries applied. A :- entry does not
   increment the current index, but others do."
-  [a b]
-  (let [d (simple-diff a b)]
-    (first
-      (reduce
-        (fn [[r [sa ia ca]] [sb ib cb :as b]]
-          (if (or (and (= :+ sa) (= :- sb) ;; add/remove
-                    ;; ops are adjacent and same length
-                    (= (+ ia ca) ib) (= ca cb))
-                (and
-                  (= :- sa) (= :+ sb) ;; remove/add
-                  ;; same index and length
-                  (= ia ib) (= ca cb)))
-            ;; it's a replacement
-            [(assoc r (dec (count r)) [:r ia ca])
-             [:placeholder -1 -1]]
-            ;; regular change
-            [(conj r b) b]))
-        [[(first d)] (first d)]
-        (rest d)))))
+  ([d]
+   (first
+     (reduce
+       (fn [[r [sa ia ca]] [sb ib cb :as b]]
+         (if (or (and (= :+ sa) (= :- sb) ;; add/remove
+                   ;; ops are adjacent and same length
+                   (= (+ ia ca) ib) (= ca cb))
+               (and
+                 (= :- sa) (= :+ sb) ;; remove/add
+                 ;; same index and length
+                 (= ia ib) (= ca cb)))
+           ;; it's a replacement
+           [(assoc r (dec (count r)) [:r ia ca])
+            [:placeholder -1 -1]]
+           ;; regular change
+           [(conj r b) b]))
+       [[(first d)] (first d)]
+       (rest d))))
+  ([a b]
+   (diff (simple-diff a b))))
+
+
+#rtrace
+(let [old '(a b (c d) (e f))
+      new '(b a z z (e f) (c d) x)]
+  (find-moves (with-old-idx (simple-diff old new)) old new)
+  #_
+  (find-moves (simple-diff old new)
+    old new))
+
+#rtrace
+(let [old '(a b (c d) (e f))
+      new '(b a x z z c (e f) (c d) x)
+      d (simple-diff old new)
+      moves (find-moves d old new)
+      oldv (vec old)
+      #_#_
+      old' (reduce (fn [[r offset] [from to]]
+                     (into
+                       (into (conj (subvec r 0 to) (nth oldv from))
+                         (subvec r to from))
+                       (subvec r (inc from))))
+
+             [oldv 0]
+             moves)]
+  [:diff d
+   :moves moves
+   #_#_#_#_
+   :old' old'
+   :diff' (diff old' new)])
+
+
+
+
 
 ;; TODO: better handling of changes and insertions/deletions in series. Now it
 ;; treats them as adds/removes, but I should try to detect changed structures.

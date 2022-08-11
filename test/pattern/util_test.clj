@@ -1,8 +1,15 @@
 (ns pattern.util-test
   (:require [clojure.zip :as zip]
             [pattern.util :refer :all]
-            [clojure.test :refer [deftest testing is are]]
-            [clojure.zip :as z]))
+            [clojure.test :refer [deftest testing is are]]))
+
+(deftest test-diff
+  (is (= [[:order 1 3 0 2] [:r 2 1]]
+        (diff '(a b (c d) (e f)) '(b (e f) (c x) a))))
+
+  (let [d (diff '(a b (c d) (e f)) '(z z z z b (e f) (c x) a))]
+    (is (= {:+ [0 1 2 3 6 7], :- [0 2]}
+          (diff-indices d)))))
 
 
 (defn test-walk [a b]
