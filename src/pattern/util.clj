@@ -285,16 +285,16 @@
                    xs seen-a seen-b)))]
      (step coll #{} #{}))))
 
-(defn similarity
-  "Heuristics upon heuristics
+(defn- similarity
+  "Heuristics upon heuristics. More negative is better.
 
   Different type = not similar
   position = 8 - (2 * distance)
   length = 2 * common length - 2 * length difference
   prefix = 5 * number of identical prefix items"
-  [[ai ri a r]]
+  [[a ai] [r ri]]
   ;; FIXME: probably tune this. Do I need to measure member intersection and score for that?
-  (if (or (= (type a) (type r))
+  (if (or (and (sequential? a) (= (type a) (type r)))
         (and (listy? a) (listy? r)))
     (let [score
           (+ (- 8 (* (abs (- ai ri)) 3))
@@ -308,67 +308,98 @@
             score))))
     0))
 
-(defn best-pairs [adds removes]
-  (let [adds (vec adds)
-        removes (vec removes)]
-    (->>
-      (for [addi (range (count adds))
-            removei (range (count removes))]
-        (let [v [addi removei (nth adds addi) (nth removes removei)]
-              s (similarity v)]
-          (conj v s)))
-      (sort-by last)
-      (distinct-by-2 #(nth % 2) #(nth % 3)))))
-
 (do
-  #trace
-  (defn find-changes
-    [d old new]
-    (if (and (sequential? old) (sequential? new))
-      (let [old (vec old)
-            new (vec new)
-            {:keys [adds removes]} (diff-indices d)
-            removes (set removes)
-            adds (set adds)
-            old->pos (into {}
-                       (comp (remove nil?)
-                         (map-indexed (fn [i v] (when (removes i) [v i]))))
-                       old)
-            new->pos (into {}
-                       (comp (remove nil?)
-                         (map-indexed (fn [i v] (when (adds i) [v i]))))
-                       new)
-            move-sources (map-intersection old->pos new->pos)
-            removes (apply disj removes (vals move-sources))
-            removes (apply disj removes (remove collection? removes))
-            move-dests (map-intersection new->pos move-sources)
-            adds (apply disj adds (vals move-dests))]
-        ;; look for changes
-        (loop [changes (transient (invert-move-map move-dests move-sources))
-               [addpos :as adds] (when (seq removes) (into [] (filter collection?) adds))
-               ri 0
-               removes (vec removes)
-               removeset removes]
-          (if addpos
-            (if (= ri (count removes))
-              (recur changes (next adds) 0 removes removeset)
-              (let [removepos (removes ri)]
-                (if (= (nth new addpos) (nth old removepos))
-                  ;; TODO: find close matches
-                  (let [removeset (disj removeset removepos)]
-                    (recur (assoc! changes addpos [removepos 0 (nth old removepos)])
-                      (next adds)
-                      0
-                      (vec removeset)
-                      removeset))
-                  (recur changes adds (inc ri) removes removeset))))
-            (persistent! changes))))
-      nil))
+  #trace)
 
-  #rtrace
-  (let [old '(a b (c d) (e f))
-        new '(b a z (e f) (c d) x)]
-    (find-changes (simple-diff old new) old new)))
+(defn- best-pairs
+  "Find the best matching pairs according to the [[similarity]] heuristic.
+
+  Adds and removes must be like this:
+
+     (let [adds {added-form idx-in-new}
+           removes {removed-form idx-in-old}] ...)
+
+  Returns a list of:
+
+      [[added-form idx-in-new] [removed-form idx-in-old] similarity]"
+  [adds removes]
+  (->>
+    ;; fixme these are not the correct indices
+    (for [a adds
+          r removes
+          :let [s (similarity a r)]
+          #_#_
+          :when (neg? s)]
+      [a r s])
+    (sort-by #(nth % 2))
+    (distinct-by-2 #(nth % 0) #(nth % 1))
+    (reduce (fn [m [a r s]]
+              (assoc m (val a) [(val r) s (key r)]))
+      {})))
+
+    ;; 5 * n prefix equal
+    ;; interesting characteristics
+    ;; 22 - same position, same length, mostly intersecting
+    ;; 18 - same position, mostly intersecting
+    ;; 14 - same length, mostly intersecting
+    ;; 12 - same position, same length
+    ;;
+    ;; 10 - mostly intersecting
+    ;; 100% same type
+    ;;  8 - same position
+    ;;  4 - same length
+
+
+
+#trace
+(defn find-changes
+  [d old new]
+  (if (and (sequential? old) (sequential? new))
+    (let [old (vec old)
+          new (vec new)
+          {:keys [adds removes]} (diff-indices d)
+          removes (set removes)
+          adds (set adds)
+          ;; FIXME: what about multiple equal values?
+          old->pos (into {}
+                     (comp (remove nil?)
+                       (map-indexed (fn [i v] (when (removes i) [v i]))))
+                     old)
+          new->pos (into {}
+                     (comp (remove nil?)
+                       (map-indexed (fn [i v] (when (adds i) [v i]))))
+                     new)
+          move-sources (map-intersection old->pos new->pos)
+          removes (apply disj removes (vals move-sources))
+          removes (apply disj removes (remove collection? removes))
+          move-dests (map-intersection new->pos move-sources)
+          adds (apply disj adds (vals move-dests))
+          moves (invert-move-map move-dests move-sources)
+          changes (best-pairs new->pos old->pos)]
+      [moves changes]
+      ;; look for changes
+      #_
+      (loop [changes (transient moves)
+             [addpos :as adds] (when (seq removes) (into [] (filter collection?) adds))
+             ri 0
+             removes (vec removes)
+             removeset removes]
+        (if addpos
+          (if (= ri (count removes))
+            (recur changes (next adds) 0 removes removeset)
+            (let [removepos (removes ri)]
+              (if (= (nth new addpos) (nth old removepos))
+                ;; TODO: find close matches
+                (let [removeset (disj removeset removepos)]
+                  (recur (assoc! changes addpos [removepos 0 (nth old removepos)])
+                    (next adds)
+                    0
+                    (vec removeset)
+                    removeset))
+                (recur changes adds (inc ri) removes removeset))))
+          (persistent! changes))))
+    nil))
+
 (defn diff
   "Starts with diffit.vec/diff, simplifies the representation and detects replacements.
 
