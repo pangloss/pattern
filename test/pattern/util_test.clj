@@ -33,11 +33,15 @@
 
 (defn test-walk [a b]
   (walk-diff a b
-    (fn same [z orig]
-      (cond
-        (sequential? (zip/node z)) z
-        (int? (zip/node z))        (zip/edit z -)
-        :else                      (zip/edit z str)))
+    (fn same [op z orig]
+      (if (= := op)
+        (cond
+          (sequential? (zip/node z)) z
+          (int? (zip/node z))        (zip/edit z -)
+          :else                      (zip/edit z str))
+        (if (sequential? (zip/node z))
+          z
+          (zip/edit z (constantly {op (zip/node z)})))))
     (fn changed [type z orig]
       (if (sequential? (zip/node z))
         z
@@ -68,7 +72,7 @@
           {:a '(1 2) :b 2}
           {:a '(1 2) :b 2})))
 
-  (is (= {":a" '(-2 -1) ":b" -2}
+  (is (= {":a" '(-2 {:m 1}) ":b" -2}
         (test-walk
           {:a '(1 2) :b 2}
           {:a '(2 1) :b 2}))

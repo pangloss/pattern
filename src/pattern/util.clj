@@ -100,6 +100,11 @@
   [x]
   (or (sequential? x) (map? x) (map-entry? x)))
 
+(defn map->sorted [x]
+  (try (sort-by key x)
+       (catch Exception e
+         (sort-by (comp hash key) x))))
+
 (defn make-zipper+map
   "Make a zipper that will descend into any type of sequential objects,
   including maps."
@@ -107,9 +112,7 @@
   (zip/zipper collection?
     (fn [x]
       (if (map? x)
-        (try (sort-by key x)
-             (catch Exception e
-               (sort-by (comp hash key) x)))
+        (map->sorted x)
         (seq x)))
     build-coll x))
 
@@ -187,17 +190,21 @@
   [z]
   (nth z 1))
 
-(defn walk-equal-subtree [oz rz on-same]
+(defn walk-equal-subtree
+  "A special op-type may be used for the first element, after that it's always :="
+  [oz rz on-same op-type]
   (let [stop (zpos (skip oz))]
     (loop [oz oz
-           rz rz]
+           rz rz
+           op-type op-type]
       (if (= (zpos oz) stop)
         rz
         (let [on (zip/node oz)]
           (recur (zip/next oz)
             (zip/next (if on-same
-                        (on-same rz on)
-                        rz))))))))
+                        (on-same op-type rz on)
+                        rz))
+            :=))))))
 
 (defn simple-diff
   "Return the indices with added and removed elements"
@@ -373,12 +380,6 @@
     (find-changes d)))
 
 
-
-
-;; TODO: better handling of changes and insertions/deletions in series. Now it
-;; treats them as adds/removes, but I should try to detect changed structures.
-;; Maybe a diff metric on the first level in? Maybe try to match up changes? Can
-;; I deal with reordering?
 ;; TODO: add ability to skip a branch if it has a metadata marker. That can be used
 ;; to mark that metadata has already been merged, or that metadata should not be merged.
 
@@ -407,10 +408,10 @@
         :else
         (let [[side idx _ orig] (first d)]
           (if (or (nil? idx) (< c idx))
-            (recur (inc c) d (skip oz) (walk-equal-subtree oz rz on-same))
+            (recur (inc c) d (skip oz) (walk-equal-subtree oz rz on-same :=))
             (case side
               :m (let [movez (make-zipper+map orig)]
-                   (recur (inc c) (rest d) (skip oz) (walk-equal-subtree movez rz on-same)))
+                   (recur (inc c) (rest d) (skip oz) (walk-equal-subtree movez rz on-same :m)))
 
               :c (let [changez (make-zipper+map orig)]
                    (recur (inc c) (rest d) (skip oz)
@@ -456,7 +457,7 @@
      (let [oz (make-zipper+map old-tree)
            rz (make-zipper+map new-tree)
            d (diff old-tree new-tree)]
-       (letfn [(on-same [rz on]
+       (letfn [(on-same [op rz on]
                  (if (meta? on)
                    (zip/edit rz #(with-meta % (combine-meta (meta on) (meta %))))
                    rz))
@@ -466,7 +467,7 @@
                    rz))]
          (if (seq d)
            (zip/root (walk-diff* d (zip/down oz) (zip/down rz) on-same on-changed))
-           (zip/root (walk-equal-subtree oz rz on-same))))))))
+           (zip/root (walk-equal-subtree oz rz on-same :=))))))))
 
 (defn walk-with-paths
   "Like [[clojure.walk/walk]] got combined with [[map-indexed]]. Calls
