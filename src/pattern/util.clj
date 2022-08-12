@@ -209,11 +209,14 @@
 (defn- simple-diff
   "See [[diff]]."
   [a b]
-  (mapv (fn [[side idx els]]
-          (if (vector? els)
-            [side idx (count els)]
-            [side idx els]))
-    (second (d/diff a b))))
+  (-> (reduce
+        (fn [v [side idx els]]
+          (let [c (if (vector? els) (count els) els)]
+            (reduce (fn [v i] (conj! v [side (+ idx i)]))
+              v (range c))))
+        (transient [])
+        (second (d/diff a b)))
+    persistent!))
 
 (defn with-old-idx [d]
   (first
@@ -237,13 +240,13 @@
          removes []
          pos 0
          opos 0
-         [[side idx len old-idx] :as d] d]
+         [[side idx] :as d] d]
     (if side
       (if (= pos idx)
-        (let [end (+ pos len)]
+        (let [end (inc pos)]
           (case side
             :+ (recur (into adds (range pos end)) removes end opos (rest d))
-            :- (recur adds (into removes (range opos (+ opos len))) pos (+ opos len) (rest d))))
+            :- (recur adds (into removes (range opos (inc opos))) pos (inc opos) (rest d))))
         (recur adds removes idx (+ opos (- idx pos)) d))
       {:adds adds :removes removes})))
 
