@@ -250,33 +250,6 @@
         (recur adds removes idx (+ opos (- idx pos)) d))
       {:adds adds :removes removes})))
 
-(defn find-moves
-  "Works best with simple-diff results as input.
-
-  Returns a map from {new-pos [old-pos edit-distance old-value]}"
-  [d old new]
-  (if (and (sequential? old) (sequential? new))
-    (let [old (vec old)
-          new (vec new)
-          {:keys [adds removes]} (diff-indices d)]
-      (loop [moves []
-             [addpos :as adds] adds
-             ri 0
-             removes removes]
-        (if addpos
-          (if (= ri (count removes))
-            (recur moves (next adds) 0 removes)
-            (let [removepos (removes ri)]
-              (if (= (nth new addpos) (nth old removepos))
-                ;; TODO: find close matches
-                (recur (conj moves [addpos [removepos 0 (nth old removepos)]])
-                  (next adds)
-                  0
-                  (into (subvec removes 0 ri) (subvec removes (inc ri))))
-                (recur moves adds (inc ri) removes))))
-          (into {} moves))))
-    nil))
-
 (defn- map-intersection
   "Return the portion of s1 where its keys intersect with s2's keys."
   ([s1] s1)
@@ -291,7 +264,7 @@
 (defn- invert-move-map [dests sources]
   (persistent!
     (reduce-kv (fn [m k v]
-                 (assoc! m v [k 0 (sources k)]))
+                 (assoc! m v [(sources k) 0 k]))
       (transient {})
       dests)))
 
@@ -315,28 +288,29 @@
                        new)
             move-sources (map-intersection old->pos new->pos)
             removes (apply disj removes (vals move-sources))
+            removes (apply disj removes (remove collection? removes))
             move-dests (map-intersection new->pos move-sources)
             adds (apply disj adds (vals move-dests))]
         ;; look for changes
-        (loop [moves (invert-move-map move-dests move-sources)
-               [addpos :as adds] (when (seq removes) (vec adds))
+        (loop [changes (transient (invert-move-map move-dests move-sources))
+               [addpos :as adds] (when (seq removes) (into [] (filter collection?) adds))
                ri 0
                removes (vec removes)
                removeset removes]
           (if addpos
             (if (= ri (count removes))
-              (recur moves (next adds) 0 removes removeset)
+              (recur changes (next adds) 0 removes removeset)
               (let [removepos (removes ri)]
                 (if (= (nth new addpos) (nth old removepos))
                   ;; TODO: find close matches
                   (let [removeset (disj removeset removepos)]
-                    (recur (assoc moves addpos [removepos 0 (nth old removepos)])
+                    (recur (assoc! changes addpos [removepos 0 (nth old removepos)])
                       (next adds)
                       0
                       (vec removeset)
                       removeset))
-                  (recur moves adds (inc ri) removes removeset))))
-            moves)))
+                  (recur changes adds (inc ri) removes removeset))))
+            (persistent! changes))))
       nil))
 
   #rtrace
