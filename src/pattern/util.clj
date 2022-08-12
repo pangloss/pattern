@@ -268,6 +268,58 @@
       (transient {})
       dests)))
 
+(defn distinct-by-2
+  "Returns a lazy sequence of the elements of coll with duplicates of the result
+  of calling get-value removed."
+  {:static true}
+  ([get-a get-b coll]
+   (let [step (fn step [xs seen-a seen-b]
+                (lazy-seq
+                  ((fn [[f :as xs] seen-a seen-b]
+                     (when-let [s (seq xs)]
+                       (let [a (get-a f)
+                             b (get-b f)]
+                         (if (or (contains? seen-a a) (contains? seen-b b))
+                           (recur (rest s) seen-a seen-b)
+                           (cons f (step (rest s) (conj seen-a a) (conj seen-b b)))))))
+                   xs seen-a seen-b)))]
+     (step coll #{} #{}))))
+
+(defn similarity
+  "Heuristics upon heuristics
+
+  Different type = not similar
+  position = 8 - (2 * distance)
+  length = 2 * common length - 2 * length difference
+  prefix = 5 * number of identical prefix items"
+  [[ai ri a r]]
+  ;; FIXME: probably tune this. Do I need to measure member intersection and score for that?
+  (if (or (= (type a) (type r))
+        (and (listy? a) (listy? r)))
+    (let [score
+          (+ (- 8 (* (abs (- ai ri)) 3))
+            (let [ca (count a)
+                  cr (count r)]
+              (- (* (min ca cr) 2) (* (abs (- ca cr)) 2))))]
+      (-
+        (loop [score score a a r r]
+          (if (and a r (= (first a) (first r)))
+            (recur (+ score 6) (next a) (next r))
+            score))))
+    0))
+
+(defn best-pairs [adds removes]
+  (let [adds (vec adds)
+        removes (vec removes)]
+    (->>
+      (for [addi (range (count adds))
+            removei (range (count removes))]
+        (let [v [addi removei (nth adds addi) (nth removes removei)]
+              s (similarity v)]
+          (conj v s)))
+      (sort-by last)
+      (distinct-by-2 #(nth % 2) #(nth % 3)))))
+
 (do
   #trace
   (defn find-changes
