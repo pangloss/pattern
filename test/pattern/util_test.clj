@@ -4,31 +4,30 @@
             [clojure.test :refer [deftest testing is are]]))
 
 (deftest test-diff
-  (is (= [[:order 1 3 0 2] [:r 2 1]]
-        (diff '(a b (c d) (e f)) '(b (e f) (c x) a))))
+  (is (= '[{3 [0 0 a]} ;; a moved from 0 to 3
+           {2 [2 -18 (c d)]}] ;; (c d) changed to (c x)
+        (find-changes (simple-diff
+                        '(a b (c d) (e f))
+                        '(b (e f) (c x) a)))))
 
-  (let [d (diff '(a b (c d) (e f)) '(z z z z b (e f) (c x) a))]
-    (is (= {:+ [0 1 2 3 6 7], :- [0 2]}
-          (diff-indices d)))))
+  (is (= '[{7 [0 0 a]} ;; a moved from 0 to 7
+           {6 [2 -6 (c d)]}] ;; (c d) moved from 2 to 6 and changed to (c x)
+        (find-changes (simple-diff '(a b (c d) (e f)) '(z z z z b (e f) (c x) a))))))
 
 
 (defn test-walk [a b]
   (walk-diff a b
     (fn same [z orig]
       (cond
-        (sequential? (zip/node z))
-        z
-        (int? (zip/node z))
-        (zip/edit z -)
-        :else
-        (zip/edit z str)))
+        (sequential? (zip/node z)) z
+        (int? (zip/node z))        (zip/edit z -)
+        :else                      (zip/edit z str)))
     (fn changed [type z orig]
       (if (sequential? (zip/node z))
         z
-        (case type
-          :- (zip/insert-left z {:- orig})
-          :+ (zip/edit z (constantly {:+ (zip/node z)}))
-          :r (zip/edit z (constantly {:r [orig (zip/node z)]})))))))
+        (if (= :- type)
+          (zip/insert-left z {:- orig})
+          (zip/edit z (constantly {:+ (zip/node z)})))))))
 
 (deftest walking-recursive
   (is (= [":a" [-1 -3] -5]
@@ -36,15 +35,11 @@
           [:a [1 3] 5]
           [:a [1 3] 5])))
 
-  (is (= [":a" [-1 {:r [3 4]}] -5]
-        (test-walk
-          [:a [1 3] 5]
-          [:a [1 4] 5])))
-
-  (is (= [":a" [-1 {:r [3 4]}] -5]
+  (is (= [":a" [-1 {:- 3} {:+ 4}] -5]
         (test-walk
           [:a [1 3] 5]
           [:a [1 4] 5]))))
+
 
 (deftest walk-through-map
   (is (= {":a" -1 ":b" -2}
@@ -73,17 +68,17 @@
           [:a 1 3 5]
           [:a 1 3 5])))
 
-  (is (= [{:r [:a :b]} -1 -3 -5]
+  (is (= [{:- :a} {:+ :b} -1 -3 -5]
         (test-walk
           [:a 1 3 5]
           [:b 1 3 5])))
 
-  (is (= [":a" {:r [0 1]} -3 -5]
+  (is (= [":a" {:- 0} {:+ 1} -3 -5]
         (test-walk
           [:a 0 3 5]
           [:a 1 3 5])))
 
-  (is (= [":a" -1 -3 {:r [4 5]}]
+  (is (= [":a" -1 -3 {:- 4} {:+ 5}]
         (test-walk
           [:a 1 3 4]
           [:a 1 3 5])))
@@ -108,6 +103,19 @@
         (test-walk
           [:x 2 2 3 4 5 6]
           [:a   1 3   5]))))
+
+(deftest test-simple-diff
+  (is (= [[:- 0 0 :x]
+          [:- 0 1 2]
+          [:- 0 2 2]
+          [:+ 0 3 :a]
+          [:+ 1 3 1]
+          [:- 3 4 4]
+          [:- 4 6 6]]
+
+        (simple-diff
+          [:x  2 2 3 4 5 6]
+          [  :a 1  3   5]))))
 
 (deftest merge-meta
   (is (= '{a (b d f)}
