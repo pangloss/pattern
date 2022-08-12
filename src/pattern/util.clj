@@ -320,20 +320,21 @@
 
       [[added-form idx-in-new] [removed-form idx-in-old] similarity]"
   [adds removes]
-  (->>
-    ;; fixme these are not the correct indices
-    (for [a adds
-          r removes
-          :let [s (similarity a r)]
-          #_#_
-          :when (neg? s)]
-      [a r s])
-    (sort-by #(nth % 2))
-    (distinct-by-2 #(nth % 0) #(nth % 1))
+  (let [r (->>
+            ;; fixme these are not the correct indices
+            (for [a adds
+                  r removes
+                  :let [s (similarity a r)]
+                  :when (neg? s)]
+              [a r s])
+            (sort-by #(nth % 2))
+            (distinct-by-2 #(nth % 0) #(nth % 1)))]
     (reduce (fn [m [a r s]]
-              (assoc m (val a) [(val r) s (key r)]))
-      {})))
+              (assoc m (nth a 1) [(nth r 1) s (nth r 0)]))
+      {}
+      r)))
 
+#_
 (defn find-changes
   [d old new]
   (if (and (sequential? old) (sequential? new))
@@ -357,19 +358,50 @@
           move-dests (map-intersection new->pos move-sources)
           adds (apply disj adds (vals move-dests))
           moves (invert-move-map move-dests move-sources)
+          ;; FIXME: new->pos etc don't have moves and non-sequentials removed.
           changes (best-pairs new->pos old->pos)]
       [moves changes])
     nil))
 
-#rtrace
-(let [old '(a z (c x) (e e) (x a) b)
-      new '(b a (x z) z (e f) (c x) x)]
-  (find-changes (simple-diff old new) old new))
+#trace
+(defn find-changes
+  [d]
+  (let [groups (group-by last d)]
+    (loop [moves {}
+           new []
+           old []
+           [[form group] & groups] groups]
+      (if group
+        (let [diffs (group-by first group)]
+          (if (= 1 (count diffs))
+            (recur moves
+              (into new (:+ diffs))
+              (into old (:- diffs))
+              groups)
+            (let [adds (:+ diffs)
+                  removes (:- diffs)
+                  c (min (count adds) (count removes))]
+              (recur
+                (into moves (map (fn [add remove]
+                                   ;; Is this really the right data?
+                                   [(nth add 1) [(nth remove 2) 0 (last remove)]])
+                              adds removes))
+                (into new (drop c adds))
+                (into old (drop c removes))
+                groups))))
+        [moves (best-pairs
+                 (map (fn [[_ i _ f]] [f i]) new)
+                 (map (fn [[_ _ i f]] [f i]) old))]))))
 
 #rtrace
-(let [old '(a b (c e) (e f))
+(let [old '(a z (c x) (e e) (e e) (x a) b)
+      new '(b a (e f) (x z) z (e f) (c x) x)]
+  (find-changes (simple-diff old new)))
+
+#rtrace
+(let [old '(x a b (c e) (e f))
       new '(b a z z (e f) (c d) x)]
-  (find-changes (simple-diff old new) old new))
+  (find-changes (simple-diff old new)))
 
 #rtrace
 (let [old '(a b (c d) (e f))
