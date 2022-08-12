@@ -207,11 +207,6 @@
 ;; + . 5 [                                                                         [:- 5 1]] c = i, :- advance L
 ;; ! ! 6 [] no diffs, all further nodes equal
 
-#_
-(let [old '(a b (c d) (e f))
-      new '(b a z (e f) (c d) x)]
-  (simple-diff old new))
-
 (defn simple-diff
   "Return the indices with added and removed elements"
   [old nw]
@@ -334,36 +329,6 @@
       {}
       r)))
 
-#_
-(defn find-changes
-  [d old new]
-  (if (and (sequential? old) (sequential? new))
-    (let [old (vec old)
-          new (vec new)
-          {:keys [adds removes]} (diff-indices d)
-          removes (set removes)
-          adds (set adds)
-          ;; FIXME: what about multiple equal values?
-          old->pos (into {}
-                     (comp (remove nil?)
-                       (map-indexed (fn [i v] (when (removes i) [v i]))))
-                     old)
-          new->pos (into {}
-                     (comp (remove nil?)
-                       (map-indexed (fn [i v] (when (adds i) [v i]))))
-                     new)
-          move-sources (map-intersection old->pos new->pos)
-          removes (apply disj removes (vals move-sources))
-          removes (apply disj removes (remove collection? removes))
-          move-dests (map-intersection new->pos move-sources)
-          adds (apply disj adds (vals move-dests))
-          moves (invert-move-map move-dests move-sources)
-          ;; FIXME: new->pos etc don't have moves and non-sequentials removed.
-          changes (best-pairs new->pos old->pos)]
-      [moves changes])
-    nil))
-
-#trace
 (defn find-changes
   [d]
   (let [groups (group-by last d)]
@@ -393,37 +358,25 @@
                  (map (fn [[_ i _ f]] [f i]) new)
                  (map (fn [[_ _ i f]] [f i]) old))]))))
 
-#rtrace
-(let [old '(a z (c x) (e e) (e e) (x a) b)
-      new '(b a (e f) (x z) z (e f) (c x) x)]
-  (find-changes (simple-diff old new)))
+(comment
+  (let [old '(a z (c x) (e e) (e e) (x a) b)
+        new '(b a (e f) (x z) z (e f) (c x) x)]
+    (find-changes (simple-diff old new)))
 
-#rtrace
-(let [old '(x a b (c e) (e f))
-      new '(b a z z (e f) (c d) x)]
-  (find-changes (simple-diff old new)))
+  (let [old '(x a b (c e) (e f))
+        new '(b a z z (e f) (c d) x)]
+    (find-changes (simple-diff old new)))
 
-#rtrace
-(let [old '(a b (c d) (e f))
-      new '(b a x z z c (e f) (c d) x)
-      d (simple-diff old new)
-      moves (find-moves d old new)
-      oldv (vec old)
-      #_#_
-      old' (reduce (fn [[r offset] [from to]]
-                     (into
-                       (into (conj (subvec r 0 to) (nth oldv from))
-                         (subvec r to from))
-                       (subvec r (inc from))))
 
-             [oldv 0]
-             moves)]
-  [:diff d
-   :moves moves
-   #_#_#_#_
-   :old' old'
-   :diff' (diff old' new)])
+  (let [old '(a b (c d) (e f))
+        new '(b a z (e f) (c d) x)]
+    (simple-diff old new))
 
+
+  (let [old '(a b (c d) (e f))
+        new '(b a x z z c (e f) (c d) x)
+        d (simple-diff old new)]
+    (find-changes d)))
 
 
 
