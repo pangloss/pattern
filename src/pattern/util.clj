@@ -198,15 +198,6 @@
                         (on-same rz on)
                         rz))))))))
 
-;; example for walk-diff: ! means nodes are equal, . is no change, + is skip forward, L is old, R is new
-;; ! ! 0 [[:+ 1 [0]] [:+ 3 [(let [a 1] (let [b 2] (+ (+ (+ (+ a 36) b) 1) 2))) 8]] [:- 5 1]] c < i, equal nodes
-;; . + 1 [[:+ 1 [0]] [:+ 3 [(let [a 1] (let [b 2] (+ (+ (+ (+ a 36) b) 1) 2))) 8]] [:- 5 1]] c = i, :+ advance R
-;; ! ! 2 [           [:+ 3 [(let [a 1] (let [b 2] (+ (+ (+ (+ a 36) b) 1) 2))) 8]] [:- 5 1]] c < i, equal nodes
-;; . + 3 [           [:+ 3 [(let [a 1] (let [b 2] (+ (+ (+ (+ a 36) b) 1) 2))) 8]] [:- 5 1]] c = i, :+ advance R
-;; . + 4 [           [:+ 3 [(let [a 1] (let [b 2] (+ (+ (+ (+ a 36) b) 1) 2))) 8]] [:- 5 1]] c <= i + (len a), :+ advance R
-;; + . 5 [                                                                         [:- 5 1]] c = i, :- advance L
-;; ! ! 6 [] no diffs, all further nodes equal
-
 (defn simple-diff
   "Return the indices with added and removed elements"
   [old nw]
@@ -228,46 +219,12 @@
           (recur r idx (+ opos (- idx pos)) d))
         (persistent! r)))))
 
-(defn diff-indices
-  "Return the indices of all added and all removed elements"
-  [d]
-  (loop [adds []
-         removes []
-         pos 0
-         opos 0
-         [[side idx] :as d] d]
-    (if side
-      (if (= pos idx)
-        (let [end (inc pos)]
-          (case side
-            :+ (recur (into adds (range pos end)) removes end opos (rest d))
-            :- (recur adds (into removes (range opos (inc opos))) pos (inc opos) (rest d))))
-        (recur adds removes idx (+ opos (- idx pos)) d))
-      {:adds adds :removes removes})))
-
-(defn- map-intersection
-  "Return the portion of s1 where its keys intersect with s2's keys."
-  ([s1] s1)
-  ([s1 s2]
-   (persistent!
-     (reduce-kv (fn [result k v]
-                  (if (contains? s2 k)
-                    result
-                    (dissoc! result k)))
-       (transient s1) s1))))
-
-(defn- invert-move-map [dests sources]
-  (persistent!
-    (reduce-kv (fn [m k v]
-                 (assoc! m v [(sources k) 0 k]))
-      (transient {})
-      dests)))
-
 (defn distinct-by-2
   "Returns a lazy sequence of the elements of coll with duplicates of the result
   of calling get-value removed."
   {:static true}
   ([get-a get-b coll]
+   ;; TODO: make this a loop
    (let [step (fn step [xs seen-a seen-b]
                 (lazy-seq
                   ((fn [[f :as xs] seen-a seen-b]
@@ -288,7 +245,8 @@
   length = 2 * common length - 2 * length difference
   prefix = 5 * number of identical prefix items"
   [[a ai] [r ri]]
-  ;; FIXME: probably tune this. Do I need to measure member intersection and score for that?
+  ;; This can probably be tuned better.
+  ;; It does not include edit distance or set intersection metrics in the heuristic
   (if (or (and (sequential? a) (= (type a) (type r)))
         (and (listy? a) (listy? r)))
     (let [score
@@ -308,15 +266,14 @@
 
   Adds and removes must be like this:
 
-     (let [adds {added-form idx-in-new}
-           removes {removed-form idx-in-old}] ...)
+      (let [adds [[added-form idx-in-new] ...]
+            removes [[removed-form idx-in-old] ...]] ...)
 
-  Returns a list of:
+  Returns a map of:
 
-      [[added-form idx-in-new] [removed-form idx-in-old] similarity]"
+      {idx-in-new [idx-in-old similarity removed-form]}"
   [adds removes]
   (let [r (->>
-            ;; fixme these are not the correct indices
             (for [a adds
                   r removes
                   :let [s (similarity a r)]
@@ -330,6 +287,7 @@
       r)))
 
 (defn find-changes
+  "Given a [[simple-diff]] result, return a map of moves and a map of changes."
   [d]
   (let [groups (group-by last d)]
     (loop [moves {}
@@ -348,15 +306,14 @@
                   c (min (count adds) (count removes))]
               (recur
                 (into moves (map (fn [add remove]
-                                   ;; Is this really the right data?
                                    [(nth add 1) [(nth remove 2) 0 (last remove)]])
                               adds removes))
                 (into new (drop c adds))
                 (into old (drop c removes))
                 groups))))
         [moves (best-pairs
-                 (map (fn [[_ i _ f]] [f i]) new)
-                 (map (fn [[_ _ i f]] [f i]) old))]))))
+                 (keep (fn [[_ i _ f]] (when (sequential? f) [f i])) new)
+                 (keep (fn [[_ _ i f]] (when (sequential? f) [f i])) old))]))))
 
 (comment
   (let [old '(a z (c x) (e e) (e e) (x a) b)
