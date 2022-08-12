@@ -206,32 +206,32 @@
 ;; . + 4 [           [:+ 3 [(let [a 1] (let [b 2] (+ (+ (+ (+ a 36) b) 1) 2))) 8]] [:- 5 1]] c <= i + (len a), :+ advance R
 ;; + . 5 [                                                                         [:- 5 1]] c = i, :- advance L
 ;; ! ! 6 [] no diffs, all further nodes equal
-(defn- simple-diff
-  "See [[diff]]."
-  [a b]
-  (-> (reduce
-        (fn [v [side idx els]]
-          (let [c (if (vector? els) (count els) els)]
-            (reduce (fn [v i] (conj! v [side (+ idx i)]))
-              v (range c))))
-        (transient [])
-        (second (d/diff a b)))
-    persistent!))
 
-(defn with-old-idx [d]
-  (first
-    (reduce (fn [[r o] [s i c]]
-              [(conj r [s i c (+ o i)])
-               (if (= :+ s) (- o c) (+ o c))])
-      [[] 0]
-      d)))
-
+#_
 (let [old '(a b (c d) (e f))
-      new '(b a x z z c (e f) (c d) x)]
-  (with-old-idx (simple-diff old new))
-  #_
-  (find-moves (simple-diff old new)
-    old new))
+      new '(b a z (e f) (c d) x)]
+  (simple-diff old new))
+
+(defn simple-diff
+  "Return the indices with added and removed elements"
+  [old nw]
+  (let [old (vec old)
+        nw (vec nw)]
+    (loop [r (transient [])
+           pos 0
+           opos 0
+           [[side idx els] :as d] (second (d/diff old nw))]
+      (if side
+        (if (= pos idx)
+          (if (= :+ side)
+            (if-let [els (next els)]
+              (recur (conj! r [side pos opos (nw pos)]) (inc pos) opos (cons [side (inc idx) els] (rest d)))
+              (recur (conj! r [side pos opos (nw pos)]) (inc pos) opos (rest d)))
+            (if (< 1 els)
+              (recur (conj! r [side pos opos (old opos)]) pos (inc opos) (cons [side idx (dec els)] (rest d)))
+              (recur (conj! r [side pos opos (old opos)]) pos (inc opos) (rest d))))
+          (recur r idx (+ opos (- idx pos)) d))
+        (persistent! r)))))
 
 (defn diff-indices
   "Return the indices of all added and all removed elements"
@@ -308,9 +308,6 @@
             score))))
     0))
 
-(do
-  #trace)
-
 (defn- best-pairs
   "Find the best matching pairs according to the [[similarity]] heuristic.
 
@@ -337,21 +334,6 @@
               (assoc m (val a) [(val r) s (key r)]))
       {})))
 
-    ;; 5 * n prefix equal
-    ;; interesting characteristics
-    ;; 22 - same position, same length, mostly intersecting
-    ;; 18 - same position, mostly intersecting
-    ;; 14 - same length, mostly intersecting
-    ;; 12 - same position, same length
-    ;;
-    ;; 10 - mostly intersecting
-    ;; 100% same type
-    ;;  8 - same position
-    ;;  4 - same length
-
-
-
-#trace
 (defn find-changes
   [d old new]
   (if (and (sequential? old) (sequential? new))
@@ -376,66 +358,18 @@
           adds (apply disj adds (vals move-dests))
           moves (invert-move-map move-dests move-sources)
           changes (best-pairs new->pos old->pos)]
-      [moves changes]
-      ;; look for changes
-      #_
-      (loop [changes (transient moves)
-             [addpos :as adds] (when (seq removes) (into [] (filter collection?) adds))
-             ri 0
-             removes (vec removes)
-             removeset removes]
-        (if addpos
-          (if (= ri (count removes))
-            (recur changes (next adds) 0 removes removeset)
-            (let [removepos (removes ri)]
-              (if (= (nth new addpos) (nth old removepos))
-                ;; TODO: find close matches
-                (let [removeset (disj removeset removepos)]
-                  (recur (assoc! changes addpos [removepos 0 (nth old removepos)])
-                    (next adds)
-                    0
-                    (vec removeset)
-                    removeset))
-                (recur changes adds (inc ri) removes removeset))))
-          (persistent! changes))))
+      [moves changes])
     nil))
 
-(defn diff
-  "Starts with diffit.vec/diff, simplifies the representation and detects replacements.
-
-  Each entry is a tuple of [side idx length]. Side can be :+ :- or -r.
-
-  idx is the position with previous diff entries applied. A :- entry does not
-  increment the current index, but others do."
-  ([d]
-   (first
-     (reduce
-       (fn [[r [sa ia ca]] [sb ib cb :as b]]
-         (if (or (and (= :+ sa) (= :- sb) ;; add/remove
-                   ;; ops are adjacent and same length
-                   (= (+ ia ca) ib) (= ca cb))
-               (and
-                 (= :- sa) (= :+ sb) ;; remove/add
-                 ;; same index and length
-                 (= ia ib) (= ca cb)))
-           ;; it's a replacement
-           [(assoc r (dec (count r)) [:r ia ca])
-            [:placeholder -1 -1]]
-           ;; regular change
-           [(conj r b) b]))
-       [[(first d)] (first d)]
-       (rest d))))
-  ([a b]
-   (diff (simple-diff a b))))
-
+#rtrace
+(let [old '(a z (c x) (e e) (x a) b)
+      new '(b a (x z) z (e f) (c x) x)]
+  (find-changes (simple-diff old new) old new))
 
 #rtrace
-(let [old '(a b (c d) (e f))
+(let [old '(a b (c e) (e f))
       new '(b a z z (e f) (c d) x)]
-  (find-moves (with-old-idx (simple-diff old new)) old new)
-  #_
-  (find-moves (simple-diff old new)
-    old new))
+  (find-changes (simple-diff old new) old new))
 
 #rtrace
 (let [old '(a b (c d) (e f))
