@@ -4,6 +4,22 @@
             [clojure.test :refer [deftest testing is are]]))
 
 (deftest test-diff
+  (is (= '[[:m 0 2 b]
+           [:+ 2 1 z]
+           [:+ 3 1 z]
+           [:c 4 4 (e f)]
+           [:c 5 5 (x y)]
+           [:- 6 1 f]
+           [:+ 7 4 x]]
+        (let [old '(a f b (c d) (e f) (x y))
+              new '(b a z z (e x) (x z) (c d) x)]
+          (diff old new))))
+
+  (is (= '[[:c 2 2 (c d)] [:m 3 0 a]]
+        (diff
+          '(a b (c d) (e f))
+          '(b (e f) (c x) a))))
+
   (is (= '[{3 [0 0 a]} ;; a moved from 0 to 3
            {2 [2 -18 (c d)]}] ;; (c d) changed to (c x)
         (find-changes (simple-diff
@@ -47,15 +63,16 @@
           {:a 1 :b 2}
           {:a 1 :b 2})))
 
-  (is (= {":a" [-1 -2] ":b" -2}
+  (is (= {":a" '(-1 -2) ":b" -2}
         (test-walk
           {:a '(1 2) :b 2}
           {:a '(1 2) :b 2})))
 
-  (is (= {":a" '({:- 1} -2 {:+ 1}) ":b" -2}
+  (is (= {":a" '(-2 -1) ":b" -2}
         (test-walk
           {:a '(1 2) :b 2}
-          {:a '(2 1) :b 2}))))
+          {:a '(2 1) :b 2}))
+    "Moved elements are treated as being unchanged, just their parent elements are changed."))
 
 (deftest walking-diffs
   ;; The test-walk fn makes these transformations:

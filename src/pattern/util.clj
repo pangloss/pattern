@@ -1,6 +1,7 @@
 (ns pattern.util
   (:require [clojure.zip :as zip]
-            [diffit.vec :as d])
+            [diffit.vec :as d]
+            [clojure.set :as set])
   (:import [clojure.lang IMeta IObj]))
 
 (defn listy?
@@ -247,18 +248,25 @@
   [[a ai] [r ri]]
   ;; This can probably be tuned better.
   ;; It does not include edit distance or set intersection metrics in the heuristic
-  (if (or (and (sequential? a) (= (type a) (type r)))
+  (if (or (and
+            (or (sequential? a) (map? a))
+            (= (type a) (type r)))
         (and (listy? a) (listy? r)))
-    (let [score
-          (+ (- 8 (* (abs (- ai ri)) 3))
-            (let [ca (count a)
-                  cr (count r)]
-              (- (* (min ca cr) 2) (* (abs (- ca cr)) 2))))]
-      (-
-        (loop [score score a a r r]
-          (if (and a r (= (first a) (first r)))
-            (recur (+ score 6) (next a) (next r))
-            score))))
+    (let [score (+ (- 8 (* (abs (- ai ri)) 3))
+                  (let [ca (count a)
+                        cr (count r)]
+                    (- (* (min ca cr) 2) (* (abs (- ca cr)) 2))))]
+      (- ;; negate the result for better sorting.
+        (if (map? a)
+          ;; map uses key intersection count:
+          (* 6 (count (set/intersection (set (keys a)) (set (keys r)))))
+          ;; lists use prefix equality:
+          (loop [score score a a r r]
+            (if (and a r (= (first a) (first r)))
+              (recur (+ score 6) (next a) (next r))
+              score)))))
+    ;; Current plan is to filter out matches if score <= 0. Sometimes things are
+    ;; added and other things are removed and they are not related.
     0))
 
 (defn- best-pairs
@@ -287,7 +295,9 @@
       r)))
 
 (defn find-changes
-  "Given a [[simple-diff]] result, return a map of moves and a map of changes."
+  "Given a [[simple-diff]] result, return a map of moves and a map of changes.
+
+  See [[diff]] for the final diff output incorporating changes."
   [d]
   (let [groups (group-by last d)]
     (loop [moves {}
@@ -315,9 +325,39 @@
                  (keep (fn [[_ i _ f]] (when (sequential? f) [f i])) new)
                  (keep (fn [[_ _ i f]] (when (sequential? f) [f i])) old))]))))
 
+(defn diff
+  "Returns a diff that includes :+ and :- for adds and removes but also :m and :c for moves and changes.
+
+  Each entry is:
+      [op-type result-pos orig-pos new-or-orig-form]"
+  [old new]
+  (let [d (simple-diff old new)
+        [moves changes] (find-changes d)
+        changes (merge moves changes)
+        ;; remove indices that are part of moves or changes so not needed in the diff
+        by-opos (group-by (comp first val) changes)]
+    (loop [result (transient [])
+           pos 0
+           opos 0
+           [[side idx :as edit] & d] d]
+      (if side
+        (if (= pos idx)
+          (case side
+            :+ (if-let [[oidx sim orig] (changes pos)]
+                 (recur (conj! result [(if (= 0 sim) :m :c) pos oidx orig]) (inc pos) opos d)
+                 (recur (conj! result edit) (inc pos) opos d))
+            :- (if-let [removals (by-opos opos)]
+                 (recur result pos (inc opos) d)
+                 (recur (conj! result edit) pos (inc opos) d)))
+          (recur result idx (+ opos (- idx pos)) (cons edit d)))
+        (persistent! result)))))
+
+
+
 (comment
-  (let [old '(a z (c x) (e e) (e e) (x a) b)
-        new '(b a (e f) (x z) z (e f) (c x) x)]
+  ;; TODO: handle changed maps. Maybe treat sorted keys like the prefix?
+  (let [old '(a z (c x) (e e) {e e} (x a) b)
+        new '(b a (e f) (x z) z {e f} (c x) x)]
     (find-changes (simple-diff old new)))
 
   (let [old '(x a b (c e) (e f))
@@ -325,10 +365,7 @@
     (find-changes (simple-diff old new)))
 
 
-  (let [old '(a b (c d) (e f))
-        new '(b a z (e f) (c d) x)]
-    (simple-diff old new))
-
+  (find-changes (simple-diff '{:a 2 :b 2} '{:a 2 :b 1}))
 
   (let [old '(a b (c d) (e f))
         new '(b a x z z c (e f) (c d) x)
@@ -352,7 +389,7 @@
   (let [op (zip/path oz)
         rp (zip/path rz)]
     (loop [c 0
-           [[side idx ec] :as d] d
+           d d
            oz oz
            rz rz]
       (cond
@@ -368,23 +405,23 @@
         (recur (inc c) d oz (skip (if on-changed (on-changed :+ rz nil) rz)))
 
         :else
-        (if (or (nil? idx) (< c idx))
-          (recur (inc c) d (skip oz) (walk-equal-subtree oz rz on-same))
-          (let [d (if (= (inc c) (+ idx ec))
-                    (rest d)
-                    d)]
+        (let [[side idx _ orig] (first d)]
+          (if (or (nil? idx) (< c idx))
+            (recur (inc c) d (skip oz) (walk-equal-subtree oz rz on-same))
             (case side
-              :r (recur (inc c) d (skip oz)
-                  (let [rz (if on-changed (on-changed side rz (zip/node oz)) rz)]
-                    (if (and (zip/branch? oz) (zip/branch? rz))
-                      (walk-diff*
-                        (diff (zip/node oz) (zip/node rz))
-                        (zip/down oz) (zip/down rz) on-same on-changed)
-                      (skip rz))))
-              :+ (recur (inc c) d oz (skip (if on-changed (on-changed side rz nil) rz)))
-              :- (recur c (if (= 1 ec)
-                            d
-                            (cons [side idx (dec ec)] (rest d)))
+              :m (let [movez (make-zipper+map orig)]
+                   (recur (inc c) (rest d) (skip oz) (walk-equal-subtree movez rz on-same)))
+
+              :c (let [changez (make-zipper+map orig)]
+                   (recur (inc c) (rest d) (skip oz)
+                     (let [rz (if on-changed (on-changed side rz (zip/node changez)) rz)]
+                       ;; changes should always be data structures
+                       (walk-diff*
+                         (diff (zip/node changez) (zip/node rz))
+                         (zip/down changez) (zip/down rz) on-same on-changed))))
+
+              :+ (recur (inc c) (rest d) oz (skip (if on-changed (on-changed side rz nil) rz)))
+              :- (recur c (rest d)
                    (skip oz) (if on-changed (on-changed side rz (zip/node oz)) rz)))))))))
 
 (defn walk-diff
@@ -424,7 +461,6 @@
                    (zip/edit rz #(with-meta % (combine-meta (meta on) (meta %))))
                    rz))
                (on-changed [op rz orig]
-                 (tap> [(type orig) (type (zip/node rz))])
                  (if (and (= :r op) (meta? orig) (collection? orig) (= (type orig) (type (zip/node rz))))
                    (zip/edit rz #(with-meta % (combine-meta (meta orig) (meta %))))
                    rz))]
