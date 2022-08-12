@@ -5,6 +5,7 @@
             [uncomplicate.fluokitten.core :as f]
             [pattern.types :refer [->Length map->Env]]
             [pattern.match.predicator :refer [*pattern-replace*]]
+            [pattern.util :refer [listy?]]
             [pure-conditioning :as c :refer [condition restarts default manage restart-with handler-cond]]
             [clojure.string :as str]
             [clojure.walk :as walk])
@@ -87,11 +88,6 @@
      (when restriction-position
        (swap! pattern.match.core/restriction-position assoc matcher-type restriction-position))
      (defmethod* compile-pattern* matcher-type matcher-impl))))
-
-(defn listy?
-  "Returns true if x is any kind of list except a vector."
-  [x]
-  (and (sequential? x) (not (vector? x))))
 
 (defn named-matcher?
   "Returns truthy if the var is a list-style matcher type registered as named,

@@ -10,12 +10,14 @@
             pattern.nanopass.dialect
             pattern.nanopass.pass
             pattern.types
+            pattern.util
             [potemkin :refer [import-vars]]))
 
 (import-vars (pattern.match.core
               matcher
               compile-pattern
-              pattern-names
+              pattern-names)
+             (pattern.util
               listy?)
              (pattern.substitute
               substitute)

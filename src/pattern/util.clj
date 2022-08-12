@@ -3,6 +3,11 @@
             [diffit.vec :as d])
   (:import [clojure.lang IMeta IObj]))
 
+(defn listy?
+  "Returns true if x is any kind of list except a vector."
+  [x]
+  (and (sequential? x) (not (vector? x))))
+
 (defn ints?
   "Return true if x is an int array
 
