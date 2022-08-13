@@ -397,7 +397,7 @@
   "Copy metadata over from the elements in the old tree to the new tree as
   comprehensively as possible."
   ([old-tree new-tree]
-   (deep-merge-meta2 old-tree new-tree merge))
+   (deep-merge-meta old-tree new-tree merge))
   ([old-tree new-tree combine-meta]
    (if (and (collection? old-tree) (collection? new-tree))
      (let [oz (make-zipper+map old-tree)

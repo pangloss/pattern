@@ -140,33 +140,33 @@
 
 (deftest merge-meta
   (is (= '{a (b d f)}
-        (deep-merge-meta2
+        (deep-merge-meta
           '{a ^:hi (^:x b ^:y c ^:z f)}
           '{a (b d f)})))
 
   (is (:x (meta
             (find-in
               '[a 0]
-              (deep-merge-meta2
+              (deep-merge-meta
                 '{a ^:hi (^:x b ^:y c ^:z f)}
                 '{a (b d f)})))))
 
   (is (nil? (meta
               (find-in
                 '[a 1]
-                (deep-merge-meta2
+                (deep-merge-meta
                   '{a ^:hi (^:x b ^:y c ^:z f)}
                   '{a (b d f)})))))
 
   (is (:z (meta
             (find-in
               '[a 2]
-              (deep-merge-meta2
+              (deep-merge-meta
                 '{a ^:hi (^:x b ^:y c ^:z f)}
                 '{a (b d f)})))))
 
   (is (:hi (meta
-             ((deep-merge-meta2
+             ((deep-merge-meta
                 '{a ^:hi (^:x b ^:y c ^:z f)}
                 '{a (d b f)})
               'a))))
@@ -174,13 +174,13 @@
   (is (:isf (meta
               (find-in
                 '[a 2 0]
-                (deep-merge-meta2
+                (deep-merge-meta
                   '{a ^:hi (^:x b ^:y c ^:z (^:isf f oo))}
                   '{a (b d (f x))})))))
 
   (is (:z (meta
             (find-in
               '[a 2]
-              (deep-merge-meta2
+              (deep-merge-meta
                 '{a ^:hi (^:x b ^:y c ^:z (^:isf f oo))}
                 '{a (b d (f x))}))))))
