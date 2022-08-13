@@ -168,5 +168,19 @@
   (is (:hi (meta
              ((deep-merge-meta2
                 '{a ^:hi (^:x b ^:y c ^:z f)}
-                '{a (b d f)})
-              'a)))))
+                '{a (d b f)})
+              'a))))
+
+  (is (:isf (meta
+              (find-in
+                '[a 2 0]
+                (deep-merge-meta2
+                  '{a ^:hi (^:x b ^:y c ^:z (^:isf f oo))}
+                  '{a (b d (f x))})))))
+
+  (is (:z (meta
+            (find-in
+              '[a 2]
+              (deep-merge-meta2
+                '{a ^:hi (^:x b ^:y c ^:z (^:isf f oo))}
+                '{a (b d (f x))}))))))

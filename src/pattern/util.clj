@@ -384,27 +384,6 @@
           (recur result idx (+ opos (- idx pos)) (cons edit d)))
         (persistent! result)))))
 
-
-
-(comment
-  ;; TODO: handle changed maps. Maybe treat sorted keys like the prefix?
-  (let [old '(a z (c x) (e e) {e e} (x a) b)
-        new '(b a (e f) (x z) z {e f} (c x) x)]
-    (find-changes (simple-diff old new)))
-
-  (let [old '(x a b (c e) (e f))
-        new '(b a z z (e f) (c d) x)]
-    (find-changes (simple-diff old new)))
-
-
-  (find-changes (simple-diff '{:a 2 :b 2} '{:a 2 :b 1}))
-
-  (let [old '(a b (c d) (e f))
-        new '(b a x z z c (e f) (c d) x)
-        d (simple-diff old new)]
-    (find-changes d)))
-
-
 ;; TODO: add ability to skip a branch if it has a metadata marker. That can be used
 ;; to mark that metadata has already been merged, or that metadata should not be merged.
 
@@ -487,7 +466,7 @@
                    (zip/edit rz #(with-meta % (combine-meta (meta on) (meta %))))
                    rz))
                (on-changed [op rz orig]
-                 (if (and (= :r op) (meta? orig) (collection? orig) (= (type orig) (type (zip/node rz))))
+                 (if (and (= :c op) (meta? orig) (collection? orig) (= (type orig) (type (zip/node rz))))
                    (zip/edit rz #(with-meta % (combine-meta (meta orig) (meta %))))
                    rz))]
          (if (seq d)
