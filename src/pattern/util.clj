@@ -458,7 +458,6 @@
   Recognizes all Clojure data structures. Consumes seqs as with doall.
 
   See [[clojure.walk/postwalk]] and [[walk-with-paths]]."
-  {:added "1.1"}
   ([f form]
    (postwalk-with-paths f [] form))
   ([f path form]
