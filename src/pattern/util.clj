@@ -116,47 +116,6 @@
         (seq x)))
     build-coll x))
 
-(defn- find-last-equiv-node [ot nt]
-  (loop [oz (make-zipper ot)
-         nz (make-zipper nt)
-         rz (make-zipper nt)]
-    (let [on (zip/node oz)
-          nn (zip/node nz)]
-      (if (or
-            (= on nn)
-            (and (zip/branch? oz)
-              (zip/branch? nz)
-              (= (empty on) (empty nn))))
-        (if (or (zip/end? (zip/next oz))
-              (zip/end? (zip/next nz)))
-          [oz nz rz]
-          (recur (zip/next oz) (zip/next nz) (zip/next rz)))
-        [(zip/prev oz) (zip/prev nz) (zip/prev rz)]))))
-
-(defn deep-merge-meta
-  "Copy meta over from the elements in the old tree to the new tree until the trees diverge"
-  ([old-tree new-tree]
-   (deep-merge-meta old-tree new-tree merge))
-  ([old-tree new-tree merge]
-   (if (and (sequential? old-tree) (sequential? new-tree))
-     (let [[oz nz rz] (find-last-equiv-node old-tree new-tree)]
-       (loop [oz oz
-              nz nz
-              rz rz]
-         (let [on (zip/node oz)
-               nn (zip/node nz)]
-           (if (not (zip/prev nz))
-             (if (and (meta on) (meta? nn))
-               (with-meta (zip/node rz) (merge (meta on) (meta nn)))
-               nn)
-             (recur
-               (zip/prev oz)
-               (zip/prev nz)
-               (if (and (meta on) (meta? nn))
-                 (zip/prev (zip/edit rz with-meta (merge (meta on) (meta nn))))
-                 (zip/prev rz)))))))
-     new-tree)))
-
 (defn skip
   "Moves to the next sibling or next point in the hierarchy, depth-first. When
   reaching the end, returns a distinguished loc detectable via end?. If already
@@ -436,7 +395,7 @@
       (zip/down (make-zipper+map new))
       on-same on-changed)))
 
-(defn deep-merge-meta2
+(defn deep-merge-meta
   "Copy metadata over from the elements in the old tree to the new tree as
   comprehensively as possible."
   ([old-tree new-tree]
