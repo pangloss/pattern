@@ -93,7 +93,9 @@
 (defn make-zipper
   "Make a zipper that will descend into any type of sequential objects except maps."
   [x]
-  (zip/zipper sequential? seq build-coll x))
+  (if (nil? x)
+    [nil :end]
+    (zip/zipper sequential? seq build-coll x)))
 
 (defn collection?
   "Is x a sequential collection, a map or a map-entry?"
@@ -109,12 +111,14 @@
   "Make a zipper that will descend into any type of sequential objects,
   including maps."
   [x]
-  (zip/zipper collection?
-    (fn [x]
-      (if (map? x)
-        (map->sorted x)
-        (seq x)))
-    build-coll x))
+  (if (nil? x)
+    [nil :end]
+    (zip/zipper collection?
+      (fn [x]
+        (if (map? x)
+          (map->sorted x)
+          (seq x)))
+      build-coll x)))
 
 (defn skip
   "Moves to the next sibling or next point in the hierarchy, depth-first. When
@@ -328,48 +332,52 @@
 
 ;; TODO: add ability to skip a branch if it has a metadata marker. That can be used
 ;; to mark that metadata has already been merged, or that metadata should not be merged.
+;;
 
 (defn walk-diff*
   "See [[walk-diff]]. This version takes a diff and a zipper which has been
   traversed to the index 0 position relative to the diff."
   [d oz rz on-same on-changed]
-  (let [op (zip/path oz)
-        rp (zip/path rz)]
-    (loop [c 0
-           d d
-           oz oz
-           rz rz]
-      (cond
-        (or (zip/end? rz)
-          ;; don't leave the current nesting level
-          (not= rp (zip/path rz)))
-        rz
+  (if-let [rz (zip/down rz)]
+    (let [oz (or (zip/down oz) [nil :end])
+          op (zip/path oz)
+          rp (zip/path rz)]
+      (loop [c 0
+             d d
+             oz oz
+             rz rz]
+        (cond
+          (or (zip/end? rz)
+            ;; don't leave the current nesting level
+            (not= rp (zip/path rz)))
+          rz
 
-        (or (zip/end? oz)
-          ;; don't leave the current nesting level
-          (not= op (zip/path oz)))
-        ;; there is added stuff in rz not in oz
-        (recur (inc c) d oz (skip (if on-changed (on-changed :+ rz nil) rz)))
+          (or (zip/end? oz)
+            ;; don't leave the current nesting level
+            (not= op (zip/path oz)))
+          ;; there is added stuff in rz not in oz
+          (recur (inc c) d oz (skip (if on-changed (on-changed :+ rz nil) rz)))
 
-        :else
-        (let [[side idx _ orig] (first d)]
-          (if (or (nil? idx) (< c idx))
-            (recur (inc c) d (skip oz) (walk-equal-subtree oz rz on-same :=))
-            (case side
-              :m (let [movez (make-zipper+map orig)]
-                   (recur (inc c) (rest d) (skip oz) (walk-equal-subtree movez rz on-same :m)))
+          :else
+          (let [[side idx _ orig] (first d)]
+            (if (or (nil? idx) (< c idx))
+              (recur (inc c) d (skip oz) (walk-equal-subtree oz rz on-same :=))
+              (case side
+                :m (let [movez (make-zipper+map orig)]
+                     (recur (inc c) (rest d) (skip oz) (walk-equal-subtree movez rz on-same :m)))
 
-              :c (let [changez (make-zipper+map orig)]
-                   (recur (inc c) (rest d) (skip oz)
-                     (let [rz (if on-changed (on-changed side rz (zip/node changez)) rz)]
-                       ;; changes should always be data structures
-                       (walk-diff*
-                         (diff (zip/node changez) (zip/node rz))
-                         (zip/down changez) (zip/down rz) on-same on-changed))))
+                :c (let [changez (make-zipper+map orig)]
+                     (recur (inc c) (rest d) (skip oz)
+                       (let [rz (if on-changed (on-changed side rz (zip/node changez)) rz)]
+                         ;; changes should always be data structures
+                         (walk-diff*
+                           (diff (zip/node changez) (zip/node rz))
+                           changez rz on-same on-changed))))
 
-              :+ (recur (inc c) (rest d) oz (skip (if on-changed (on-changed side rz nil) rz)))
-              :- (recur c (rest d)
-                   (skip oz) (if on-changed (on-changed side rz (zip/node oz)) rz)))))))))
+                :+ (recur (inc c) (rest d) oz (skip (if on-changed (on-changed side rz nil) rz)))
+                :- (recur c (rest d)
+                     (skip oz) (if on-changed (on-changed side rz (zip/node oz)) rz))))))))
+    (skip rz)))
 
 (defn walk-diff
   "Walks zippers over the old and new data structures in tandem, accounting for
@@ -387,11 +395,17 @@
       (on-same result-zipper orig-value)
       (on-changed change-type result-zipper orig-value-or-nil)"
   [old new on-same on-changed]
-  (zip/root
-    (walk-diff* (diff old new)
-      (zip/down (make-zipper+map old))
-      (zip/down (make-zipper+map new))
-      on-same on-changed)))
+  (when (some? new)
+    (let [old (if (some? old)
+                old
+                (if (collection? new)
+                  (empty new)
+                  old))]
+      (zip/root
+        (walk-diff* (diff old new)
+          (make-zipper+map old)
+          (make-zipper+map new)
+          on-same on-changed)))))
 
 (defn deep-merge-meta
   "Copy metadata over from the elements in the old tree to the new tree as
@@ -412,7 +426,7 @@
                    (zip/edit rz #(with-meta % (combine-meta (meta orig) (meta %))))
                    rz))]
          (if (seq d)
-           (zip/root (walk-diff* d (zip/down oz) (zip/down rz) on-same on-changed))
+           (zip/root (walk-diff* d oz rz on-same on-changed))
            (zip/root (walk-equal-subtree oz rz on-same :=))))))))
 
 (defn walk-with-paths

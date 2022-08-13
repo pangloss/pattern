@@ -28,8 +28,37 @@
 
   (is (= '[{7 [0 0 a]} ;; a moved from 0 to 7
            {6 [2 -6 (c d)]}] ;; (c d) moved from 2 to 6 and changed to (c x)
-        (find-changes (simple-diff '(a b (c d) (e f)) '(z z z z b (e f) (c x) a))))))
+        (find-changes (simple-diff '(a b (c d) (e f)) '(z z z z b (e f) (c x) a)))))
 
+  (is (= [[:- 1 1 nil] [:+ 1 2 [:x]]]
+        (diff
+          [:a nil]
+          [:a [:x]])))
+
+  (is (= [[:- 1 1 [:x]] [:+ 1 2 nil]]
+        (diff
+          [:a [:x]]
+          [:a nil])))
+
+  (is (= [[:+ 0 0 :a] [:+ 1 0 1] [:+ 2 0 3] [:+ 3 0 5]]
+        (diff
+          nil
+          [:a 1 3 5])))
+
+  (is (= [[:+ 0 0 :a] [:+ 1 0 1] [:+ 2 0 3] [:+ 3 0 5]]
+        (diff
+          []
+          [:a 1 3 5])))
+
+  (is (= [[:- 0 0 :a] [:- 0 1 1] [:- 0 2 3] [:- 0 3 5]]
+        (diff
+          [:a 1 3 5]
+          nil)))
+
+  (is (= [[:- 0 0 :a] [:- 0 1 1] [:- 0 2 3] [:- 0 3 5]]
+        (diff
+          [:a 1 3 5]
+          []))))
 
 (defn test-walk [a b]
   (walk-diff a b
@@ -104,6 +133,38 @@
           [:a 1 3 4]
           [:a 1 3 5])))
 
+  (is (= [":a" -1 {:- 3} {:- 4} {:+ nil} {:+ 5}]
+        (test-walk
+          [:a 1 3 4]
+          [:a 1 nil 5])))
+
+  (is (= [":a" -1 {:- nil} {:- 4} {:+ 3} {:+ 5}]
+        (test-walk
+          [:a 1 nil 4]
+          [:a 1 3 5])))
+
+  (is (= [{:+ :a} {:+ 1} {:+ 3} {:+ 5}]
+        (test-walk
+          nil
+          [:a 1 3 5])))
+
+  (is (= [{:+ :a} {:+ 1} {:+ 3} {:+ 5}]
+        (test-walk
+          []
+          [:a 1 3 5])))
+
+  (is (nil?
+        (test-walk
+          [:a 1 3 5]
+          nil))
+    "NOTE this is another instance of removals at the end not being captured")
+
+  (is (= []
+        (test-walk
+          [:a 1 3 5]
+          []))
+    "NOTE this is another instance of removals at the end not being captured")
+
   (is (= [{:+ :x} {:+ 2} {:+ 2}
           {:- :a} {:- 1}
           -3
@@ -125,6 +186,9 @@
           [:x 2 2 3 4 5 6]
           [:a   1 3   5]))))
 
+
+
+
 (deftest test-simple-diff
   (is (= [[:- 0 0 :x]
           [:- 0 1 2]
@@ -136,7 +200,28 @@
 
         (simple-diff
           [:x  2 2 3 4 5 6]
-          [  :a 1  3   5]))))
+          [  :a 1  3   5])))
+
+  (is (= [[:+ 0 0 :a] [:+ 1 0 1] [:+ 2 0 3] [:+ 3 0 5]]
+        (simple-diff
+          nil
+          [:a 1 3 5])))
+
+  (is (= [[:+ 0 0 :a] [:+ 1 0 1] [:+ 2 0 3] [:+ 3 0 5]]
+        (simple-diff
+          []
+          [:a 1 3 5])))
+
+  (is (= [[:- 0 0 :a] [:- 0 1 1] [:- 0 2 3] [:- 0 3 5]]
+        (simple-diff
+          [:a 1 3 5]
+          nil)))
+
+  (is (= [[:- 0 0 :a] [:- 0 1 1] [:- 0 2 3] [:- 0 3 5]]
+        (simple-diff
+          [:a 1 3 5]
+          []))))
+
 
 (deftest merge-meta
   (is (= '{a (b d f)}
