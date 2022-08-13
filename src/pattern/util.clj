@@ -165,9 +165,7 @@
     (if (not= om? nm?)
       []
       (let [old (vec (if om? (map->sorted old) old))
-            nw (vec (if nm? (map->sorted nw) nw))
-            insert :+ #_(if om? :map/+ :+)
-            delete :- #_(if om? :map/- :-)]
+            nw (vec (if nm? (map->sorted nw) nw))]
         (loop [r (transient [])
                pos 0
                opos 0
@@ -176,11 +174,11 @@
             (if (= pos idx)
               (if (= :+ side)
                 (if-let [els (next els)]
-                  (recur (conj! r [insert pos opos (nw pos)]) (inc pos) opos (cons [side (inc idx) els] (rest d)))
-                  (recur (conj! r [insert pos opos (nw pos)]) (inc pos) opos (rest d)))
+                  (recur (conj! r [:+ pos opos (nw pos)]) (inc pos) opos (cons [side (inc idx) els] (rest d)))
+                  (recur (conj! r [:+ pos opos (nw pos)]) (inc pos) opos (rest d)))
                 (if (< 1 els)
-                  (recur (conj! r [delete pos opos (old opos)]) pos (inc opos) (cons [side idx (dec els)] (rest d)))
-                  (recur (conj! r [delete pos opos (old opos)]) pos (inc opos) (rest d))))
+                  (recur (conj! r [:- pos opos (old opos)]) pos (inc opos) (cons [side idx (dec els)] (rest d)))
+                  (recur (conj! r [:- pos opos (old opos)]) pos (inc opos) (rest d))))
               (recur r idx (+ opos (- idx pos)) d))
             (persistent! r)))))))
 
