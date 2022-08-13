@@ -226,22 +226,21 @@
             (persistent! r)))))))
 
 (defn distinct-by-2
-  "Returns a lazy sequence of the elements of coll with duplicates of the result
-  of calling get-value removed."
+  "Returns a vector of the elements of coll with duplicates of the result
+  of calling get-a or get-b removed."
   {:static true}
   ([get-a get-b coll]
-   ;; TODO: make this a loop
-   (let [step (fn step [xs seen-a seen-b]
-                (lazy-seq
-                  ((fn [[f :as xs] seen-a seen-b]
-                     (when-let [s (seq xs)]
-                       (let [a (get-a f)
-                             b (get-b f)]
-                         (if (or (contains? seen-a a) (contains? seen-b b))
-                           (recur (rest s) seen-a seen-b)
-                           (cons f (step (rest s) (conj seen-a a) (conj seen-b b)))))))
-                   xs seen-a seen-b)))]
-     (step coll #{} #{}))))
+   (loop [result (transient [])
+          [f :as xs] coll
+          seen-a #{}
+          seen-b #{}]
+     (if xs
+       (let [a (get-a f)
+             b (get-b f)]
+         (if (or (contains? seen-a a) (contains? seen-b b))
+           (recur result (next xs) seen-a seen-b)
+           (recur (conj! result f) (next xs) (conj seen-a a) (conj seen-b b))))
+       (persistent! result)))))
 
 (defn- similarity
   "Heuristics upon heuristics. More negative is better.
