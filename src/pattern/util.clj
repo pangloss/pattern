@@ -199,33 +199,45 @@
            op-type op-type]
       (if (= (zpos oz) stop)
         rz
-        (let [on (zip/node oz)]
-          (recur (zip/next oz)
-            (zip/next (if on-same
-                        (on-same op-type rz on)
-                        rz))
-            :=))))))
+        (let [on (zip/node oz)
+              rz (if on-same
+                   (on-same op-type rz on)
+                   rz)]
+          (if (= on (zip/node rz)) ;; unchanged by callback
+            ;; If a data structure is changed, that messes up the zipper because
+            ;; it walks into the newly added thing. If we detect that, we skip
+            ;; any further walk into that element.
+            (recur (zip/next oz)
+              (zip/next rz)
+              :=)
+            (recur (skip oz) (skip rz) :=)))))))
 
 (defn simple-diff
   "Return the indices with added and removed elements"
   [old nw]
-  (let [old (vec old)
-        nw (vec nw)]
-    (loop [r (transient [])
-           pos 0
-           opos 0
-           [[side idx els] :as d] (second (d/diff old nw))]
-      (if side
-        (if (= pos idx)
-          (if (= :+ side)
-            (if-let [els (next els)]
-              (recur (conj! r [side pos opos (nw pos)]) (inc pos) opos (cons [side (inc idx) els] (rest d)))
-              (recur (conj! r [side pos opos (nw pos)]) (inc pos) opos (rest d)))
-            (if (< 1 els)
-              (recur (conj! r [side pos opos (old opos)]) pos (inc opos) (cons [side idx (dec els)] (rest d)))
-              (recur (conj! r [side pos opos (old opos)]) pos (inc opos) (rest d))))
-          (recur r idx (+ opos (- idx pos)) d))
-        (persistent! r)))))
+  (let [om? (map? old)
+        nm? (map? nw)]
+    (if (not= om? nm?)
+      []
+      (let [old (vec (if om? (map->sorted old) old))
+            nw (vec (if nm? (map->sorted nw) nw))
+            insert :+ #_(if om? :map/+ :+)
+            delete :- #_(if om? :map/- :-)]
+        (loop [r (transient [])
+               pos 0
+               opos 0
+               [[side idx els] :as d] (second (d/diff old nw))]
+          (if side
+            (if (= pos idx)
+              (if (= :+ side)
+                (if-let [els (next els)]
+                  (recur (conj! r [insert pos opos (nw pos)]) (inc pos) opos (cons [side (inc idx) els] (rest d)))
+                  (recur (conj! r [insert pos opos (nw pos)]) (inc pos) opos (rest d)))
+                (if (< 1 els)
+                  (recur (conj! r [delete pos opos (old opos)]) pos (inc opos) (cons [side idx (dec els)] (rest d)))
+                  (recur (conj! r [delete pos opos (old opos)]) pos (inc opos) (rest d))))
+              (recur r idx (+ opos (- idx pos)) d))
+            (persistent! r)))))))
 
 (defn distinct-by-2
   "Returns a lazy sequence of the elements of coll with duplicates of the result
@@ -301,6 +313,17 @@
       {}
       r)))
 
+(defn map-changes [d]
+  (let [changes (into {} (comp
+                           (filter #(= 2 (count (val %))))
+                           (map (fn [[_ [a b]]]
+                                  (let [[[_ pos :as edit] [_ opos _ form]] (if (= :+ (first a)) [a b] [b a])]
+                                    [edit [pos [opos -1 form]]]))))
+                  (group-by (comp key last) d))]
+    (into {}
+      (keep #(changes %))
+      d)))
+
 (defn find-changes
   "Given a [[simple-diff]] result, return a map of moves and a map of changes.
 
@@ -339,7 +362,9 @@
       [op-type result-pos orig-pos new-or-orig-form]"
   [old new]
   (let [d (simple-diff old new)
-        [moves changes] (find-changes d)
+        [moves changes] (if (map? old)
+                          [{} (map-changes d)]
+                          (find-changes d))
         changes (merge moves changes)
         ;; remove indices that are part of moves or changes so not needed in the diff
         by-opos (group-by (comp first val) changes)]
