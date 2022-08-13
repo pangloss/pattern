@@ -160,30 +160,16 @@
 (defn skip
   "Moves to the next sibling or next point in the hierarchy, depth-first. When
   reaching the end, returns a distinguished loc detectable via end?. If already
-  at the end, stays there.
-
-  When skipping backwards, skipping off the front will give you a nil zipper."
-  ([loc]
-   (skip loc 1))
-  ([loc distance]
-   (cond (zero? distance)
-         loc
-         (pos? distance)
-         (if (= :end (loc 1))
-           loc
-           (recur
-             (or
-               (zip/right loc)
-               (loop [p loc]
-                 (if (zip/up p)
-                   (or (-> p zip/up zip/right) (recur (zip/up p)))
-                   [(zip/node p) :end])))
-             (dec distance)))
-         :else
-         (when loc
-           (recur
-             (zip/left loc)
-             (inc distance))))))
+  at the end, stays there."
+  [loc]
+  (if (zip/end? loc)
+    loc
+    (or
+      (zip/right loc)
+      (loop [p loc]
+        (if (zip/up p)
+          (or (zip/right (zip/up p)) (recur (zip/up p)))
+          [(zip/node p) :end])))))
 
 (defn- zpos
   "Return the raw position construct in the zipper."
