@@ -422,7 +422,7 @@
                    (zip/edit rz #(with-meta % (combine-meta (meta on) (meta %))))
                    rz))
                (on-changed [op rz orig]
-                 (if (and (= :c op) (meta? orig) (collection? orig) (= (type orig) (type (zip/node rz))))
+                 (if (and (= :c op) (meta? orig))
                    (zip/edit rz #(with-meta % (combine-meta (meta orig) (meta %))))
                    rz))]
          (if (seq d)
