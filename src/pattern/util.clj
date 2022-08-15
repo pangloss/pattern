@@ -58,6 +58,23 @@
   ([datum orig-env done env]
    (and (= done datum) (meta= done datum) (= orig-env env))))
 
+(defn meta-equiv?
+  "For use as the equiv? argument in rule combinators.
+
+  metadata and env must be equal.
+
+  In :no-env mode, ignore env difference.
+
+  See also [[equiv?]]"
+  ([mode]
+   (case mode
+     :no-env
+     (fn [datum orig-env done env]
+       (meta= done datum))
+     all-equiv?))
+  ([datum orig-env done env]
+   (and (meta= done datum) (= orig-env env))))
+
 (defn equiv?
   "For use as the equiv? argument in rule combinators.
 
