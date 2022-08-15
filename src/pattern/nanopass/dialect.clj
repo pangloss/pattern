@@ -664,13 +664,10 @@
        (keep (fn [{:keys [match orig-expr] :as x}]
                (when match
                  (vary-meta
-                   (make-rule
-                     match
-                     (fn [env matches]
-                       (success (substitute orig-expr matches)))
-                     #(comp list (symbol-dict %))
-                     nil
-                     {:src orig-expr})
+                   (eval
+                     `(rule '~orig-expr
+                        (success
+                          (sub ~orig-expr))))
                    assoc-in [:rule :descend :abbr]
                    abbrs))))
        rule-list))))
