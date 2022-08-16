@@ -223,125 +223,128 @@
 
 (def expand-pattern
   (name-rule :expand-pattern
-             (directed
-              (rule-list [do-unquote*
+    (directed
+      (rule-list [do-unquote*
 
-                          ;; var
-                          (rule '(?:chain ?var matcher-type-for-dispatch ?)
-                            (let [n (var-name var)]
-                              (if (= '_ n)
-                                ()
-                                (if (str/includes? (or (matcher-mode var) "") "<-")
-                                  `(list (~*on-marked-insertion* ~(var-name var)))
-                                  `(list ~(var-name var))))))
+                  ;; var
+                  (rule '(?:chain ?var matcher-type-for-dispatch ?)
+                    (let [n (var-name var)]
+                      (if (= '_ n)
+                        ()
+                        (if (str/includes? (or (matcher-mode var) "") "<-")
+                          `(list (~*on-marked-insertion* ~(var-name var)))
+                          `(list ~(var-name var))))))
 
-                          ;; segment
-                          (rule '(?:chain ?var matcher-type-for-dispatch ??)
-                            (let [n (var-name var)]
-                              (if (= '_ n)
-                                ()
-                                (if (str/includes? (or (matcher-mode var) "") "<-")
-                                  `(map ~*on-marked-insertion* ~(var-name var))
-                                  (var-name var)))))
+                  ;; segment
+                  (rule '(?:chain ?var matcher-type-for-dispatch ??)
+                    (let [n (var-name var)]
+                      (if (= '_ n)
+                        ()
+                        (if (str/includes? (or (matcher-mode var) "") "<-")
+                          `(map ~*on-marked-insertion* ~(var-name var))
+                          (var-name var)))))
 
-                          (rule '((?:literal ?:<-) ?->x)
-                                `(map ~*on-marked-insertion* ~x))
+                  (rule '((?:literal ?:<-) ?->x)
+                    `(map ~*on-marked-insertion* ~x))
 
-                          ;; sequence
-                          (rule '(?:as expr (| ((? op #{?:* ?:+}) ??pattern)
-                                               ((? op #{?:n}) ?_ ??pattern)))
-                                (let [names (pattern-args pattern)
-                                      seqs (doall (map (fn [n]
-                                                         `(if (seqable? ~n)
-                                                            ~n
-                                                            (repeat ~n)))
-                                                       names))
-                                      expanded (descend pattern)]
-                                  `(if (some seqable? ~(vec names))
-                                     (mapcat (fn [~@names] ~@expanded)
-                                             ~@seqs)
-                                     (throw (ex-info (str "At least one sequence variable must be bounded.\n\n"
-                                                          "If a variable `x` is not seqable it wrapped with "
-                                                          "(repeat x), so the cause of this problem could be "
-                                                          "that no expansion variables are sequential for the "
-                                                          "repeat pattern.")
-                                                     {:expression '~expr})))))
+                  ;; sequence
+                  (rule '(?:as expr (| ((? op #{?:* ?:+}) ??pattern)
+                                      ((? op #{?:n}) ?_ ??pattern)))
+                    (let [names (pattern-args pattern)
+                          seqs (doall (map (fn [n]
+                                             `(if (seqable? ~n)
+                                                ~n
+                                                (repeat ~n)))
+                                        names))
+                          expanded (descend pattern)]
+                      `(if (some seqable? ~(vec names))
+                         (mapcat (fn [~@names] ~@expanded)
+                           ~@seqs)
+                         (throw (ex-info (str "At least one sequence variable must be bounded.\n\n"
+                                           "If a variable `x` is not seqable it wrapped with "
+                                           "(repeat x), so the cause of this problem could be "
+                                           "that no expansion variables are sequential for the "
+                                           "repeat pattern.")
+                                  {:expression '~expr})))))
 
-                          ;; optional
-                          (rule '((?:literal ?:?) ??->pattern)
-                            `(let [p# (seq (apply concat ~pattern))]
-                               (when (some identity p#)
-                                 p#)))
+                  ;; optional
+                  (rule '((?:literal ?:?) ??->pattern)
+                    `(let [p# (seq (apply concat ~pattern))]
+                       (when (seq (filter some? p#))
+                         p#)))
 
-                          (rule '((?:literal ?:1) ??->pattern)
-                                `(seq (apply concat ~pattern)))
+                  (rule '((?:literal ?:1) ??->pattern)
+                    `(seq (apply concat ~pattern)))
 
-                          ;; and
-                          (rule '(?:chain ?var matcher-type-for-dispatch &)
-                                (let [types (doall (map (fn [v]
-                                                          (list 'quote (matcher-type-for-dispatch v)))
-                                                        (rest var)))
-                                      results (doall (map (comp descend list) (rest var)))]
-                                  `(expand-and (list ~@types) (list ~@results))))
+                  ;; and
+                  (rule '(?:chain ?var matcher-type-for-dispatch &)
+                    (let [types (doall (map (fn [v]
+                                              (list 'quote (matcher-type-for-dispatch v)))
+                                         (rest var)))
+                          results (doall (map (comp descend list) (rest var)))]
+                      `(expand-and (list ~@types) (list ~@results))))
 
-                          ;; or
-                          (rule '(?:chain ?var matcher-type-for-dispatch |)
-                                (let [types (doall (map (fn [v]
-                                                          (seq (list 'quote (matcher-type-for-dispatch v))))
-                                                        (rest var)))
-                                      results (doall (map (comp descend list) (rest var)))]
-                                  `(expand-or (list ~@types) (list ~@results))))
+                  ;; or
+                  (rule '(?:chain ?var matcher-type-for-dispatch |)
+                    (let [types (doall (map (fn [v]
+                                              (seq (list 'quote (matcher-type-for-dispatch v))))
+                                         (rest var)))
+                          results (doall (map (comp descend list) (rest var)))]
+                      (if (or (= false (last var)) (nil? (last var)))
+                        (throw (ex-info "The expression (| ... false) will not return a false literal. You won't get the expected result here, you will get a 0-length replacement."
+                                 {:expression var}))
+                        `(expand-or (list ~@types) (list ~@results)))))
 
-                          ;; other
-                          (rule '((?:literal ?:literal) ?value) `(list '~value))
-                          (rule '((?:literal ?:=) ?value) `(list '~value))
-                          (rule '((?:literal ?:restartable) ?->value) value)
-                          (rule '((?:literal ?:chain) ?->value ??_) value)
-                          (rule '((?:as op (| (?:literal ?:as) (?:literal ?:as*))) ?name ?value)
-                            (let [t (if (or (= '?:as* op)
-                                          ;; this behavior is a bit ambiguous but it's how ?:as was originally defined
-                                          ;; before ?:as* was invented.
-                                          (= '?? (matcher-type-for-dispatch value)))
-                                      '?? '?)
-                                  name (if (= '? t)
-                                         `(list ~name)
-                                         name)]
-                              `(expand-or (list '~t '~t) (list (list ~name) ~(descend (list value))))))
+                  ;; other
+                  (rule '((?:literal ?:literal) ?value) `(list '~value))
+                  (rule '((?:literal ?:=) ?value) `(list '~value))
+                  (rule '((?:literal ?:restartable) ?->value) value)
+                  (rule '((?:literal ?:chain) ?->value ??_) value)
+                  (rule '((?:as op (| (?:literal ?:as) (?:literal ?:as*))) ?name ?value)
+                    (let [t (if (or (= '?:as* op)
+                                  ;; this behavior is a bit ambiguous but it's how ?:as was originally defined
+                                  ;; before ?:as* was invented.
+                                  (= '?? (matcher-type-for-dispatch value)))
+                              '?? '?)
+                          name (if (= '? t)
+                                 `(list ~name)
+                                 name)]
+                      `(expand-or (list '~t '~t) (list (list ~name) ~(descend (list value))))))
 
-                          ;; map
-                          (rule '((?:literal ?:map) (?:* ?->k ?->v))
-                                `(list (apply array-map
-                                              ~(with-meta `(seq (concat ~@(interleave k v)))
-                                                 {::ordered true}))))
+                  ;; map
+                  (rule '((?:literal ?:map) (?:* ?->k ?->v))
+                    `(list (apply array-map
+                             ~(with-meta `(seq (concat ~@(interleave k v)))
+                                {::ordered true}))))
 
-                          (rule '((| (?:literal ?:*map) (?:literal ?:map*) (?:literal ?:+map) (?:literal ?:map+)) ?ks ?vs)
-                            (let [ks (var-name ks)
-                                  vs (var-name vs)]
-                              (if (or (= '_ ks) (= '_ vs))
-                                `(list (apply array-map (list)))
-                                `(list (apply array-map
-                                         ~(with-meta `(interleave ~ks ~vs)
-                                            {::ordered true}))))))
+                  (rule '((| (?:literal ?:*map) (?:literal ?:map*) (?:literal ?:+map) (?:literal ?:map+)) ?ks ?vs)
+                    (let [ks (var-name ks)
+                          vs (var-name vs)]
+                      (if (or (= '_ ks) (= '_ vs))
+                        `(list (apply array-map (list)))
+                        `(list (apply array-map
+                                 ~(with-meta `(interleave ~ks ~vs)
+                                    {::ordered true}))))))
 
-                          (rule '((?:literal ?:set) ?items)
-                            (let [items (var-name items)]
-                              (if (= '_ items)
-                                ;; TODO: should this be an empty set?
-                                `(list (set (list)))
-                                `(list (set ~items)))))
+                  (rule '((?:literal ?:set) ?items)
+                    (let [items (var-name items)]
+                      (if (= '_ items)
+                        ;; TODO: should this be an empty set?
+                        `(list (set (list)))
+                        `(list (set ~items)))))
 
-                          ;; if
-                          (rule '((?:literal ?:if) ?pred ?->then (?:? ?->else))
-                                `(let [then# ~then]
-                                   (if (apply ~pred then#) then# ~else)))
+                  ;; if
+                  (rule '((?:literal ?:if) ?pred ?->then (?:? ?->else))
+                    `(let [then# ~then]
+                       (if (apply ~pred then#) then# ~else)))
 
-                          ;; when
-                          (rule '((?:literal ?:when) ?pred ??->then)
-                                `(let [then# ~then]
-                                   (when (apply ~pred (first then#))
-                                     (seq (apply concat then#)))))
+                  ;; when
+                  (rule '((?:literal ?:when) ?pred ??->then)
+                    `(let [then# ~then]
+                       (when (apply ~pred (first then#))
+                         (seq (apply concat then#)))))
 
-                          to-syntax-quote*]))))
+                  to-syntax-quote*]))))
 
 (def simplify-expr
   (name-rule :simplify-expr
