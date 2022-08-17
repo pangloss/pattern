@@ -24,7 +24,6 @@
              (pattern.r3.rewrite
               sub
               subm
-              subm!
               rmeta
               quo
               spliced
@@ -38,7 +37,6 @@
              (pattern.r3.rule
                rule-name)
              (pattern.r3.post-process
-              deep-merge-metadata
               mark-success
               use-post-processors
               use-post-processor

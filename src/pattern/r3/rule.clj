@@ -17,7 +17,7 @@
 
   Set to nil to skip post-processing.
 
-  See also [[*identity-rule-post-processor*]], [[raw]], and [[deep-merge-metadata]]."
+  See also [[*identity-rule-post-processor*]], [[raw]], and others."
   nil)
 
 (def ^:dynamic *identity-rule-post-processor*

@@ -27,7 +27,7 @@
       ;; TODO: need a way to cleanly specify that I want the result meta merged with the input meta. Basically express:
       ;;
       ;; (success (with-meta ... (merge (meta (:rule/datum %env)) {... ...})))
-      ;; ^ this is possible now via subm and subm!
+      ;; ^ this is possible now via subm
       (rule-list (rule '(program ??d*)
                        (let [env (reduce (fn [env d] (set-fn-type* d env))
                                          %env d*)

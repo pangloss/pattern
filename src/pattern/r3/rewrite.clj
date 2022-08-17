@@ -458,31 +458,11 @@
   ([form metadata]
    `(with-meta (sub ~form) ~metadata)))
 
-(defmacro subm!
-  "Perform substitution and recursively attach the metadata from the provided form.
 
-  Substitution stops if the forms diverge. Metadata is merged with
-
-    (merge orig-form-metadata new-form-metadata)
-
-  If called arity-1, use the rule's original matching form as the original form
-  to capture metadata from."
-  ([form]
-   `(util/deep-merge-meta (:rule/datum ~'%env) (sub ~form)))
-  ([form orig]
-   `(util/deep-merge-meta ~orig (sub ~form))))
-
-;; TODO: If the regular sub ... subm! methods all retained namespace, would that
+;; TODO: If the regular sub and subm methods all retained namespace, would that
 ;; break anything? I think the behaviour may be leftover from the earliest
 ;; versions of this functionality which tried to build off of stock
 ;; backtick-quoted data, which was loaded with namespaces everywhere.
-
-(defmacro subm+!
-  "Same as [[subm!]] but retains symbol namespaces"
-  ([form]
-   `(util/deep-merge-meta (:rule/datum ~'%env) (sub+ ~form)))
-  ([form orig]
-   `(util/deep-merge-meta orig (sub+ ~form))))
 
 (defn eval-spliced
   "Experimental. Uses [[spliced]] to transform regular lists, then uses eval to
