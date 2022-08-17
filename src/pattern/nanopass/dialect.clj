@@ -6,7 +6,7 @@
             [pattern.match.core :refer [compile-pattern matcher compile-pattern match?
                                         symbol-dict
                                         matcher-type matcher-type-for-dispatch]]
-            [pattern.r3.rewrite :refer [sub subm quo spliced scheme-style]]
+            [pattern.r3.rewrite :refer [sub quo spliced scheme-style rmeta]]
             [pattern.r3.post-process :refer [raw]]
             [pattern.substitute :refer [substitute]]
             [pattern.match.predicator :refer [with-predicates
@@ -15,7 +15,7 @@
                                               match-abbr
                                               make-abbr-predicator]]
             [pattern.nanopass.kahn :refer [kahn-sort]]
-            [pattern.types :refer [->MetaBox ->Ok ok? obj? not-meta?]]
+            [pattern.types :refer [->MetaBox ->Ok ok? obj? not-meta? meta?]]
             pattern.matchers
             [clojure.walk :as walk]))
 
@@ -667,8 +667,11 @@
                  (vary-meta
                    (eval
                      `(raw (rule '~orig-expr
-                             (success
-                               (subm ~orig-expr)))))
+                             (let [value# (sub ~orig-expr)]
+                               (success
+                                 (if (meta? value#)
+                                   (with-meta value# (rmeta))
+                                   value#))))))
                    assoc-in [:rule :descend :abbr]
                    abbrs))))
        rule-list))))
