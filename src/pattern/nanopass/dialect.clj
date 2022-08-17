@@ -673,5 +673,4 @@
                                    (with-meta value# (rmeta))
                                    value#))))))
                    assoc-in [:rule :descend :abbr]
-                   abbrs))))
-       rule-list))))
+                   abbrs))))))))
