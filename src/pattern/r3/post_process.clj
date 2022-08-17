@@ -62,8 +62,15 @@
          [(with-meta value orig-meta) env])
        [value env]))))
 
+(defmacro merge-metadata
+  [& forms]
+  `(use-post-processors merge-metadata* merge-metadata*
+     ~@forms))
+
 (defmacro raw
-  "Don't attach any post-processing to rules defined within this form"
+  "Don't attach any additional post-processing to rules defined within this form
+
+  If post processors are attached within the raw form, they will remain."
   [& forms]
   `(use-post-processors nil nil
      ~@forms))

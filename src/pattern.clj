@@ -37,10 +37,12 @@
              (pattern.r3.rule
                rule-name)
              (pattern.r3.post-process
-              mark-success
               use-post-processors
               use-post-processor
               post-processors
+              ;; post processors:
+              mark-success
+              merge-metadata
               raw)
              (pattern.r3.combinators
               rule-list
