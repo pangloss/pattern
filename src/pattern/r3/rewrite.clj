@@ -26,6 +26,7 @@
             [pattern.r3.core :as r :refer [rule success name-rule pattern-args]]
             [clojure.walk :as walk]
             [pattern.r3.combinators :refer [descend
+                                            descend-all
                                             rule-list in-order rule-simplifier
                                             simplifier
                                             on-subexpressions
@@ -268,10 +269,14 @@
                                   {:expression '~expr})))))
 
                   ;; optional
-                  (rule '((?:literal ?:?) ??->pattern)
-                    `(let [p# (seq (apply concat ~pattern))]
-                       (when (seq (filter some? p#))
-                         p#)))
+                  (rule '((?:literal ?:?) ??pattern)
+                    (let [pa (map (fn [arg] `(some? ~arg))
+                               (pattern-args pattern))
+                          expanded (descend-all pattern)]
+                      `(if (and ~@pa)
+                         (let [p# (seq (apply concat ~expanded))]
+                           (when (seq (filter some? p#))
+                             p#)))))
 
                   (rule '((?:literal ?:1) ??->pattern)
                     `(seq (apply concat ~pattern)))
