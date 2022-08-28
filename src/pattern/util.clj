@@ -1,7 +1,8 @@
 (ns pattern.util
   (:require [clojure.zip :as zip]
             [diffit.vec :as d]
-            [clojure.set :as set])
+            [clojure.set :as set]
+            [clojure.walk :as walk])
   (:import [clojure.lang IMeta IObj]))
 
 (defn listy?
@@ -206,3 +207,22 @@
         (recur (rest path) item)
         (recur path item))
       item)))
+
+(defn postwalk-with-meta
+  "Like [[postwalk]] but copies source metadata to the result."
+  [f form]
+  (walk/walk
+    (fn [element]
+      (let [result (postwalk-with-meta f element)]
+        (if-let [md (meta element)]
+          (if (meta? result)
+            (vary-meta result #(merge md %))
+            result)
+          result)))
+    f
+    form))
+
+(defn postwalk-replace-with-meta
+  "Like [[postwalk-replace]] but preserves metadata"
+  [smap form]
+  (postwalk-with-meta (fn [x] (if (contains? smap x) (smap x) x)) form))
