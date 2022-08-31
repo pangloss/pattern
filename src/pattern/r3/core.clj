@@ -103,12 +103,16 @@
                    `(success) `success:env}
                  (tree-seq list? seq body))))
 
-(defmacro rule-fn-body [args env-args handler-body]
-  (let [matches (gensym 'matches)]
-    `(fn [~'%env ~matches]
-       (let [~@(extract-env-args env-args)
-             ~@(extract-args matches args)]
-         ~handler-body))))
+(defmacro rule-fn-body
+  ([args env-args handler-body]
+   `(rule-fn-body nil ~args ~env-args ~handler-body))
+  ([name args env-args handler-body]
+   (let [matches (gensym 'matches)
+         name* (when name [(symbol (str "rule-" name))])]
+     `(fn ~@name* [~'%env ~matches]
+        (let [~@(extract-env-args env-args)
+              ~@(extract-args matches args)]
+          ~handler-body)))))
 
 (defmacro rule
   "Create a single rule. There are 2 arities, both with unique behavior.
@@ -189,7 +193,7 @@
    `(name-rule '~name
       (let [p# ~(@spliced (@scheme-style pattern))]
         (make-rule p#
-          (rule-fn-body ~(pattern-args pattern) ~(:env-args (meta pattern))
+          (rule-fn-body ~name ~(pattern-args pattern) ~(:env-args (meta pattern))
             ~handler-body)
           raw-matches
           *post-processor*
