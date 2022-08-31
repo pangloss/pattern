@@ -36,7 +36,17 @@
 (defn kahn-sort
   "Proposes a topological sort for directed graph g using Kahn's
    algorithm, where g is a map of nodes to sets of nodes. If g is
-   cyclic, returns nil."
+   cyclic, returns nil.
+
+   A graph here is a map of sets representing a directed edge from
+   the key to each element in its associated set.
+
+   The following represents a -> b and a -> c:
+
+       {:a #{:b :c}, :b #{}}
+
+   See also [[fermor.graph.algo/reverse-post-order-numbering]] for an alternate
+   approach to topological sort which can handle cycles."
   ([g]
    (kahn-sort (normalize g) [] (no-incoming g)))
   ([g l s]
