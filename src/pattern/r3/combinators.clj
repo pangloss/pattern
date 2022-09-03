@@ -176,11 +176,12 @@
   ([e*]
    (first (descend-all e* {})))
   ([e* env]
-   (reduce (fn [[e* env] e]
-             (let [[e env] (*descend* e env)]
-               [(conj e* e) env]))
-           [[] env]
-           e*)))
+   (let [descend *descend*]
+     (reduce (fn [[e* env] e]
+               (let [[e env] (descend e env)]
+                 [(conj e* e) env]))
+       [[] env]
+       e*))))
 
 (def ^:dynamic *descent-depth* nil)
 (def ^:dynamic *do-mutual-descent* nil)
