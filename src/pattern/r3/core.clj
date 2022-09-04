@@ -179,7 +179,8 @@
             (sub ~(second pattern)))
           raw-matches
           *post-processor*
-          {:src '(sub ~(second pattern))}))))
+          {:src '(sub ~(second pattern))
+           :pattern-meta '~(meta pattern)}))))
   ([pattern handler-body]
    `(let [p# ~(@spliced (@scheme-style pattern))]
       (make-rule p#
@@ -188,7 +189,8 @@
         raw-matches
         *post-processor*
         {:may-call-success0? ~(may-call-success0? handler-body)
-         :src '~handler-body})))
+         :src '~handler-body
+         :pattern-meta '~(meta pattern)})))
   ([name pattern handler-body]
    `(name-rule '~name
       (let [p# ~(@spliced (@scheme-style pattern))]
@@ -198,4 +200,5 @@
           raw-matches
           *post-processor*
           {:may-call-success0? ~(may-call-success0? handler-body)
-           :src '~handler-body})))))
+           :src '~handler-body
+           :pattern-meta '~(meta pattern)})))))

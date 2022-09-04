@@ -159,14 +159,13 @@
   make-rule function directly, either use the [[pattern/quo]] macro to turn spliceable
   syntax quoted lists into regular quoted lists by stripping the namespace from
   all symbols, or use regular syntax-quoted lists."
-  ([orig-pattern orig-handler]
-   (make-rule orig-pattern orig-handler dict-handler *post-processor* {}))
-  ([orig-pattern orig-handler metadata]
-   (make-rule orig-pattern orig-handler dict-handler *post-processor* metadata))
-  ([orig-pattern orig-handler ->get-values post-process metadata]
+  ([orig-pattern handler]
+   (make-rule orig-pattern handler dict-handler *post-processor* {}))
+  ([orig-pattern handler metadata]
+   (make-rule orig-pattern handler dict-handler *post-processor* metadata))
+  ([orig-pattern handler ->get-values post-process metadata]
    (let [pattern (do-pattern-replace orig-pattern)
          match-procedure (compile-pattern pattern)
-         handler (bound-fn* orig-handler)
          get-values (->get-values match-procedure)]
      (->Rule match-procedure handler get-values post-process
              {:rule
