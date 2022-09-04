@@ -53,6 +53,7 @@
               on-subexpressions
               iterated
               simplifier
+              prewalk-simplifier
               directed
               on-mutual
               rule-simplifier

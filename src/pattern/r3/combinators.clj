@@ -58,7 +58,7 @@
                                              (throw (ex-info "No matching clause" env))))])))
 
 (defn default
-  "Returns a rule that takes any value"
+  "Returns a rule that always returns the given value"
   [value]
   (make-rule '?_ (fn [env dict] (->Success value))
     {:src (list 'success value)}))
@@ -529,6 +529,7 @@
                        (iterated equiv? (rule-list rules))
                        (iterated equiv? (first rules))))}))))
 
+
 (defn simplifier
   "Run the given rule combinator repeatedly depth-first on all subexpressions
   until running the rule makes no further changes at each level."
@@ -564,6 +565,53 @@
                      (if (next rules)
                        (simplifier equiv? (rule-list rules))
                        (simplifier equiv? (first rules))))}))))
+
+(defn prewalk-simplifier
+  "Run the given rule combinator repeatedly, then continue on a prewalk descent
+  of all subexpressions until running the rule makes no further changes at each
+  level.
+
+  This is the same strategy that Clojure's macroexpansion uses."
+  ([the-rule]
+   (simplifier equiv? the-rule))
+  ([equiv? the-rule]
+   (let [equiv-ne? (equiv? :no-env)]
+     (with-meta
+       (fn enter-prewalk-simplifier
+         ([data] (first (run-rule enter-prewalk-simplifier data nil)))
+         ([data env] (run-rule enter-prewalk-simplifier data env))
+         ([data env succeed fail]
+          (enter-prewalk-simplifier data env nil succeed fail))
+         ([datum orig-env events y n]
+          (let [env (volatile! orig-env)]
+            (letfn [(walker [datum0]
+                      (loop [datum0 datum0
+                             env0 @env
+                             [datum1 env1] (run-rule the-rule datum0 events env0)]
+                        (if (equiv-ne? datum0 env0 datum1 env1)
+                          ;; descend. When done then:  (on-result datum1 env1)))
+                          (do (vreset! env env1)
+                              datum1)
+                          (recur datum1 env1 (run-rule the-rule datum1 env1)))))]
+              (let [answer
+                    (walk/walk
+                      walker
+                      (fn [x]
+                        (if (or (seqable? x) (coll? x))
+                          x
+                          (walker x)))
+                      datum)]
+                (if (equiv? datum orig-env answer @env)
+                  (n)
+                  (y answer @env n)))))))
+       {:rule (assoc (meta the-rule)
+                :equiv? equiv?
+                :rule-type ::prewalk-simplifier)
+        `child-rules (fn [_] [the-rule])
+        `recombine (fn [_ rules]
+                     (if (next rules)
+                       (prewalk-simplifier equiv? (rule-list rules))
+                       (prewalk-simplifier equiv? (first rules))))}))))
 
 (defn rule-simplifier
   "Run a list of rule combinators repeatedly on all subexpressions until running
