@@ -573,7 +573,7 @@
 
   This is the same strategy that Clojure's macroexpansion uses."
   ([the-rule]
-   (simplifier equiv? the-rule))
+   (prewalk-simplifier equiv? the-rule))
   ([equiv? the-rule]
    (let [equiv-ne? (equiv? :no-env)]
      (with-meta
@@ -591,16 +591,9 @@
                         (if (equiv-ne? datum0 env0 datum1 env1)
                           ;; descend. When done then:  (on-result datum1 env1)))
                           (do (vreset! env env1)
-                              datum1)
+                              (walk/walk walker identity datum1))
                           (recur datum1 env1 (run-rule the-rule datum1 env1)))))]
-              (let [answer
-                    (walk/walk
-                      walker
-                      (fn [x]
-                        (if (or (seqable? x) (coll? x))
-                          x
-                          (walker x)))
-                      datum)]
+              (let [answer (walker datum)]
                 (if (equiv? datum orig-env answer @env)
                   (n)
                   (y answer @env n)))))))
