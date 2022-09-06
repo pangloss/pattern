@@ -571,10 +571,14 @@
   of all subexpressions until running the rule makes no further changes at each
   level.
 
-  This is the same strategy that Clojure's macroexpansion uses."
+  This is the same strategy that Clojure's macroexpansion uses.
+
+  You can provide a [[walk]] argument to use a custom variant of clojure.walk/walk."
   ([the-rule]
-   (prewalk-simplifier equiv? the-rule))
-  ([equiv? the-rule]
+   (prewalk-simplifier walk/walk the-rule))
+  ([walk the-rule]
+   (prewalk-simplifier equiv? walk the-rule))
+  ([equiv? walk the-rule]
    (let [equiv-ne? (equiv? :no-env)]
      (with-meta
        (fn enter-prewalk-simplifier
@@ -591,7 +595,7 @@
                         (if (equiv-ne? datum0 env0 datum1 env1)
                           ;; descend. When done then:  (on-result datum1 env1)))
                           (do (vreset! env env1)
-                              (walk/walk walker identity datum1))
+                              (walk walker identity datum1))
                           (recur datum1 env1 (run-rule the-rule datum1 env1)))))]
               (let [answer (walker datum)]
                 (if (equiv? datum orig-env answer @env)
@@ -603,8 +607,8 @@
         `child-rules (fn [_] [the-rule])
         `recombine (fn [_ rules]
                      (if (next rules)
-                       (prewalk-simplifier equiv? (rule-list rules))
-                       (prewalk-simplifier equiv? (first rules))))}))))
+                       (prewalk-simplifier equiv? walk (rule-list rules))
+                       (prewalk-simplifier equiv? walk (first rules))))}))))
 
 (defn rule-simplifier
   "Run a list of rule combinators repeatedly on all subexpressions until running

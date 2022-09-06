@@ -23,7 +23,9 @@
               substitute)
              (pattern.r3.rewrite
               sub
+              sub+
               subm
+              subm+
               rmeta
               quo
               spliced

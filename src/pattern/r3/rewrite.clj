@@ -458,6 +458,17 @@
   ([form metadata]
    `(with-meta (sub ~form) ~metadata)))
 
+(defmacro subm+
+  "Perform substitution retaining symbol namespaces and attach the provided
+  metadata.
+
+  If called arity-1, copy the rule's original matching form's metadata onto the
+  resulting form, using rmeta to capture the metadata."
+  ([form]
+   `(subm+ ~form (rmeta)))
+  ([form metadata]
+   `(with-meta (sub+ ~form) ~metadata)))
+
 
 ;; TODO: If the regular sub and subm methods all retained namespace, would that
 ;; break anything? I think the behaviour may be leftover from the earliest
