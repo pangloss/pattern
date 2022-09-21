@@ -1,6 +1,5 @@
 (ns pattern.util
   (:require [clojure.zip :as zip]
-            [diffit.vec :as d]
             [clojure.set :as set]
             [clojure.walk :as walk])
   (:import [clojure.lang IMeta IObj]))

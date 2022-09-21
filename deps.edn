@@ -6,7 +6,6 @@
                          :sha "d2255f221cfb9e4bbcf8b8c48791e4e5b6a3ca40"}
         horse.no/genera {:git/url "https://github.com/pangloss/genera"
                          :sha "184cd72cd7833084636e73d104eb326d7f9e4642"}
-        diffit/diffit {:mvn/version "1.0.0"}
         uncomplicate/fluokitten {:mvn/version "0.9.1"}
         potemkin/potemkin {:mvn/version "0.4.5"}}
  :aliases
