@@ -8,7 +8,8 @@
             [pattern.util :refer [listy?]]
             [pure-conditioning :as c :refer [condition restarts default manage restart-with handler-cond]]
             [clojure.string :as str]
-            [clojure.walk :as walk])
+            [clojure.walk :as walk]
+            [clojure.set :as set])
   (:import pattern.types.Env))
 
 ;; match-utils
@@ -89,14 +90,29 @@
        (swap! pattern.match.core/restriction-position assoc matcher-type restriction-position))
      (defmethod* compile-pattern* matcher-type matcher-impl))))
 
+(defn unregister-matcher [matcher-type]
+  (letfn [(remove [sym alias]
+            (when alias
+              (swap! matcher-alias dissoc sym))
+            (swap! matcher-type? disj sym)
+            (when-not alias
+              (swap! named-matcher-type? disj sym)
+              (swap! restriction-position dissoc sym)))]
+    (loop []
+      (when-let [alias ((set/map-invert @matcher-alias) matcher-type)]
+        (remove alias true)
+        (recur)))
+    (remove matcher-type false)
+    (remove-method compile-pattern* matcher-type)))
+
 (defn named-matcher?
   "Returns truthy if the var is a list-style matcher type registered as named,
   and it has a name."
   [x]
   (and (listy? x)
-       (@named-matcher-type? (matcher-type x))
-       (or (symbol? (second x))
-           (keyword? (second x)))))
+    (@named-matcher-type? (matcher-type x))
+    (or (symbol? (second x))
+      (keyword? (second x)))))
 
 (defn simple-named-var?
   "Returns a truthy value if x is a symbol starting with some number of ?'s

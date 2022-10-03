@@ -326,24 +326,25 @@
     (with-meta
       (fn as-matcher [data dictionary ^Env env]
         (if (or multi? (seq data))
-          (m data dictionary (assoc env :succeed
-                                    (fn [dict n]
-                                      ;; FIXME: remove the length check and update all relevant
-                                      ;; rules, etc to use either ?:as or ?:as*.
-                                      (let [datum (if (or multi? (not= 1 n))
-                                                    (vec (take n data))
-                                                    (first data))]
-                                        (if (sat? dict datum)
-                                          (if-let [{v :value} ((.lookup env) name dict env)]
-                                            (if (= v datum)
-                                              ((.succeed env) dict n)
-                                              (on-failure :mismatch as-pattern dictionary env n data datum))
-                                            ((.succeed env) ((.store env) name datum '?:as nil dict env) n))
-                                          (on-failure :unsat as-pattern dictionary env n data datum))))))))
+          (m data dictionary
+            (assoc env :succeed
+              (fn [dict n]
+                ;; FIXME: remove the length check and update all relevant
+                ;; rules, etc to use either ?:as or ?:as*.
+                (let [datum (if (or multi? (not= 1 n))
+                              (vec (take n data))
+                              (first data))]
+                  (if (sat? dict datum)
+                    (if-let [{v :value} ((.lookup env) name dict env)]
+                      (if (= v datum)
+                        ((.succeed env) dict n)
+                        (on-failure :mismatch as-pattern dictionary env n data datum))
+                      ((.succeed env) ((.store env) name datum '?:as nil dict env) n))
+                    (on-failure :unsat as-pattern dictionary env n data datum))))))))
       (merge-with f/op
-                  {:var-names [name]
-                   :var-modes {name (matcher-mode as-pattern)}}
-                  (meta m)))))
+        {:var-names [name]
+         :var-modes {name (matcher-mode as-pattern)}}
+        (meta m)))))
 
 
 (defn- match-map
