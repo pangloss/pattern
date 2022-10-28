@@ -264,7 +264,11 @@
         abbr (var-abbr prefix name)
         [loop-start loop-continue? loop-next update-datum]
         (if (or force-greedy (matcher-mode? variable "!"))
-          [identity (fn [i n] (<= 0 i)) dec
+          [identity
+           (if force-greedy
+             = ;; don't shrink to impossible sizes
+             (fn [i n] (<= 0 i)))
+           dec
            (fn [datum data len]
              (if (empty? datum) datum (pop datum)))]
           [(constantly 0) <= inc
@@ -291,7 +295,6 @@
          :var-prefixes {name (if prefix [prefix] [])}
          :var-abbrs {name (if abbr [abbr] [])}
          :length (var-len 0)}))))
-
 
 (defn- match-as
   "This matcher allows you to capture the overarching pattern matched by some
@@ -386,6 +389,12 @@
       (assoc (apply merge-with f/op (map meta vals))
              :length (len 1)))))
 
+(defn into-map [x]
+  (apply hash-map x))
+
+(defn match-in-map [[_ & kvs] comp-env]
+  (compile-pattern* (list '??:chain '??_ `into-map (list* '?:map kvs))
+                    comp-env))
 
 (defn match-+map
   "Create a ?:+map matcher than can match a key/value pair at least once."
@@ -995,6 +1004,7 @@
 (register-matcher '? #'match-element {:named? true})
 (register-matcher '?? #'match-segment {:named? true})
 (register-matcher '?:map match-map)
+(register-matcher '??:map match-in-map)
 (register-matcher '?:+map #'match-+map {:aliases ['?:map+]})
 (register-matcher '?:*map #'match-*map {:aliases ['?:map*]})
 (register-matcher '?:set #'match-*set)
