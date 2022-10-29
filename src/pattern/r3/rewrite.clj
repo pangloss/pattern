@@ -322,6 +322,10 @@
                              ~(with-meta `(seq (concat ~@(interleave k v)))
                                 {::ordered true}))))
 
+                  ;; exploded map
+                  (rule '((?:literal ??:map) (?:* ?->k ?->v))
+                    `(seq (concat ~@(interleave k v))))
+
                   (rule '((| (?:literal ?:*map) (?:literal ?:map*) (?:literal ?:+map) (?:literal ?:map+)) ?ks ?vs)
                     (let [ks (var-name ks)
                           vs (var-name vs)]
