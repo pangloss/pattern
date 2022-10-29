@@ -76,6 +76,42 @@
   [f comp-env]
   (compile-pattern* (list '? '_ f) comp-env))
 
+(defn add-lengths
+  ([] nil)
+  ([a b]
+   (if (and a b)
+     (let [na (:n a)
+           va (:v a)
+           nb (:n b)
+           vb (:v b)]
+       {:n (+ na nb) :v (or va vb)})
+     (or a b))))
+
+(defn and-lengths
+  ([] nil)
+  ([a b]
+   (if (and a b)
+     (let [na (:n a)
+           va (:v a)
+           nb (:n b)
+           vb (:v b)]
+       {:n (max na nb) :v (or va vb)})
+     (or a b))))
+
+(defn- build-child-matchers
+  "Builds in reverse so that sequence matchers know how many elements to reserve
+  after them, and their minimum required match size.
+
+  Matchers are returned in the original order."
+  [pattern comp-env]
+  (first
+    (reduce (fn [[matchers comp-env] p]
+              (let [m (compile-pattern* p comp-env)]
+                [(cons m matchers)
+                 (update comp-env
+                   :reserve-min-tail add-lengths (:length (meta m)))]))
+      [() (assoc comp-env :reserve-min-tail (len 0))]
+      (reverse pattern))))
 
 (defn- match-list
   "Match a list or vector. If the first symbol with in the list is ?:seq, allows
@@ -95,15 +131,8 @@
                                     [list? (rest pattern)]
                                     :else
                                     [(if (vector? pattern) vector? seqable?) pattern]))
-        matchers (first
-                  (reduce (fn [[matchers comp-env] p]
-                            (let [m (compile-pattern* p comp-env)]
-                              [(cons m matchers)
-                               (update comp-env
-                                       :reserve-min-tail f/op (:length (meta m)))]))
-                          [() (assoc comp-env :reserve-min-tail (len 0))]
-                          (reverse pattern)))
-        {match-length :n variable-length? :v} (apply f/op (map (comp :length meta) matchers))
+        matchers (build-child-matchers pattern comp-env)
+        {match-length :n variable-length? :v} (reduce add-lengths (map (comp :length meta) matchers))
         match-length (or match-length 0)]
     (with-meta
       (fn list-matcher [data dictionary ^Env env]
@@ -433,7 +462,7 @@
                             :many [false nil]
                             [true nil])
         comp-env (dissoc comp-env :optional/mode)
-        matchers (mapv (fn [p] (compile-pattern* p comp-env)) pattern)]
+        matchers (build-child-matchers pattern comp-env)]
     (with-meta
       (fn optional-matcher [data orig-dictionary ^Env env]
         (letfn [(lp [matchers dict n data]
@@ -510,8 +539,8 @@
         reserve-min-tail (let [l (:length (meta match-part))]
                            (if (pos? (:n l))
                              ;; need to fit whole repetitions
-                             (f/op reserve-min-tail (len (mod (:n reserve-min-tail)
-                                                              (:n l))))
+                             (add-lengths reserve-min-tail (len (mod (:n reserve-min-tail)
+                                                                  (:n l))))
                              reserve-min-tail))]
     (letfn [(test-match [reps dict]
               (let [evars (:sequence/existing dict)]
@@ -760,9 +789,7 @@
        :var-prefixes (apply merge-with f/op (map (comp :var-prefixes meta) matchers))
        :var-abbrs    (apply merge-with f/op (map (comp :var-abbrs meta) matchers))
        :length (let [lens (map (comp :length meta) matchers)]
-                 (if (apply = lens)
-                   (first lens)
-                   (var-len (apply min (map :n lens)))))})))
+                 (reduce and-lengths lens))})))
 
 
 (defn- match-not
@@ -1003,27 +1030,27 @@
 (register-matcher :plain-function #'match-plain-function)
 (register-matcher '? #'match-element {:named? true})
 (register-matcher '?? #'match-segment {:named? true})
-(register-matcher '?:map match-map)
-(register-matcher '??:map match-in-map)
+(register-matcher '?:map #'match-map)
+(register-matcher '??:map #'match-in-map)
 (register-matcher '?:+map #'match-+map {:aliases ['?:map+]})
 (register-matcher '?:*map #'match-*map {:aliases ['?:map*]})
 (register-matcher '?:set #'match-*set)
-(register-matcher '?:as match-as {:named? true :restriction-position 3})
-(register-matcher '?:as* match-as {:named? true :restriction-position 3})
+(register-matcher '?:as #'match-as {:named? true :restriction-position 3})
+(register-matcher '?:as* #'match-as {:named? true :restriction-position 3})
 (register-matcher '?:? #'match-optional {:aliases ['?:optional]})
 (register-matcher '?:1 #'match-one {:aliases ['?:one]})
 (register-matcher '?:* #'match-many {:aliases ['?:many]})
 (register-matcher '?:+ #'match-at-least-one {:aliases ['?:at-least-one]})
 (register-matcher '?:n #'match-n-times {:aliases []})
-(register-matcher '?:chain match-chain {:aliases ['??:chain]})
-(register-matcher '?:force force-match)
+(register-matcher '?:chain #'match-chain {:aliases ['??:chain]})
+(register-matcher '?:force #'force-match)
 (register-matcher '| #'match-or {:aliases ['?:or]})
-(register-matcher '& match-and {:aliases ['?:and]})
-(register-matcher '?:not match-not)
+(register-matcher '& #'match-and {:aliases ['?:and]})
+(register-matcher '?:not #'match-not)
 (register-matcher '?:if #'match-if)
 (register-matcher '?:when #'match-when)
-(register-matcher '?:letrec match-letrec)
-(register-matcher '?:ref match-ref {:named? true})
+(register-matcher '?:letrec #'match-letrec)
+(register-matcher '?:ref #'match-ref {:named? true})
 (register-matcher '?:fresh #'match-fresh)
 (register-matcher '?:all-fresh #'match-all-fresh)
 (register-matcher '?:restartable match-restartable)

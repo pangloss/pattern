@@ -303,11 +303,16 @@
            (let [arg-vars (map #(if (symbol? %) (var-name %) %)
                                arg-vars)]
              (fn apply-restriction [dictionary datum]
-               (apply f datum (map (fn [v]
-                                     (if (symbol? v)
-                                       (get (get dictionary v) :value)
-                                       v))
-                                   arg-vars))))
+               (loop [[v & avs] arg-vars
+                      vals []]
+                 (if v
+                   (let [val (if (symbol? v)
+                               (get (get dictionary v) :value ::missing)
+                               v)]
+                     (if (= ::missing val)
+                       false
+                       (recur avs (conj vals val))))
+                   (apply f datum vals)))))
            (fn restriction [dictionary datum] (f datum)))
          (constantly true))])))
 
