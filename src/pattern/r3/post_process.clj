@@ -63,6 +63,12 @@
        [value env]))))
 
 (defmacro merge-metadata
+  "Attach a post processor that will merge the original value's metadata into
+  the new value's metadata.
+
+  If a merge strategy is attached to the new value as :rule/merge-meta, use that
+  fn to do the merge. The :rule/merge-meta key will be removed from the
+  resulting metadata."
   [& forms]
   `(use-post-processors merge-metadata* merge-metadata*
      ~@forms))
