@@ -320,8 +320,12 @@
       1)))
 
 (deftest fibbish
-  ;; I have not verified that these simplifications are correct...
+  ;; There are 55 1's and 88 x's in the resulting expression, so the solution is correct.
+  ;; 1111111111111111111111111111111111111111111111111111111
+  ;; xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
   (is (= '(+ 55 (* 88 x)) (algebra-2 (symfib 10)))))
+
+
 
 (deftest factish
   ;; I have not verified that these simplifications are correct...
@@ -362,43 +366,100 @@
            (* 720 (expt x 8) (expt y 5)))
          (algebra-2 (symfactoid 5)))))
 
+(defmacro with-predicates [rule]
+  (sub
+    (binding [*pattern-replace*
+              [(make-abbr-predicator 'x number?)
+               (make-abbr-predicator 'y number?)
+               (make-abbr-predicator 'comm #{'+ '*})]]
+      ?rule)))
+
+(def explicit-operator-precedence
+  (with-predicates
+    (rule-list
+      (rule group-division
+        '(??a* ?a / ?b ??b*)
+        (when (or (seq a*) (seq b*))
+          (sub (??a* (?a / ?b) ??b*))))
+
+      (rule group-multiplication
+        '(??a* ?a (?:+ * ?b) ??b*)
+        (if (or (and (seq a*)
+                  (not= '* (last a*)))
+              (and (seq b*)
+                (not= '* (first b*))))
+          (sub (??a* (?a (?:+ * ?b)) ??b*)))))))
+
+(def sort-commutative-operations
+  (with-predicates
+    (rule sort-comm
+      '(??a* ?b ?comm ?a ??b*)
+      (when (expr<? a b)
+        (sub (??a* ?a ?comm ?b ??b*))))))
+
+(def division-rules
+  (with-predicates
+    (rule-list
+      (rule div-zero
+        '(?a / 0)
+        (sub (?a / 0)))
+
+      (rule div-id
+        '(?a / 1)
+        a)
+
+      (rule apply-div
+        '(?x / ?y)
+        (/ x y))
+
+      (rule self-div
+        '(?a / ?a)
+        1))))
+
+(def multiply-rules
+  (with-predicates
+    (rule-list
+      (rule apply-*
+        '(??a ?x (?:+ * ?y) ??b)
+        (sub (??a ~(apply * x y) ??b)))
+
+      (rule mult-id
+        '(1 * ?a)
+        a)
+
+      (rule mult-zero
+        '(0 * ?a)
+        0))))
+
+(def apply-add-sub
+  (with-predicates
+    (simplifier
+      (rule-list
+        (rule add-id
+          '(0 + ?a)
+          a)
+
+        (rule apply-add
+          '(??a ?x + ?y ??b)
+          (sub (??a ~(+ x y) ??b)))
+
+        (rule apply-sub
+          '(??a ?x - ?y ??b)
+          (sub (??a ~(- x y) ??b)))))))
+
+
 (def math
-  ;; Don't use this to do your taxes.
-  ;;
-  ;; NOTE: this uses implicit predicates for ?x and ?y
-  (binding [*pattern-replace*
-            [(make-abbr-predicator 'x number?)
-             (make-abbr-predicator 'y number?)
-             (make-abbr-predicator 'comm #{'+ '*})]]
-    (rule-simplifier
-     [(rule '(??a* ?a / ?b ??b*)
-            (when (or (seq a*) (seq b*))
-              (sub (??a* (?a / ?b) ??b*))))
-      (rule '(??a* ?a (?:+ * ?b) ??b*) ;; TODO: not matcher ((?:* ?a* (?:! *)) ?a (?:+ * ?b) (?:* (?:! *) ?b*))
-            (if (or (and (seq a*)
-                         (not= '* (last a*)))
-                    (and (seq b*)
-                         (not= '* (first b*))))
-              (sub (??a* (?a (?:+ * ?b)) ??b*))))
-      (rule '(??a* ?b ?comm ?a ??b*)
-            (when (expr<? a b)
-              (sub (??a* ?a ?comm ?b ??b*))))
-      (rule '(??a ?x (?:+ * ?y) ??b)
-            (sub (??a ~(apply * x y) ??b)))
-      (rule '(?a / 0) (sub (?a / 0)))
-      (rule '(?a / 1) a)
-      (rule '(?x / ?y)
-            (/ x y))
-      (rule '(1 * ?a) a)
-      (rule '(0 * ?a) 0)
-      (rule '(0 + ?a) a)
-      (rule '(?a / ?b)
-            (when (= a b) 1))
-      (rule '(??a ?x + ?y ??b)
-            (sub (??a ~(+ x y) ??b)))
-      (rule '(??a ?x - ?y ??b)
-            (sub (??a ~(- x y) ??b)))
-      (rule '(?a) a)])))
+  (with-predicates
+    (simplifier
+      (rule-list
+        explicit-operator-precedence
+        sort-commutative-operations
+        multiply-rules
+        division-rules
+        apply-add-sub
+        (rule ungroup-solo
+          '(?a)
+          a)))))
 
 (deftest infix-math
   (is (= 2/3 (math '(3 / 9 * 2))))
@@ -406,6 +467,7 @@
   (is (= '(3 / 0) (math '(3 / (9 * 0)))))
   (is (= '(3 / 0) (math '(3 / 0))))
   (is (= '(6 * a * a * b * c) (math '(a * b * c * a * 1 * 2 * 3))))
+  (is (= '((a * b) + (6 * a * c)) (math '(a * b + c * a * 1 * 2 * 3))))
   (is (= 364 (math '(3 + v / (1 * v) + 3 * 4 * 5 * 6 + (x * 0))))))
 
 (deftest test-pure-pattern

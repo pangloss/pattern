@@ -12,7 +12,8 @@
  {:test {:extra-paths ["test"]
          :extra-deps {org.clojure/test.check {:mvn/version "1.1.1"}}
          :jvm-opts ["-XX:-OmitStackTraceInFastThrow"]}
-  :dev {:extra-deps {com.github.jpmonettas/flow-storm-debugger
+  :dev {:extra-paths ["dev"]
+        :extra-deps {com.github.jpmonettas/flow-storm-debugger
                      {:git/sha "a97bd356446892e49804660c0f821394d6ac12fa"}}}
   :runner
   {:extra-deps {com.cognitect/test-runner
