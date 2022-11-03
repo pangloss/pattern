@@ -440,10 +440,10 @@
   "Create a ?:*map matcher than can match a key/value pair multiple times."
   [[_ k v] comp-env]
   (compile-pattern*
-    (sub (~'?:chain
-          (~'? _ ~(some-fn nil? map?))
-          seq
-          (~'| nil ((~'?:* [?k ?v])))))
+    (quo `(?:chain
+            (? _ ~(some-fn nil? map?))
+            seq
+            (| nil ((?:* [~k ~v])))))
     comp-env))
 
 (register-matcher '?:*map #'match-*map {:aliases ['?:map*]})
