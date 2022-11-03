@@ -423,6 +423,14 @@
                         simplify-expr
                         simplify-more])))
 
+(defmacro sub-
+  "Just like [[sub]] but strips all namespaces from symbols."
+  ([form]
+   (qsub* form))
+  ([f form]
+   (binding [*on-marked-insertion* f]
+     (qsub* form))))
+
 (defmacro sub
   "Statically macroexpand substitution patterns expressed exactly like matcher
   patterns.
@@ -434,18 +442,15 @@
   The arity 2 version allows substitutions to be transformed by the supplied
   function before being inserted if they are marked with <- or wrapped with (?:<- ...)"
   ([form]
-   (qsub* form))
-  ([f form]
-   (binding [*on-marked-insertion* f]
-     (qsub* form))))
-
-(defmacro sub+
-  "Same as [[sub]] but retains symbol namespaces"
-  ([form]
    (qsub+ form))
   ([f form]
    (binding [*on-marked-insertion* f]
      (qsub+ form))))
+
+(defmacro sub+
+  "Same as [[sub]]. Here for backward compatibility"
+  [& etc]
+  `(sub ~@etc))
 
 (defmacro rmeta
   "Expands to (meta (:rule/datom %env))"
@@ -463,15 +468,9 @@
    `(with-meta (sub ~form) ~metadata)))
 
 (defmacro subm+
-  "Perform substitution retaining symbol namespaces and attach the provided
-  metadata.
-
-  If called arity-1, copy the rule's original matching form's metadata onto the
-  resulting form, using rmeta to capture the metadata."
-  ([form]
-   `(subm+ ~form (rmeta)))
-  ([form metadata]
-   `(with-meta (sub+ ~form) ~metadata)))
+  "Same as [[subm]]. Here for backward compatibility"
+  [& etc]
+  `(subm ~@etc))
 
 
 ;; TODO: If the regular sub and subm methods all retained namespace, would that
