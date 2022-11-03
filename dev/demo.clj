@@ -443,13 +443,10 @@
     (sub (~'?:chain
           (~'? _ ~(some-fn nil? map?))
           seq
-          (~'| nil
-           ((~'?:* [?k ?v])))))
+          (~'| nil ((~'?:* [?k ?v])))))
     comp-env))
-
-(meta (match-*map [nil '?<-->k '?v] nil))
 
 (register-matcher '?:*map #'match-*map {:aliases ['?:map*]})
 
 
-((compile-pattern '[(with-graph-matchers (?:map* ?<-->k ?v))]) ['(?:map* x y)])
+((compile-pattern '[(?:kv ?k ?v)]) [{:a 1 :b 2}])

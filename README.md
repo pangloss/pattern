@@ -10,12 +10,17 @@ pangloss/pattern {:git/url "https://github.com/pangloss/pattern"
                   :sha "<use the current commit hash>"}
 ```
 
+## Video
+
+[See my Nov 2022 talk for London Clojurians](https://www.youtube.com/watch?v=1V0VNBgWokA)
+
 ## How can this be used?
 
 Here are a few examples of how it's been used already:
 
-* Create an infix math macro in a few lines of code in about 30 LOC
-* Define the simplification rules of a full computer algebra system (see a very similar engine in use in SICMUtils)
+* Create simple and clear macros
+* Create an infix math macro in about 30 LOC
+* Define the simplification rules of a computer algebra system (see a very similar engine in use in SICMUtils)
 * Create a Python to Clojure source-to-source converter in under 400 LOC
 * Compile Scheme to X86 assembly in about 1500 LOC
 
@@ -140,39 +145,56 @@ That means the following does not match:
 
 There are a lot more matchers and the list is gradually expanding with ever more weird and wonderful behaviors.
 
-Each matcher in the list has a matcher implementation function with detailed documentation.
+Each matcher in the list has a matcher implementation function with detailed documentation in the pattern.matchers namespace.
+
+(better docs coming eventually!)
+
+| Matcher | Implementation | Notes |
+| --- | --- | --- |
+| `?` | match-element | Match a single element |
+| `??` | match-segment | Match 0 or more elements |
+| `??!` | | Same as `??`, but greedy |
+| `?:map` | match-map | Match a map with specific keys |
+| `?:*map` | match-*map | Match each key-value pair in a map |
+| `?:+map` | match-+map | Like `?:*map`, but require at least one match |
+| `?:as` | match-as | Capture an entire sub pattern if the contained pattern matches |
+| `?:?` | match-optional | Match 0 or 1 instance |
+| `?:1` | match-one | Match exactly 1 instance |
+| `?:*` | match-many | Match any number of instances |
+| `?:+` | match-at-least-one | Match at least one instance |
+| `?:chain` | match-chain | Alternate between patterns and functions on the matched data |
+| `??:chain` | | Same as `?:chain` but capture sequence data |
+| `\|` | match-or | Match alternative patterns on the same data |
+| `&` | match-and | Match all patterns on the same data |
+| `?:=` | match-literal | Match a literal value (usually not needed) |
+| `?:not` | match-not | Match only if the contained pattern does not |
+| `?:when` | match-when | If the predicate, match the pattern |
+| `?:if` | match-if | If the predicate, match the then pattern, otherwise the else pattern |
+| `?:letrec` | match-letrec | Create named subpatterns that can be used later |
+| `?:ref` | match-ref | Use a named subpattern |
+| `?:fresh` | match-fresh | Match a new copy of the given name |
+| `?:all-fresh` | match-all-fresh | Don't unify with captures outside the block |
+| `?:restartable` | match-restartable | If the pattern doesn't match, raise a condition that can provide a value |
+| `?:re-matches` | match-regex | Match with a regex, binding captures |
+| `?:re-seq` | match-regex | Multiple matches with a regex, binding captures |
+
+### Adding new matchers
+
+The ?:chain rule can often be used to create a custom matcher.
+This is the implementation of the ?:map one:
 
 ``` clojure
-(register-matcher :value match-value)
-(register-matcher :list #'match-list)
-(register-matcher '?:= match-literal {:aliases ['?:literal]})
-(register-matcher :compiled-matcher match-compiled)
-(register-matcher :compiled*-matcher match-compiled*)
-(register-matcher :plain-function #'match-plain-function)
-(register-matcher '? #'match-element {:named? true})
-(register-matcher '?? #'match-segment {:named? true})
-(register-matcher '?:map match-map)
-(register-matcher '?:+map #'match-+map)
-(register-matcher '?:*map #'match-*map)
-(register-matcher '?:as match-as {:named? true :restriction-position 3})
-(register-matcher '?:? #'match-optional {:aliases ['?:optional]})
-(register-matcher '?:1 #'match-one {:aliases ['?:one]})
-(register-matcher '?:* #'match-many {:aliases ['?:many]})
-(register-matcher '?:+ #'match-at-least-one {:aliases ['?:at-least-one]})
-(register-matcher '?:chain match-chain {:aliases ['??:chain]})
-(register-matcher '| #'match-or {:aliases ['?:or]})
-(register-matcher '& match-and {:aliases ['?:and]})
-(register-matcher '?:not match-not)
-(register-matcher '?:if #'match-if)
-(register-matcher '?:when #'match-when)
-(register-matcher '?:letrec match-letrec)
-(register-matcher '?:ref match-ref {:named? true})
-(register-matcher '?:fresh #'match-fresh)
-(register-matcher '?:all-fresh #'match-all-fresh)
-(register-matcher '?:restartable match-restartable)
-(register-matcher '?:re-matches #'match-regex)
-(register-matcher '?:re-seq #'match-regex)
+(defn match-*map
+  "Create a ?:*map matcher than can match a key/value pair multiple times."
+  [[_ k v] comp-env]
+  (compile-pattern*
+    (sub (~'?:chain
+          (~'? _ ~(some-fn nil? map?))
+          seq
+          (~'| nil ((~'?:* [?k ?v])))))
+    comp-env))
 
+(register-matcher '?:*map #'match-*map {:aliases ['?:map*]})
 ```
 
 ## Substitution
@@ -211,16 +233,53 @@ For that, we can use `substitute`:
 
 ## Rules
 
-Rules combine pattern matching and substitution.
-In a rule, the matched symbols are let-bound, enabling very convenient use of `sub` to rebuild the matched data.
+Rules are pattern matchers tied to function bodies.
+The captured data from the matcher becomes the function arguments.
 
-...
+Most frequently the function body is modifying data and thu `sub` macro is the perfect tool, but any value can be returned by a matching rule.
+
+
+``` clojure
+(rule mult-id
+  '(* 1 ?x)
+  x)
+  
+(rule strength-reduce
+  '(* 2 ?x)
+  (sub (+ ?x ?x)))
+```
+
+Rules are implemented in terms of standard matchers, so any of the above matchers may be used.
+
+A rule or rule combinator can be called like a function.
+
+``` clojure
+(def my-rule (rule '(* 2 ?x) (sub (+ ?x ?x))))
+
+(my-rule '(* 2 5)) # => (+ 5 5)
+```
 
 ## Rule Combinators
 
+Rule combinators allow multiple rules to be used together. 
+Rule combinators can themselves be combined.
+A rule combinator is itself just a rule. Rules and rule combinators are interchangeable.
+
+The following combinators are documented for now in the pattern.r3.combinators namespace:
+
+| Rule combinator | Note |
+| --- | --- |
+| rule-list | Search the rules from top to bottom. Stop after successfully matching. |
+| in-order | Search the rules from top to bottom. Continue with the result of each matching rule. |
+| on-subexpressions | Try the given rule on every element in the datastructure in post-walk order |
+| iterated | Keep applying the rule until a fixed point is reached |
+| simplifier | Like on-subexpressions which iterates at every level |
+| directed | Guide the traversal either using the pattern or from within the rule body |
+
+
 ## Compilation Dialects and Tools
 
-and nanopass-style compilation
+...
 
 ## Acknowledgements
 
