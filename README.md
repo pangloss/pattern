@@ -24,6 +24,9 @@ Here are a few examples of how it's been used already:
 * Create a Python to Clojure source-to-source converter in under 400 LOC
 * Compile Scheme to X86 assembly in about 1500 LOC
 
+The primary tools in Pattern are the rule and rule combinator.
+To understand how to use those, it's important to first introduce matcher patterns and substitution.
+
 ## How does it work?
 
 Pattern is an collection of tools for pattern matching and substitution.
@@ -222,7 +225,7 @@ This tends to be very convenient.
 In practice, 99% of the time I use this method.
 
 For that last 1%, though, a more traditional data-driven substitution method is required.
-For that, we can use `substitute`:
+For that, we can use `substitute`, which interprets and executes the pattern at runtime:
 
 ``` clojure
 (substitute 
