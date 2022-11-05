@@ -394,8 +394,15 @@
                                 [?nsn:req-symbol ??opts])))
               (:import (?:* (| ?nsn:fq-name
                                (?nsn:ns-name ??tn:typenames)))))
-      (Namespace [ns]
-                 ((?:literal ns) ?nsn:name ??nsform)))
+      (Namespace [ns :enforce]
+                 ((?:literal ns) ?nsn:name ??nsform))
+      (entry Namespace))
+
+  The last form is the entry form for conformance unless a formis specifically
+  designated by using (entry FormName).
+
+  By default, only terminals are predicated in matchers. If you want a form
+  to be enforced, mark it with :enforce.
 
   This is a somewhat sophisticated macro and as such has a bit of syntax you
   need to understand.
