@@ -267,25 +267,30 @@
     (binding [*descend* apply-rules] ;; TODO: bind descend in do-mutual-descent, too
       (reduce (fn [[dict env substitute] k]
                 (if-let [match (dict k)]
-                  (let [enter (cond (and mutual-fn (mutual? k))
-                                    (partial mutual-fn (mutual? k) (inc depth))
-                                    (descending? k) apply-rules
-                                    :else vector)
-                        enter (if-let [f (transform? k)]
-                                (comp (fn [[v e]] [(f v) e]) enter)
-                                enter)]
-                    (if (#{'?? '?:*} (:type match))
-                      ;; TODO: metadata could capture sequence nesting level, which
-                      ;; would make this more powerful. Now it only supports 1
-                      ;; level of nesting, so some patterns are not correctly
-                      ;; represented.
-                      (let [[v env] (reduce (fn [[v env] d]
-                                              (let [[r env] (enter d env)]
-                                                [(conj v r) env]))
-                                            [[] env] (:value match))]
-                        [(assoc-in dict [k :value] v) env substitute])
-                      (let [[v env] (enter (:value match) env)]
-                        [(assoc-in dict [k :value] v) env substitute])))
+                  (try
+                    (let [enter (cond (and mutual-fn (mutual? k))
+                                      (partial mutual-fn (mutual? k) (inc depth))
+                                      (descending? k) apply-rules
+                                      :else vector)
+                          enter (if-let [f (transform? k)]
+                                  (comp (fn [[v e]] [(f v) e]) enter)
+                                  enter)]
+                      (if (#{'?? '?:*} (:type match))
+                        ;; TODO: metadata could capture sequence nesting level, which
+                        ;; would make this more powerful. Now it only supports 1
+                        ;; level of nesting, so some patterns are not correctly
+                        ;; represented.
+                        (let [[v env] (reduce (fn [[v env] d]
+                                                (let [[r env] (enter d env)]
+                                                  [(conj v r) env]))
+                                        [[] env] (:value match))]
+                          [(assoc-in dict [k :value] v) env substitute])
+                        (let [[v env] (enter (:value match) env)]
+                          [(assoc-in dict [k :value] v) env substitute])))
+                    (catch Exception e
+                      (println "Unwinding through: " k)
+                      (clojure.pprint/pprint match)
+                      (throw e)))
                   [dict env substitute]))
               [dict env substitute] active))))
 
