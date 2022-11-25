@@ -650,34 +650,33 @@
   the matcher, but then calls count and matches against the resulting key count."
   [[chain-type pattern & fn-pattern-pairs] comp-env]
   (let [matchers (mapv #(compile-pattern* % comp-env)
-                       (cons pattern (take-nth 2 (rest fn-pattern-pairs))))
+                   (cons pattern (take-nth 2 (rest fn-pattern-pairs))))
         fns (mapv (fn [edge]
                     (or (resolve-fn edge
-                                    #(throw (ex-info "Chain link did not resolve to a function" {:edge edge})))
-                        (constantly true)))
-                  (take-nth 2 fn-pattern-pairs))
+                          #(throw (ex-info "Chain link did not resolve to a function" {:edge edge})))
+                      (constantly true)))
+              (take-nth 2 fn-pattern-pairs))
         extract (if (= '??:chain chain-type)
                   identity
                   first)]
     (with-meta
       (fn chain-matcher [data dict ^Env env]
         (letfn [(do-fn [matchers [f :as fns] data dict taken]
-                  (if (seq fns)
+                  (if f
                     (do-match matchers (rest fns) [(f (extract data))] dict taken)
                     (bouncing ((.succeed env) dict taken))))
                 (do-match [[m :as matchers] fns data dict taken]
-                  (if (seq matchers)
+                  (if m
                     (m data dict
-                       (assoc env :succeed
-                              (fn [dict n]
-                                (do-fn (rest matchers) fns (take n data) dict (or taken n)))))
+                      (assoc env :succeed
+                        (fn [dict n]
+                          (do-fn (rest matchers) fns (take n data) dict (or taken n)))))
                     (when taken
                       (bouncing ((.succeed env) dict taken)))))]
           (trampoline do-match matchers fns data dict nil)))
       (-> (assoc (apply merge-with f/op (map meta matchers))
-                 :length (:length (meta (first matchers))))
-          (update :var-names distinct)))))
-
+            :length (:length (meta (first matchers))))
+        (update :var-names distinct)))))
 
 (defn- match-regex
   "Match a string with the given regular expression. To succeed, the regex must

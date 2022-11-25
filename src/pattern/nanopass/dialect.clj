@@ -27,8 +27,10 @@
   "Look up a dialect if d is a symbol, otherwise return d."
   [d]
   (if (symbol? d)
-      (@all-dialects d)
-      d))
+    (if-let [dialect (@all-dialects d)]
+      dialect
+      (throw (ex-info "Dialect not found" {:dialect d})))
+    d))
 
 (defmacro =>
   ([from]
