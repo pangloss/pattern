@@ -546,3 +546,29 @@
                             [3 [4 5]]
                             6)
                         identity)))))
+
+
+(deftest match-some
+  (is (= {:x 2
+          :y 'y
+          :a [:a 1]
+          :b []
+          :c [3 4 'x]}
+        ((compile-pattern '[?x (?:some x int? [?a (?:some y symbol? [?b ?c])])])
+         [2 [:a 1 2 'y 3 4 'x]])))
+
+  (is (= {:x 1}
+        ((compile-pattern '(?:some x int?))
+         [:a 1 2 3 4])))
+
+  (is (= {:x 1 :tail [[:a] [2 3 4]]}
+        ((compile-pattern '(?:some x int? ?tail))
+         [:a 1 2 3 4])))
+
+  (is (= {:x 3}
+        ((compile-pattern '[?x (?:some x int?)])
+         [3 [:a 1 2 3 4]])))
+
+  (is (nil?
+        ((compile-pattern '[?x (?:some x int?)])
+         [:a [:a 1 2 3 4]]))))
