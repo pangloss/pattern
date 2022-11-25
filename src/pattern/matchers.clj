@@ -679,15 +679,16 @@
         (update :var-names distinct)))))
 
 (defn- match-some
-  [[_ name pred-name result-pattern] comp-env]
+  [[match-type name pred-name result-pattern] comp-env]
   (let [pred (resolve-fn pred-name
                #(throw (ex-info "Some predicate did not resolve to a function" {:pred pred-name})))
         result-matcher (when result-pattern
-                         (compile-pattern* result-pattern comp-env))]
+                         (compile-pattern* result-pattern comp-env))
+        vlen? (= '??:some match-type)]
     (with-meta
       (fn some-matcher [data dictionary ^Env env]
         (if (seq data)
-          (let [datum (first data)]
+          (let [[datum match-len] (if vlen? [data (count data)] [(first data) 1])]
             (if (sequential? datum)
               (let [binding ((.lookup env) name dictionary env)
                     bound-value (:value binding)]
@@ -705,13 +706,18 @@
                     (let [cur (first after)]
                       (if (and (or (not binding) (= bound-value cur))
                             (pred cur))
-                        (let [dict ((.store env) name cur '?:some nil dictionary env)]
+                        (let [dict (if binding
+                                     dictionary
+                                     ((.store env) name cur match-type nil dictionary env))]
                           (if result-matcher
                             ;; no need to modify the success function
-                            (if-let [result (result-matcher [[before (subvec after 1)]] dict env)]
+                            (if-let [result (result-matcher [[before cur (subvec after 1)]] dict
+                                              (assoc env :succeed
+                                                (fn [dict n]
+                                                  ((.succeed env) dict match-len))))]
                               result
                               (recur (conj before cur) (subvec after 1)))
-                            ((.succeed env) dict 1)))
+                            ((.succeed env) dict match-len)))
                         (recur (conj before cur) (subvec after 1))))
                     (on-failure :not-found pred-name dictionary env 1 data datum))))
               (on-failure :not-sequential name dictionary env 1 data datum)))
@@ -720,7 +726,7 @@
         (merge-with f/op
           (meta result-matcher)
           {:var-names [name]})
-        :length (len 1)))))
+        :length (if vlen? (var-len 1) (len 1))))))
 
 (defn- match-regex
   "Match a string with the given regular expression. To succeed, the regex must
@@ -1099,4 +1105,4 @@
 (register-matcher '?:restartable match-restartable)
 (register-matcher '?:re-matches #'match-regex)
 (register-matcher '?:re-seq #'match-regex)
-(register-matcher '?:some #'match-some)
+(register-matcher '?:some #'match-some {:named? true :aliases ['??:some]})
