@@ -384,7 +384,17 @@
 
       (?:map :from ?f :to ?t)
 
-  Map keys can only be matched as literal values.
+  Map keys can be matched as literal values or as a simple named matcher where the
+  bound name will already be bound to the key value before this matcher is encountered.
+
+  For bound key lookups, this matcher does not currently perform a search, and does
+  nothing with the matcher beyond use its bound value! (All of this is TODO). Any
+  pattern or predicate in the key position will be ignored.
+
+  This could work:
+     (?:map :addr ?addr ?addr ?info)
+  But this will not unless ?addr is bound before this statement is matched:
+     (?:map ?addr ?info :addr ?addr)
 
   These matchers do not fail if there are extra keys. To rule out specific keys,
   you can use ?:not matchers or predicates. For exact map matches, just use a
@@ -397,6 +407,7 @@
   (assert (even? (count kv-pairs))
           "Map matcher must have an even number of key-matcher pair arguments.")
   (let [keys (vec (take-nth 2 kv-pairs))
+        key-var-names (into [] (map var-name) keys)
         vals (mapv #(compile-pattern* % comp-env)
                    (take-nth 2 (rest kv-pairs)))]
     (with-meta
@@ -406,15 +417,21 @@
             (let [inner-env (assoc env :succeed (fn [dict n] dict))]
               (loop [dict dictionary
                      [k :as keys] keys
+                     [kvn :as key-var-names] key-var-names
                      [v :as vals] vals]
                 (if (seq keys)
-                  (if-let [kv (find m k)]
+                  (if-let [kv (if kvn
+                                ;; TODO: expand this to search the keyspace if
+                                ;; the key is not already bound.
+                                (when-let [binding ((.lookup env) kvn dict env)]
+                                  (find m (:value binding)))
+                                (find m k))]
                     (if-let [dict (v (list (val kv)) dict inner-env)]
-                      (recur dict (rest keys) (rest vals))
-                      (on-failure ':value pattern dict env 1 data m))
-                    (on-failure ':key pattern dict env 1 data m))
+                      (recur dict (rest keys) (rest key-var-names) (rest vals))
+                      (on-failure :value pattern dict env 1 data m))
+                    (on-failure :key pattern dict env 1 data m))
                   ((.succeed env) dict 1))))
-            (on-failure ':not-map pattern dictionary env 1 data m))))
+            (on-failure :not-map pattern dictionary env 1 data m))))
       (assoc (apply merge-with f/op (map meta vals))
              :length (len 1)))))
 

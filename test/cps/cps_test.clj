@@ -85,7 +85,7 @@
 
 ;; TODO: I need a tool that takes a dialect and an expression (with an initial form type?) and recursively type annotates it.
 
-(defpass h-o-cps (=> LambdaCalc CPS2)
+(defpass h-o-cps (=> LambdaCalc CPS)
   (let-rulefn [(T* (=> Expr Cont) [rule/datum k]
                    [(rule '(fn ??_)
                           (k (M datum)))
@@ -114,7 +114,7 @@
 (h-o-cps '(g a) (fn [ans] (sub (halt ?ans))))
 
 
-(defpass hybrid-cps (=> Loose CPS3)
+(defpass hybrid-cps (=> Loose CPS)
   (let-rulefn [(T-k* (=> Expr TK) [rule/datum k]
                     [(rule '(| ?s (fn [??_] ??_))
                            (k (M datum)))
@@ -350,7 +350,7 @@ ExpandedInput
 
 
 
-(defpass explicit-hybrid-cps (=> Loose CPS3)
+(defpass explicit-hybrid-cps (=> Loose CPS)
   (let-rulefn [(T-k* (=> Expr TK) [rule/datum k]
                      [(rule '(| (Expr ?s) (Expr (fn [??_] ??_)))
                             (k (M datum)))
