@@ -423,8 +423,10 @@
                   (if-let [kv (if kvn
                                 ;; TODO: expand this to search the keyspace if
                                 ;; the key is not already bound.
-                                (when-let [binding ((.lookup env) kvn dict env)]
-                                  (find m (:value binding)))
+                                (if-let [binding ((.lookup env) kvn dict env)]
+                                  (find m (:value binding))
+                                  (throw (ex-info "Map pattern with unbound key binding"
+                                           {:key k :key-var-name kvn :pattern pattern})))
                                 (find m k))]
                     (if-let [dict (v (list (val kv)) dict inner-env)]
                       (recur dict (rest keys) (rest key-var-names) (rest vals))

@@ -155,9 +155,9 @@
       (list? form) (outer path (with-meta (apply list (map-indexed inner* form))
                                   (meta form)))
       (instance? clojure.lang.IMapEntry form)
-      (outer path (clojure.lang.MapEntry/create
-                     (inner (conj (subvec path 0 (dec (count path))) (key form) :map/key) (key form))
-                     (inner (conj (subvec path 0 (dec (count path))) (key form)) (val form))))
+      (clojure.lang.MapEntry/create
+        (inner (conj (subvec path 0 (dec (count path))) (key form) :map/key) (key form))
+        (inner (conj (subvec path 0 (dec (count path))) (key form)) (val form)))
       (seq? form) (outer path (with-meta (doall (map-indexed inner* form))
                                 (meta form)))
       (instance? clojure.lang.IRecord form)
