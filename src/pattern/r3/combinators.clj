@@ -361,7 +361,7 @@
                     (rule datum env
                       (assoc events
                         :on-match
-                        (fn directed:on-match [r match-dict]
+                        (fn directed:on-match [r env match-dict]
                           (let [[match-dict env substitute]
                                 (directed:descend-marked apply-rules (:rule (meta r))
                                   match-dict env depth)

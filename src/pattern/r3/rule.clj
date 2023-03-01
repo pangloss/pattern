@@ -115,7 +115,7 @@
   (if-let [r (run-matcher (.match-procedure rule) data
                           (fn [dict]
                             (let [r (if on-match
-                                      (when-let [[data dict env] (on-match rule dict)]
+                                      (when-let [[data dict env] (on-match rule env dict)]
                                         (match-rule rule data env dict succeed))
                                       (match-rule rule data env dict succeed))]
                               (if on-result
