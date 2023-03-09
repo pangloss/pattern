@@ -698,6 +698,16 @@
         (update :var-names distinct)))))
 
 (defn- match-some
+  "Examples:
+
+    (?:some matching-item pred-to-match?)
+
+  Yeah... there are 2 places to match the matching item, but the second one
+  can be used for patterns while the first one simply names the match, so they
+  are differently useful.
+
+    (??:some matching-item pred-to-match?
+       [[??non-matching-items-before] ?matching-item [??unchecked-items-after]])"
   [[match-type name pred-name result-pattern] comp-env]
   (let [pred (resolve-fn pred-name
                #(throw (ex-info "Some predicate did not resolve to a function" {:pred pred-name})))
