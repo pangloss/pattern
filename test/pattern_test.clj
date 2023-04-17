@@ -581,3 +581,16 @@
           :c [3 4 'x]}
         ((compile-pattern '[?x (??:some x int? [?a ?_ (?:some y symbol? [?b ?_ ?c])])])
          [2 :a 1 2 'y 3 4 'x]))))
+
+
+(deftest match-var-filter
+  (is (= {:ints [2 1 2 3 4]}
+        ((compile-pattern '(?:filter int? ?ints))
+         [2 :a 1 2 'y 3 4 'x])))
+
+  (is (= {:x 2, :ints [1 2 3 4]}
+        ((compile-pattern '[?x (??:filter int? ?ints)])
+         [2 :a 1 2 'y 3 4 'x])))
+  (is (= {:x 2 :misc [:a 'y 'x]}
+        ((compile-pattern '[?x (??:remove int? ?misc)])
+         [2 :a 1 2 'y 3 4 'x]))))

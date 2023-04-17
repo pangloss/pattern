@@ -700,13 +700,13 @@
 (defn- match-some
   "Examples:
 
-    (?:some matching-item pred-to-match?)
+    (?:some name pred-to-match?)
 
-  Yeah... there are 2 places to match the matching item, but the second one
+  Yeah... there are 2 places to possibly name the matching item, but the second one
   can be used for patterns while the first one simply names the match, so they
-  are differently useful.
+  are differently useful. The latter matcher part is optional.
 
-    (??:some matching-item pred-to-match?
+    (??:some name pred-to-match?
        [[??non-matching-items-before] ?matching-item [??unchecked-items-after]])"
   [[match-type name pred-name result-pattern] comp-env]
   (let [pred (resolve-fn pred-name
@@ -757,6 +757,43 @@
           {:var-names [name]})
         :length (if vlen? (var-len 1) (len 1))))))
 
+
+(defn- match-filter
+  "Examples:
+
+    (?:filter pred-to-match [??matches])
+    (?:remove pred-to-remove [??matches])
+
+    (??:filter pred-to-match [??matches])
+    (??:remove pred-to-remove [??matches])
+
+  Matches the entire collection if at least one member matches the predicate."
+  [[match-type pred-name result-pattern] comp-env]
+  (let [pred (resolve-fn pred-name
+               #(throw (ex-info "Some predicate did not resolve to a function" {:pred pred-name})))
+        pred (if ('#{?:remove ??:remove} match-type) (complement pred) pred)
+        result-matcher (compile-pattern* result-pattern comp-env)
+        vlen? ('#{??:filter ??:remove} match-type)]
+    (with-meta
+      (fn some-matcher [data dictionary ^Env env]
+        (if (seq data)
+          (let [[datum match-len] (if vlen? [data (count data)] [(first data) 1])]
+            (if (sequential? datum)
+              (let [binding ((.lookup env) name dictionary env)
+                    bound-value (:value binding)
+                    matching (into [] (filter pred) datum)]
+                (if (seq matching)
+                  (result-matcher [matching] dictionary
+                    (assoc env :succeed
+                      (fn [dict n]
+                        ((.succeed env) dict match-len))))
+                  (on-failure :not-found pred-name dictionary env match-len data datum)))
+              (on-failure :not-sequential name dictionary env 1 data datum)))
+          (on-failure :missing name dictionary env 0 data nil)))
+      (assoc
+        (meta result-matcher)
+        :length (if vlen? (var-len 1) (len 1))))))
+
 (defn- match-regex
   "Match a string with the given regular expression. To succeed, the regex must
   match against the string and the pattern must also match against the regex
@@ -793,13 +830,13 @@
           (if-let [matches (when (string? str)
                              (f regex str))]
             (m (list (vec matches)) dictionary
-               (assoc env :succeed
-                      (fn [dict n]
-                        ((.succeed env) dict 1))))
+              (assoc env :succeed
+                (fn [dict n]
+                  ((.succeed env) dict 1))))
             (on-failure :mismatch regex dictionary env 1 data str))
           (on-failure :missing regex dictionary env 0 data nil)))
       (merge (meta m)
-             {:length (len 1)}))))
+        {:length (len 1)}))))
 
 
 (defn- match-or
@@ -1135,3 +1172,4 @@
 (register-matcher '?:re-matches #'match-regex)
 (register-matcher '?:re-seq #'match-regex)
 (register-matcher '?:some #'match-some {:named? true :aliases ['??:some]})
+(register-matcher '?:filter #'match-filter {:aliases ['??:filter '?:remove '??:remove]})
