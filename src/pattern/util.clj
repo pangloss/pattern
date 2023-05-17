@@ -36,6 +36,13 @@
     (instance? IMeta x)
     (instance? IObj x)))
 
+(defn strip-meta
+  "Recursively remove all metadata from the given form.
+
+  Useful to prevent exponential growth through inclusion of metadata in metadata."
+  [form]
+  (walk/postwalk #(if (meta? %) (with-meta % nil) %) form))
+
 (defn meta=
   "Returns true if the metadata attached to a is equal to the metadata attached to b."
   [a b]
