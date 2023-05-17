@@ -225,3 +225,17 @@
   "Like [[postwalk-replace]] but preserves metadata"
   [smap form]
   (postwalk-with-meta (fn [x] (if (contains? smap x) (smap x) x)) form))
+
+
+(defn walk-with-meta
+  "Same as clojure.walk/walk, but preserves metadata."
+  [inner outer form]
+  (cond
+    (list? form) (outer (with-meta (apply list (map inner form)) (meta form)))
+    (instance? clojure.lang.IMapEntry form)
+    (outer (clojure.lang.MapEntry/create (inner (key form)) (inner (val form))))
+    (seq? form) (outer (with-meta (doall (map inner form)) (meta form)))
+    (instance? clojure.lang.IRecord form)
+    (outer (with-meta (reduce (fn [r x] (conj r (inner x))) form form) (meta form)))
+    (coll? form) (outer (with-meta (into (empty form) (map inner form)) (meta form)))
+    :else (outer form)))

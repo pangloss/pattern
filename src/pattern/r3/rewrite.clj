@@ -468,10 +468,16 @@
    `(with-meta (sub ~form) ~metadata)))
 
 (defmacro subm+
-  "Same as [[subm]]. Here for backward compatibility"
-  [& etc]
-  `(subm ~@etc))
+  "Like [[subm]] but checks that form is an IObj before attaching metadata.
 
+   Useful for generated expressions."
+  ([form]
+   `(subm+ ~form (rmeta)))
+  ([form metadata]
+   `(let [form# (sub ~form)]
+      (if (instance? clojure.lang.IObj form#)
+        (with-meta form# ~metadata)
+        form#))))
 
 ;; TODO: If the regular sub and subm methods all retained namespace, would that
 ;; break anything? I think the behaviour may be leftover from the earliest

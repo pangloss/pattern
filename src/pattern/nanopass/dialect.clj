@@ -6,7 +6,7 @@
             [pattern.match.core :refer [compile-pattern matcher compile-pattern match?
                                         symbol-dict
                                         matcher-type matcher-type-for-dispatch]]
-            [pattern.r3.rewrite :refer [sub quo spliced scheme-style rmeta]]
+            [pattern.r3.rewrite :refer [sub subm+ quo spliced scheme-style rmeta]]
             [pattern.r3.post-process :refer [raw]]
             [pattern.substitute :refer [substitute]]
             [pattern.match.predicator :refer [with-predicates
@@ -676,10 +676,6 @@
                  (vary-meta
                    (eval
                      `(raw (rule '~orig-expr
-                             (let [value# (sub ~orig-expr)]
-                               (success
-                                 (if (meta? value#)
-                                   (with-meta value# (rmeta))
-                                   value#))))))
+                             (success (subm+ ~orig-expr)))))
                    assoc-in [:rule :descend :abbr]
                    abbrs))))))))
