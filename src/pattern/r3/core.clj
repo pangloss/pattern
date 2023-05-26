@@ -108,8 +108,10 @@
    `(rule-fn-body nil ~args ~env-args ~handler-body))
   ([name args env-args handler-body]
    (let [matches (gensym 'matches)
-         name* (when name [(symbol (str "rule-" name))])]
-     `(fn ~@name* [~'%env ~matches]
+         name* (if name
+                 (symbol (str "rule-" name))
+                 'rulebody)]
+     `(fn ~name* [~'%env ~matches]
         (let [~@(extract-env-args env-args)
               ~@(extract-args matches args)]
           ~handler-body)))))
