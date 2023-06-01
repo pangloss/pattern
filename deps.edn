@@ -1,10 +1,10 @@
 {:paths ["src" "resources"]
  :deps {org.clojure/clojure {:mvn/version "1.11.1"}
-        horse.no/pure-conditioning {:git/url "https://github.com/pangloss/pure-conditioning"
+        pangloss/pure-conditioning {:git/url "https://github.com/pangloss/pure-conditioning"
                                     :sha "ff5ffe10ab1cb7f757d8dfdf6953cbc817748d5b"}
-        horse.no/fermor {:git/url "https://github.com/pangloss/fermor"
+        pangloss/fermor {:git/url "https://github.com/pangloss/fermor"
                          :sha "d2255f221cfb9e4bbcf8b8c48791e4e5b6a3ca40"}
-        horse.no/genera {:git/url "https://github.com/pangloss/genera"
+        pangloss/genera {:git/url "https://github.com/pangloss/genera"
                          :sha "184cd72cd7833084636e73d104eb326d7f9e4642"}
         uncomplicate/fluokitten {:mvn/version "0.9.1"}
         potemkin/potemkin {:mvn/version "0.4.5"}}
@@ -30,5 +30,5 @@
   :deploy {:replace-deps {slipset/deps-deploy {:mvn/version "0.2.0"}}
            :exec-fn deps-deploy.deps-deploy/deploy
            :exec-args {:installer :remote :artifact "pattern.jar"}}
-  :dev/dw {:extra-deps {horse.no/genera {:local/root "../genera"}
-                        horse.no/fermor {:local/root "../fermor"}}}}}
+  :dev/dw {:extra-deps {pangloss/genera {:local/root "../genera"}
+                        pangloss/fermor {:local/root "../fermor"}}}}}
