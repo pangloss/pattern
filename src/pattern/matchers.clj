@@ -587,7 +587,7 @@
                             dict)))
                       dict matcher-vars))
             (gather [dict n data env matches]
-              (if (and (< (.repetition env) at-most)
+              (if (and (< (.repetition ^Env env) at-most)
                        (has-n? (:n reserve-min-tail) data))
                 (bouncing
                  (or (match-part
@@ -595,7 +595,7 @@
                       (assoc env
                              :succeed
                              (fn [dict n']
-                               (let [reps (inc (.repetition env))
+                               (let [reps (inc (.repetition ^Env env))
                                      dict (level-sequences reps dict)]
                                  (gather dict (+ n n') (drop n' data)
                                          (assoc env :repetition reps)

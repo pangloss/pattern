@@ -104,7 +104,7 @@
                (unwrap-env env result)
                (constantly false)))))
 
-(defn post-process [rule value orig-value env orig-env]
+(defn post-process [^Rule rule value orig-value env orig-env]
   (if (instance? Rule rule)
     (if (.post-process rule)
       ((.post-process rule) rule value orig-value env orig-env)

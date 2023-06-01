@@ -326,7 +326,7 @@
   (when-let [{val :value :as r} (lookup name dict env)]
     (let [val
           (if (seqable? val)
-            (nth val (.repetition env) ::none)
+            (nth val (.repetition ^Env env) ::none)
             val)]
       (when (not= ::none val)
         (assoc r :value val)))))
@@ -350,7 +350,7 @@
                               (fn [v]
                                 (if (and (seqable? (:value m))
                                          (= (count (:value m))
-                                            (.repetition env)))
+                                            (.repetition ^Env env)))
                                   (conj v value)
                                   v)))
                       (assoc :abbr abbr))
@@ -442,14 +442,14 @@
 
 (defn new-env
   [succeed]
-  (map->Env {:succeed succeed
-             :var-path {}
-             :scopes [{}]
-             :scope-path (atom [0])
-             :lookup lookup
-             :store extend-dict
-             :repetition nil}))
-
+  (Env.
+    #_succeed succeed
+    #_var-path {}
+    #_scopes [{}]
+    #_scope-path (atom [0])
+    #_lookup lookup
+    #_store extend-dict
+    #_repetition nil))
 
 (defn run-matcher
   "Run the given matcher on the given datum, calling succeed with the match
