@@ -159,6 +159,7 @@
   make-rule function directly, either use the [[pattern/quo]] macro to turn spliceable
   syntax quoted lists into regular quoted lists by stripping the namespace from
   all symbols, or use regular syntax-quoted lists."
+  ;; splicing is done via pattern.r3.rewrite/splice
   ([orig-pattern handler]
    (make-rule orig-pattern handler dict-handler *post-processor* {}))
   ([orig-pattern handler metadata]

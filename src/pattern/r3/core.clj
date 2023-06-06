@@ -194,13 +194,15 @@
          :src '~handler-body
          :pattern-meta '~(meta pattern)})))
   ([name pattern handler-body]
-   `(name-rule '~name
-      (let [p# ~(@spliced (@scheme-style pattern))]
-        (make-rule p#
-          (rule-fn-body ~name ~(pattern-args pattern) ~(:env-args (meta pattern))
-            ~handler-body)
-          raw-matches
-          *post-processor*
-          {:may-call-success0? ~(may-call-success0? handler-body)
-           :src '~handler-body
-           :pattern-meta '~(meta pattern)})))))
+   (let [fname (if (symbol? name) name (gensym '-))
+         name (if (symbol? name) (list 'quote name) name)]
+     `(name-rule ~name
+        (let [p# ~(@spliced (@scheme-style pattern))]
+          (make-rule p#
+            (rule-fn-body ~fname ~(pattern-args pattern) ~(:env-args (meta pattern))
+              ~handler-body)
+            raw-matches
+            *post-processor*
+            {:may-call-success0? ~(may-call-success0? handler-body)
+             :src '~handler-body
+             :pattern-meta '~(meta pattern)}))))))
