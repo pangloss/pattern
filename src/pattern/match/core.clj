@@ -261,16 +261,17 @@
   [form fail]
   (let [f (cond (symbol? form) (resolve form)
                 (listy? form)
-                (if (#{'fn* 'fn} (first form))
+                (cond
+                  (#{'fn* 'fn comp some-fn every-pred partial} (first form))
                   (let [f (eval form)]
                     (when (ifn? f) f))
-                  (when (= 2 (count form))
-                    (let [fm (first form)
-                          fm (when (symbol? fm) (symbol (name fm)))]
-                      (cond (#{'apply} fm)
-                            (partial apply (resolve-fn (second form) fail))
-                            (#{'on-each 'on-all} fm)
-                            (resolve-fn (second form) fail)))))
+                  (= 2 (count form))
+                  (let [fm (first form)
+                        fm (when (symbol? fm) (symbol (name fm)))]
+                    (cond (#{'apply} fm)
+                          (partial apply (resolve-fn (second form) fail))
+                          (#{'on-each 'on-all} fm)
+                          (resolve-fn (second form) fail))))
                 form form)]
     (if (and form (not (ifn? f)))
       (fail)

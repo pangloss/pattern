@@ -275,65 +275,92 @@
 
 (deftest simple-patterns
   (is (= [1]
-         (matcher '(a ((? b) 2 3) 1 c)
-                  '(a (1 2 3) 1 c))))
+        (matcher '(a ((? b) 2 3) 1 c)
+          '(a (1 2 3) 1 c))))
 
   (is (= [1]
-         (matcher '?a 1)))
+        (matcher '?a 1)))
 
   (is (= []
-         (matcher '(?:literal ?a) '?a)))
+        (matcher '(?:literal ?a) '?a)))
 
   (is (= [3 [2]]
-         (matcher '((?? _ 2) ?b ??x) '(1 2 3 2))))
+        (matcher '((?? _ 2) ?b ??x) '(1 2 3 2))))
 
   (is (= [1]
-         (matcher '(a ((? b) 2 3) (? b) c)
-                  '(a (1 2 3) 1 c))))
+        (matcher '(a ((? b) 2 3) (? b) c)
+          '(a (1 2 3) 1 c))))
 
   (is (nil?
-       (matcher '(a ((? b) 2 3) (? b) c)
-                '(a (1 2 3) 2 c))))
+        (matcher '(a ((? b) 2 3) (? b) c)
+          '(a (1 2 3) 2 c))))
 
   (is (= [[1] [2 3] 2]
-         (matcher '(a ((?? a) (?? x)) (? b) c (?? x))
-                  '(a (1 2 3) 2 c 2 3))))
+        (matcher '(a ((?? a) (?? x)) (? b) c (?? x))
+          '(a (1 2 3) 2 c 2 3))))
   (is (= [3 nil 4]
-         (matcher [1 2 '(| [3 5] [(? a) (?? x (on-all seq)) 4] [(? a) (? a)] [(? a) (? b even?)])]
-                  [1 2 [3 4]])))
+        (matcher [1 2 '(| [3 5] [(? a) (?? x (on-all seq)) 4] [(? a) (? a)] [(? a) (? b even?)])]
+          [1 2 [3 4]])))
   (testing "syntax quoted"
     (is (= [[1] [2 3] 2]
-           (matcher `(a ((?? a) (?? x)) (? b) c (?? x))
-                    `(a (1 2 3) 2 c 2 3))))
+          (matcher `(a ((?? a) (?? x)) (? b) c (?? x))
+            `(a (1 2 3) 2 c 2 3))))
     (is (= [3 nil 4]
-           (matcher [1 2 `(| [3 5] [(? a) (?? x (on-all seq)) 4] [(? a) (? a)] [(? a) (? b even?)])]
-                    [1 2 [3 4]]))))
+          (matcher [1 2 `(| [3 5] [(? a) (?? x (on-all seq)) 4] [(? a) (? a)] [(? a) (? b even?)])]
+            [1 2 [3 4]]))))
+
+  (testing "better function resolution/composition/etc"
+    (is (= [5 9] (matcher '[?a (? b (comp even? inc *) ?a)]
+                   [5 9])))
+
+    (is (nil? (matcher '[?a (? b (comp even? inc *) ?a)]
+                [5 8])))
+
+    (is (= [5 9] (matcher '[?a (? b #(even? (inc (* %1 %2))) ?a)]
+                   [5 9])))
+
+    (is (nil? (matcher '[?a (? b #(even? (inc (* %1 %2))) ?a)]
+                [5 8])))
+
+    (is (nil? (matcher '[?a (? b (every-pred even? odd?))]
+                [5 8])))
+
+    (is (nil? (matcher '[?a (? b (every-pred even? odd?))]
+                [5 9])))
+
+    (is (= [5 8] (matcher '[?a (? b (some-fn even? odd?))]
+                   [5 8])))
+
+    (is (= [5 9] (matcher '[?a (? b (some-fn even? odd?))]
+                   [5 9]))))
+
+
   (testing "apply-style restrictions using other match values as arguments"
     (is (nil?
-         (matcher '[?a (? x > ?a)]
-                  [5 3])))
+          (matcher '[?a (? x > ?a)]
+            [5 3])))
     (is (= [5 3]
-           (matcher '[?a (? x < ?a)]
-                    [5 3])))
+          (matcher '[?a (? x < ?a)]
+            [5 3])))
     (is (= [5 [3 1 5] [8 1]]
-           (matcher '[?a
-                      (?:* (? x <= ?a))
-                      ??rest]
-                    [5 3 1 5 8 1])))
+          (matcher '[?a
+                     (?:* (? x <= ?a))
+                     ??rest]
+            [5 3 1 5 8 1])))
     (is (= [5 [] [3 1 5 8 1]]
-           (matcher '[?a
-                      (?:* (? x = ?a)) ;; doesn't match
-                      ??rest]
-                    [5 3 1 5 8 1])))
+          (matcher '[?a
+                     (?:* (? x = ?a)) ;; doesn't match
+                     ??rest]
+            [5 3 1 5 8 1])))
     #_ ;; FIXME: this used to work until I fixed a bug in this commit in building ?:?
     (is (= [5 [5 3 1 5] [8 1]]
-           ;; Use the optional matcher to capture the first value in the
-           ;; sequence, and the and matcher to capture it together with the rest
-           ;; of the sequence again with the restriction
-           (matcher '[(& (?:? ?a ??!_)
-                         (?:* (? x <= ?a)))
-                      ??rest]
-                    [5 3 1 5 8 1]))))
+          ;; Use the optional matcher to capture the first value in the
+          ;; sequence, and the and matcher to capture it together with the rest
+          ;; of the sequence again with the restriction
+          (matcher '[(& (?:? ?a ??!_)
+                       (?:* (? x <= ?a)))
+                     ??rest]
+            [5 3 1 5 8 1]))))
 
   (testing "Matching the metadata map"
     (letfn [(in-range [v from to]
@@ -342,27 +369,27 @@
 
       (testing "Matching against both a value and its metadata in one expression"
         (is (= [10 15 20]
-               (matcher `(?:chain [?x] meta (?:map :from ?from :to ?to))
+              (matcher `(?:chain [?x] meta (?:map :from ?from :to ?to))
 
-                        (with-meta [10] {:from 15 :to 20})))))
+                (with-meta [10] {:from 15 :to 20})))))
 
       (testing "Using metadata in the match target to restrict the match"
         (is (= [5 20 10]
-               (matcher `(& (?:chain ?_ meta (?:map :from ?from :to ?to))
-                            [(? x ~in-range ?from ?to)])
-                        (with-meta [10] {:from 5 :to 20}))))
+              (matcher `(& (?:chain ?_ meta (?:map :from ?from :to ?to))
+                          [(? x ~in-range ?from ?to)])
+                (with-meta [10] {:from 5 :to 20}))))
 
         (is (nil?
-             (matcher `(& (?:chain ?_ meta (?:map :from ?from :to ?to))
+              (matcher `(& (?:chain ?_ meta (?:map :from ?from :to ?to))
                           [(? x ~in-range ?from ?to)])
-                      (with-meta [10] {:from 15 :to 20}))))
+                (with-meta [10] {:from 15 :to 20}))))
 
         (testing "The same can be achieved with ?:chain but it's much more verbose"
           (is (= [5 20 10]
-                 (matcher `(& (?:chain ?_ meta ?_ :from ?from)
-                              (?:chain ?_ meta ?_ :to ?to)
-                              [(? x ~in-range ?from ?to)])
-                          (with-meta [10] {:from 5 :to 20})))))))))
+                (matcher `(& (?:chain ?_ meta ?_ :from ?from)
+                            (?:chain ?_ meta ?_ :to ?to)
+                            [(? x ~in-range ?from ?to)])
+                  (with-meta [10] {:from 5 :to 20})))))))))
 
 
 (deftest map-matchers
