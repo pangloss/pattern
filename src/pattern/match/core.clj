@@ -329,7 +329,7 @@
   [name dict env]
   (when-let [{val :value :as r} (lookup name dict env)]
     (let [val
-          (if (seqable? val)
+          (if (or (indexed? val) (seq? val))
             (nth val (.repetition ^Env env) ::none)
             val)]
       (when (not= ::none val)
@@ -352,11 +352,12 @@
                   (-> m
                       (update :value
                               (fn [v]
-                                (if (and (seqable? (:value m))
-                                         (= (count (:value m))
-                                            (.repetition ^Env env)))
-                                  (conj v value)
-                                  v)))
+                                (let [val (:value m)]
+                                  (if (and (or (indexed? val) (seq? val))
+                                        (= (count val)
+                                          (.repetition ^Env env)))
+                                    (conj v value)
+                                    v))))
                       (assoc :abbr abbr))
                   {:name name :value [value] :type type :abbr abbr}))]
         (update dict name add-to-var)))))
