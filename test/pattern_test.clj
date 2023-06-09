@@ -621,3 +621,26 @@
   (is (= {:x 2 :misc [:a 'y 'x]}
         ((compile-pattern '[?x (??:remove int? ?misc)])
          [2 :a 1 2 'y 3 4 'x]))))
+
+
+(deftest match-a-set-of-maps
+  (let [pattern
+        (compile-pattern
+           '[??before
+             (?:as* coll
+               (?:1
+                 (?:map :pos pos)
+                 (?:*
+                   (?:? (?:map :pos :ws))
+                   (?:map :pos pos))))
+             ??after])]
+    (is (= '{:before [.. .],
+             :coll [{:pos pos, .. .} {:pos :ws, .. .} {:pos pos, .. .} {:pos :ws, .. .} {:pos pos, .. .}],
+             :after [.. .]}
+          (pattern
+           '[.. . {:pos pos .. .} {:pos :ws .. .} {:pos pos .. .} {:pos :ws .. .} {:pos pos .. .} .. .])))
+    (is (= '{:before [.. .],
+             :coll [{:pos pos, .. .} {:pos pos .. .} {:pos pos, .. .} {:pos :ws, .. .} {:pos pos, .. .}],
+             :after [.. .]}
+          (pattern
+           '[.. . {:pos pos .. .} {:pos pos .. .} {:pos pos .. .} {:pos :ws .. .} {:pos pos .. .} .. .])))))
