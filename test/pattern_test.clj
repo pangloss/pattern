@@ -846,3 +846,25 @@
 
   (map to-splice (zip-seq (pattern.r3.combinators/rule-zipper r)))
   (map meta (zip-seq (pattern.r3.combinators/rule-zipper r))))
+
+(deftest match-a-set-of-maps
+  (let [pattern
+        (compile-pattern
+           '[??before
+             (?:as* coll
+               (?:1
+                 (?:map :pos pos)
+                 (?:*
+                   (?:? (?:map :pos :ws))
+                   (?:map :pos pos))))
+             ??after])]
+    (is (= '{:before [.. .],
+             :coll [{:pos pos, .. .} {:pos :ws, .. .} {:pos pos, .. .} {:pos :ws, .. .} {:pos pos, .. .}],
+             :after [.. .]}
+          (pattern
+           '[.. . {:pos pos .. .} {:pos :ws .. .} {:pos pos .. .} {:pos :ws .. .} {:pos pos .. .} .. .])))
+    (is (= '{:before [.. .],
+             :coll [{:pos pos, .. .} {:pos pos .. .} {:pos pos, .. .} {:pos :ws, .. .} {:pos pos, .. .}],
+             :after [.. .]}
+          (pattern
+           '[.. . {:pos pos .. .} {:pos pos .. .} {:pos pos .. .} {:pos :ws .. .} {:pos pos .. .} .. .])))))
