@@ -140,33 +140,39 @@
 
   (e2 [1 2 2 3 3 3 4 4 4 4])
 
+  ((scan-rule minimal-example ^:rescan
+     '[?a (?:as* b (?:+ ?a))]
+     [(* a (count b))])
+   [1 2 2 3 3 3 4 4 4 4])
 
   (let [orig (iterated
                (rule basic-example
-                 '[??before ?a ?a ??after]
-                 (sub [??before ~(+ a a) ??after])))
-        fast (scan-rule minimal-example ^:allow-rescan
-               '[?a ?a]
-               [(+ a a)])]
-
-    (println "\n\n")
-    (for [n (range 0 20)
-          :let [data (vec (take n (repeatedly 50 #(rand-int 5))))]]
-      (do
-        (println (count data))
-        [data
-         (time
-           (do (print "fast? ")
-               (first
-                 (vec
-                   (for [_ (range 1000)]
-                     (fast data))))))
-         (time
-           (do (print "orig: ")
-               (first
-                 (vec
-                   (for [_ (range 1000)]
-                     (orig data))))))])))
+                 '[??before ?a (?:as* b (?:+ ?a)) ??after]
+                 (sub [??before ~(* a (count b)) ??after])))
+        fast (scan-rule minimal-example ^:rescan
+               '[?a (?:as* b (?:+ ?a))]
+               [(* a (count b))])
+        runs 2]
+    (vec
+      (for [n (range 0 500 5)
+            :let [data (vec (take n (repeatedly 500 #(rand-int 3))))]]
+        (do
+          (println (count data))
+          [(count data)
+           (=
+             (print "orig: ")
+             (time
+               (do (first
+                     (vec
+                       (for [_ (range runs)]
+                         (orig data))))))
+             (print "fast ")
+             (time
+               (do
+                   (first
+                     (vec
+                       (for [_ (range runs)]
+                         (fast data)))))))]))))
 
   (scan-rule combine
     '[(?:as* coll
