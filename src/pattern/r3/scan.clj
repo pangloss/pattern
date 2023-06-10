@@ -50,7 +50,12 @@
 
   Setting :optimize-at-count to 0 will cause all lengths to use the optimized
   strategy, or setting it to Long/MAX_VALUE will force all lengths to use the
-  naive strategy."
+  naive strategy.
+
+  Using rescan costs time for longer lists (depending on the size of the
+  returned sequences).  To get maximum performance, you can specify
+  ^:allow-rescan which will enable the faster rescanning strategy for short
+  lists, but disable rescanning on longer lists."
   [name pattern body]
   (when-not (:no-assert (meta pattern))
     (assert (matcher ''[??_] pattern) "Pattern must be a vector"))
@@ -74,7 +79,8 @@
                         `(let [~changed ~body]
                            (sub [~??before ~??changed ~??after])))
         ;; number of elements that we start using the optimized strategy
-        optimize-at-count (if rescan? (:optimize-at-count (meta pattern) 10) 0)]
+        optimize-at-count (if (or rescan? (:allow-rescan (meta pattern)))
+                            (:optimize-at-count (meta pattern) 10) 0)]
     `(in-order
        (raw
          (rule ~(symbol (str "PRE-" name))
@@ -125,37 +131,42 @@
       '[?a ?a]
       [a]))
 
-  (e1 [1 4 4 4 4])
+  (e1 [1 2 2 3 3 3 4 4 4 4])
 
-  ;; => [1 2 3 3 4 4]
+  (def e2
+    (scan-rule minimal-example
+      '[?a ?a]
+      [a]))
+
+  (e2 [1 2 2 3 3 3 4 4 4 4])
 
 
   (let [orig (iterated
                (rule basic-example
                  '[??before ?a ?a ??after]
-                 (sub [??before ?a ??after])))
-        fast (scan-rule minimal-example ^{:rescan true :optimize-at-count 0}
+                 (sub [??before ~(+ a a) ??after])))
+        fast (scan-rule minimal-example ^:allow-rescan
                '[?a ?a]
-               [a])]
+               [(+ a a)])]
 
-    (for [n (range 0 100 2)
-          :let [data (vec (take n (cycle [1 2 2 3 3 3 4 4 4 4 5 5 5 5 5 6 6 6 6 6 6 7 7 7 7 7 7 7 8 8 8 8 8 8 8 8])))]]
+    (println "\n\n")
+    (for [n (range 0 20)
+          :let [data (vec (take n (repeatedly 50 #(rand-int 5))))]]
       (do
         (println (count data))
-        (println
-          (=
-            (time
-              (do (print "fast? ")
-                  (vec
-                    (for [_ (range 1000)]
-                      (fast data)))))
-            (time
-              (do (print "orig: ")
-                  (vec
-                    (for [_ (range 1000)]
-                      (orig data))))))))))
-
-
+        [data
+         (time
+           (do (print "fast? ")
+               (first
+                 (vec
+                   (for [_ (range 1000)]
+                     (fast data))))))
+         (time
+           (do (print "orig: ")
+               (first
+                 (vec
+                   (for [_ (range 1000)]
+                     (orig data))))))])))
 
   (scan-rule combine
     '[(?:as* coll
