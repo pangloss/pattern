@@ -4,6 +4,7 @@
             pattern.substitute
             pattern.r3.core
             pattern.r3.rule
+            pattern.r3.scan
             pattern.r3.post-process
             pattern.r3.combinators
             pattern.r3.rewrite
@@ -36,6 +37,8 @@
               success
               success:env
               name-rule)
+             (pattern.r3.scan
+               scan-rule)
              (pattern.r3.rule
                rule-name)
              (pattern.r3.post-process
