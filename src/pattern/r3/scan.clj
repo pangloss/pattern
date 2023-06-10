@@ -74,7 +74,7 @@
                         `(let [~changed ~body]
                            (sub [~??before ~??changed ~??after])))
         ;; number of elements that we start using the optimized strategy
-        optimize-at-count (if rescan? 0 (:optimize-at-count (meta pattern) 10))]
+        optimize-at-count (if rescan? (:optimize-at-count (meta pattern) 10) 0)]
     `(in-order
        (raw
          (rule ~(symbol (str "PRE-" name))
