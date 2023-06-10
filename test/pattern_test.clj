@@ -3,6 +3,7 @@
             pattern.r3.core
             [pattern.match.core :as m :refer [matcher pattern-names var-name *disable-modes*
                                               compile-pattern matcher-prefix run-matcher]]
+            [pattern :refer [scan-rule]]
             [pattern.types :refer [not-meta?]]
             pattern.matchers
             [pure-conditioning :as c :refer [manage restart-with handler-cond]])
@@ -624,23 +625,30 @@
 
 
 (deftest match-a-set-of-maps
-  (let [pattern
-        (compile-pattern
-           '[??before
-             (?:as* coll
-               (?:1
-                 (?:map :pos pos)
-                 (?:*
-                   (?:? (?:map :pos :ws))
-                   (?:map :pos pos))))
-             ??after])]
-    (is (= '{:before [.. .],
-             :coll [{:pos pos, .. .} {:pos :ws, .. .} {:pos pos, .. .} {:pos :ws, .. .} {:pos pos, .. .}],
-             :after [.. .]}
-          (pattern
-           '[.. . {:pos pos .. .} {:pos :ws .. .} {:pos pos .. .} {:pos :ws .. .} {:pos pos .. .} .. .])))
-    (is (= '{:before [.. .],
-             :coll [{:pos pos, .. .} {:pos pos .. .} {:pos pos, .. .} {:pos :ws, .. .} {:pos pos, .. .}],
-             :after [.. .]}
-          (pattern
-           '[.. . {:pos pos .. .} {:pos pos .. .} {:pos pos .. .} {:pos :ws .. .} {:pos pos .. .} .. .])))))
+  (let [r (scan-rule combine
+            '[(?:as* coll
+                (?:1
+                  (?:map :pos ?pos)
+                  (?:* (?:map :pos (| ?pos :ws)))
+                  (?:map :pos ?pos)))]
+            [{:text (clojure.string/join (map :text coll)) :pos pos}])]
+
+    (is (= [{:text "My", :pos :word}
+            {:text " ", :pos :ws}
+            {:text "HAPPY FEET", :pos :brand-name}
+            {:text " ", :pos :ws}
+            {:text "Πάτοι Παπουτσιών Νο", :pos :word}
+            {:text "38", :pos :number}]
+          (r
+            [{:text "My", :pos :word}
+             {:text " ", :pos :ws}
+             {:text "HAPPY", :foreign true, :pos :brand-name}
+             {:text " ", :pos :ws}
+             {:text "FEET", :foreign true, :pos :brand-name}
+             {:text " ", :pos :ws}
+             {:text "Πάτοι", :pos :word}
+             {:text " ", :pos :ws}
+             {:text "Παπουτσιών", :pos :word}
+             {:text " ", :pos :ws}
+             {:text "Νο", :pos :word}
+             {:text "38", :pos :number}])))))
