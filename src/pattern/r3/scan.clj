@@ -68,10 +68,10 @@
         rescan? (:rescan (meta pattern))
         full-handler (if rescan?
                        `(let [changed# ~body]
-                          [(into ~result ~before)
+                          [(reduce conj! ~result ~before)
                            (into (vec changed#) ~after)])
                        `(let [changed# ~body]
-                          [(into ~result (concat ~before changed#))
+                          [(reduce conj! (reduce conj! ~result ~before) changed#)
                            ~after]))
         small-pattern (when rescan?
                         (sub '[~??before ~@(remove-quote pattern) ~??after]))
@@ -88,7 +88,7 @@
            (let [v# (vec ~'v)]
              (if (< (count v#) ~optimize-at-count)
                v#
-               (success [[] (vec ~'v)] (assoc ~'%env ::long true))))))
+               (success [(transient []) (vec ~'v)] (assoc ~'%env ::long true))))))
        (guard (fn [_# env#] (::long env#))
          (in-order
            (iterated
@@ -106,11 +106,12 @@
            (raw
              (rule ~(symbol (str "POST-" name))
                '~'[?result ?remainder]
-               (if (seq ~'result)
-                 (if (seq ~'remainder)
-                   (into ~'result ~'remainder)
-                   ~'result)
-                 ~'remainder)))))
+               (if (= ::not-found (get ~'result 0 ::not-found))
+                 ~'remainder
+                 (persistent!
+                   (if (seq ~'remainder)
+                     (reduce conj! ~'result ~'remainder)
+                     ~'result)))))))
        (guard (fn [_# env#] (not (:long env#)))
          (iterated
            (name-rule '~(symbol (str "SMALL-" name))
@@ -148,31 +149,33 @@
   (let [orig (iterated
                (rule basic-example
                  '[??before ?a (?:as* b (?:+ ?a)) ??after]
-                 (sub [??before ~(* a (count b)) ??after])))
+                 (sub [??before ??b ??after])))
         fast (scan-rule minimal-example ^:rescan
                '[?a (?:as* b (?:+ ?a))]
-               [(* a (count b))])
-        runs 2]
+               b)
+        runs 100]
     (vec
-      (for [n (range 0 500 5)
+      (for [n (range 0 200 10)
             :let [data (vec (take n (repeatedly 500 #(rand-int 3))))]]
         (do
           (println (count data))
-          [(count data)
-           (=
-             (print "orig: ")
-             (time
-               (do (first
-                     (vec
-                       (for [_ (range runs)]
-                         (orig data))))))
-             (print "fast ")
-             (time
-               (do
-                   (first
-                     (vec
-                       (for [_ (range runs)]
-                         (fast data)))))))]))))
+          (let [a
+                (time
+                  (do (print "orig ")
+                      (first
+                        (vec
+                          (for [_ (range runs)]
+                            (orig data))))))
+                b
+                (time
+                  (do (print "fast ")
+                      (first
+                        (vec
+                          (for [_ (range runs)]
+                            (fast data))))))]
+            (if (= a b)
+              a
+              [data a b]))))))
 
   (scan-rule combine
     '[(?:as* coll
