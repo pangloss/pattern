@@ -551,8 +551,10 @@
   minimum is 0, in which case the matcher will always succeed."
   [at-least at-most [_ p0 :as pattern] comp-env]
   (let [min-pattern-size (:min (meta p0) 0)
-        at-least (if (symbol? at-least) at-least (max at-least min-pattern-size))
-        at-most (or at-most (:max (meta p0) Long/MAX_VALUE))
+        at-least (cond (not at-least) min-pattern-size
+                       (symbol? at-least) at-least
+                       :else (max at-least min-pattern-size))
+        at-most (if (symbol? at-most) at-most (or at-most (:max (meta p0)) Long/MAX_VALUE))
         match-part (match-optional pattern (assoc comp-env :optional/mode :sequence))
         matcher-vars (:var-names (meta match-part))
         reserve-min-tail (or (:reserve-min-tail comp-env) (len 0))

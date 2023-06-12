@@ -78,6 +78,50 @@
   (is (= [[1 2] '[+ +]]
          (matcher '[(?:* ^{:min 1 :max 5} ?x ?y)] '[1 + 2 +])))
 
+  (testing "(?:n [min max] pattern)"
+    (is (= [[1 2] '[+ +]]
+          (matcher '[(?:n [1 5] ?x ?y)] '[1 + 2 +]))))
+
+  (testing "(?:n min pattern)"
+    (is (= [[1 2] '[+ +]]
+          (matcher '[(?:n 1 ?x ?y)] '[1 + 2 +])))
+
+    (is (= [[1 2] '[+ +]]
+          (matcher '[(?:n 2 ?x ?y)] '[1 + 2 +])))
+
+    (is (nil?
+          (matcher '[(?:n 3 ?x ?y)] '[1 + 2 +]))))
+
+  (testing "(?:n min-var pattern)"
+    (is (= [1 [1 2] '[+ +]]
+          (matcher '[?minvar [(?:n minvar ?x ?y)]] '[1 [1 + 2 +]])))
+
+    (is (= [2 [1 2] '[+ +]]
+          (matcher '[?minvar [(?:n minvar ?x ?y)]] '[2 [1 + 2 +]])))
+
+    (is (nil?
+          (matcher '[?minvar [(?:n minvar ?x ?y)]] '[3 [1 + 2 +]]))))
+
+  (testing "(?:n [nil max-var] pattern)"
+    (is (nil?
+          (matcher '[?maxvar [(?:n [nil maxvar] ?x ?y)]] '[1 [1 + 2 +]])))
+
+    (is (= [2 [1 2] '[+ +]]
+          (matcher '[?maxvar [(?:n [nil maxvar] ?x ?y)]] '[2 [1 + 2 +]])))
+
+    (is (= [3 [1 2] '[+ +]]
+          (matcher '[?maxvar [(?:n [nil maxvar] ?x ?y)]] '[3 [1 + 2 +]]))))
+
+  (testing "(?:n [min-var max-var] pattern)"
+    (is (nil?
+          (matcher '[?maxvar [(?:n [maxvar maxvar] ?x ?y)]] '[1 [1 + 2 +]])))
+
+    (is (= [2 [1 2] '[+ +]]
+          (matcher '[?maxvar [(?:n [maxvar maxvar] ?x ?y)]] '[2 [1 + 2 +]])))
+
+    (is (nil?
+          (matcher '[?maxvar [(?:n [maxvar maxvar] ?x ?y)]] '[3 [1 + 2 +]]))))
+
   (is (= [[1] ['+] [2 '+]]
          (matcher '[(?:* ^{:min 1 :max 5} ?x ?y) (?? z) ?x] '[1 + 2 + [1]])))
 
