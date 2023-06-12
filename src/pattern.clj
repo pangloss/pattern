@@ -62,7 +62,8 @@
               directed
               on-mutual
               rule-simplifier
-              in)
+              in
+              scanner)
              (pattern.nanopass.dialect
               def-dialect
               def-derived
