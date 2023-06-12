@@ -625,3 +625,113 @@
   (vary-meta
    (simplifier (apply rule-list rules))
    assoc-in [:rule :rule-type] ::rule-simplifier))
+
+(defn- scan-strategy
+  "Produce a set of views of the collection with one of the 4 scanning strategies"
+  [{:keys [greedy extreme min-len max-len] :or {greedy true}} coll]
+  (let [coll (vec coll)
+        len (count coll)
+        min-len (max (or min-len 1) 1)
+        max-len (or max-len len)]
+    (if extreme
+      (for [to-take (cond-> (range (min max-len len) (dec min-len) -1)
+                      (not greedy) reverse)
+            to-drop (range (inc (- len to-take)))]
+        [to-drop (+ to-drop to-take)])
+      (for [to-drop (range (inc (- len min-len)))
+            to-take (if greedy
+                      (range (min max-len (- len to-drop)) (dec min-len) -1)
+                      (range min-len (inc (min max-len (- len to-drop)))))]
+        [to-drop (+ to-drop to-take)]))))
+
+(defn scanner
+  "Given a collection, works through it following a strategy as specified in the given opts.
+
+  Options:
+    min-len: Specify the minimum length sequence you want to match
+    max-len: specify the maximum length sequence you want to match. These are good optimizations.
+    rescan: :restart | true | false  (default false)
+            Use restart to apply the change and then rescan the entire sequence.
+            if rescan is true, resumes scanning including the results returned. Otherwise
+            resume scanning after the end of the matched sequence.
+    replacement-limit: If specified, stops when it has done the given number of replacements
+    greedy: true | false (default true)
+            If true, try to match longer sequences before shorter ones
+    extreme: true | false (default false)
+            If true, try to match sequences sorted by length in either greedy strategy.
+
+
+     Extreme                                    Extreme
+     Greedy        Greedy:        Lazy:         Lazy:
+     [a b c d]     [a b c d]      [a      ]     [a      ]
+     [a b c  ]     [a b c  ]      [a b    ]     [  b    ]
+     [  b c d]     [a b    ]      [a b c  ]     [    c  ]
+     [a b    ]     [a      ]      [a b c d]     [      d]
+     [  b c  ]     [  b c d]      [  b    ]     [a b    ]
+     [    c d]     [  b c  ]      [  b c  ]     [  b c  ]
+     [a      ]     [  b    ]      [  b c d]     [    c d]
+     [  b    ]     [    c d]      [    c  ]     [a b c  ]
+     [    c  ]     [    c  ]      [    c d]     [  b c d]
+     [      d]     [      d]      [      d]     [a b c d]
+
+  Normally a rule like [??before pattern ??after] is using the greedy strategy
+  (because the ??before and ??after patterns are lazy)."
+  ([the-rule]
+   (scanner {} the-rule))
+  ([{:keys [rescan replacement-limit greedy extreme min-len max-len equiv?] :as opts} the-rule]
+   (let [equiv? (:equiv? opts pattern.util/equiv?)
+         equiv-ne? (equiv? :no-env)]
+     (with-meta
+       (fn enter-scanner
+         ([data] (first (run-rule enter-scanner data nil)))
+         ([data env] (run-rule enter-scanner data env))
+         ([data env succeed fail]
+          (enter-scanner data env nil succeed fail))
+         ([datum orig-env events y n]
+          (letfn [(on-scanner-expr [datum init-env events on-result f]
+                    (loop [answer (transient [])
+                           datum datum
+                           prev-env init-env
+                           replacement-limit replacement-limit
+                           strat (scan-strategy opts datum)]
+                      (if-let [[start end] (first strat)]
+                        (if-let [[replacement env] (the-rule (subvec datum start end) init-env events
+                                                     (fn succeeded [d e _] [d e])
+                                                     (constantly nil))]
+                          ;; here I can decide how to react to a rule having changed
+                          (let [remaining (subvec datum end (count datum))
+                                new-datum
+                                (cond (= :restart rescan)
+                                      (-> (subvec datum 0 start) (into replacement) (into remaining))
+                                      rescan (-> (vec replacement) (into remaining))
+                                      :else remaining)
+                                strat (when-not (= 0 replacement-limit) (scan-strategy opts new-datum))
+                                answer (cond (= :restart rescan) answer
+                                             rescan (reduce conj! answer (subvec datum 0 start))
+                                             :else (reduce conj!
+                                                     (reduce conj! answer (subvec datum 0 start))
+                                                     replacement))
+                                replacement-limit (some-> replacement-limit dec)]
+                            (recur answer new-datum env replacement-limit strat))
+                          (recur answer datum prev-env replacement-limit (rest strat)))
+                        (let [answer (if (= ::not-found (get answer 0 ::not-found))
+                                       datum
+                                       (persistent! (reduce conj! answer datum)))]
+                          (if (equiv-ne? datum init-env answer prev-env)
+                            (f)
+                            (on-result answer prev-env f))))))]
+            (if (sequential? datum)
+              (let [datum (vec datum)
+                    [done env] (run-rule on-scanner-expr datum events orig-env)]
+                (if (equiv? datum orig-env done env)
+                  (n)
+                  (y done env n)))
+              (n)))))
+       {:rule (assoc (meta the-rule)
+                :equiv? equiv?
+                :rule-type ::scanner)
+        `child-rules (fn [_] [the-rule])
+        `recombine (fn [_ rules]
+                     (if (next rules)
+                       (scanner equiv? (rule-list rules))
+                       (scanner equiv? (first rules))))}))))
