@@ -676,6 +676,18 @@
 
   Normally a rule like [??before pattern ??after] is using the greedy strategy
   (because the ??before and ??after patterns are lazy)."
+
+  ;; FIXME: there are problems with this approach that probably mean it is
+  ;; impractical or needs to be rethought.
+  ;;
+  ;; A normal [??before x ??after] pattern is much better at leveraging the work already done within
+  ;; the pattern at x. This approach forces the entire x pattern to be restarted on every potential
+  ;; match segment. In my simple test, this seemed to be responsible for this approach being 5x slower
+  ;; than using scan-rule.
+  ;;
+  ;; Also, only the greedy and lazy strategies appear to be working correctly. The extreme ones
+  ;; do not do work in a simply predictable order, so they only work with the restart strategy also
+  ;; enabled. They could probably be made to work through a divide and conquer strategy.
   ([the-rule]
    (scanner {} the-rule))
   ([{:keys [rescan replacement-limit greedy extreme min-len max-len equiv?] :as opts} the-rule]
@@ -687,10 +699,10 @@
          ([data env] (run-rule enter-scanner data env))
          ([data env succeed fail]
           (enter-scanner data env nil succeed fail))
-         ([datum orig-env events y n]
-          (letfn [(on-scanner-expr [datum init-env events on-result f]
+         ([orig-datum orig-env events y n]
+          (letfn [(on-scanner-expr [datum-to-scan init-env events on-result f]
                     (loop [answer (transient [])
-                           datum datum
+                           datum datum-to-scan
                            prev-env init-env
                            replacement-limit replacement-limit
                            strat (scan-strategy opts datum)]
@@ -717,11 +729,11 @@
                         (let [answer (if (= ::not-found (get answer 0 ::not-found))
                                        datum
                                        (persistent! (reduce conj! answer datum)))]
-                          (if (equiv-ne? datum init-env answer prev-env)
+                          (if (equiv-ne? datum-to-scan init-env answer prev-env)
                             (f)
                             (on-result answer prev-env f))))))]
-            (if (sequential? datum)
-              (let [datum (vec datum)
+            (if (sequential? orig-datum)
+              (let [datum (vec orig-datum)
                     [done env] (run-rule on-scanner-expr datum events orig-env)]
                 (if (equiv? datum orig-env done env)
                   (n)
