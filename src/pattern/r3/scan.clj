@@ -56,75 +56,79 @@
   returned sequences).  To get maximum performance, you can specify
   ^:allow-rescan which will enable the faster rescanning strategy for short
   lists, but disable rescanning on longer lists."
-  [name pattern body]
-  (when-not (:no-assert (meta pattern))
-    (assert (matcher ''[??_] pattern) "Pattern must be a vector"))
-  (let [result  (gensym 'result)  ?result   (symbol (str "?"  result))
-        before  (gensym 'before)  ??before  (symbol (str "??" before))
-        after   (gensym 'after)   ??after   (symbol (str "??" after))
-        changed (gensym 'changed) ??changed (symbol (str "??" changed))
-        remove-quote second ;; second element in (quote x) is the element itself.
-        full-pattern (sub '[~?result [~??before ~@(remove-quote pattern) ~??after]])
-        rescan? (:rescan (meta pattern))
-        full-handler (if rescan?
-                       `(let [changed# ~body]
-                          [(reduce conj! ~result ~before)
-                           (into (vec changed#) ~after)])
-                       `(let [changed# ~body]
-                          [(reduce conj! (reduce conj! ~result ~before) changed#)
-                           ~after]))
-        small-pattern (when rescan?
-                        (sub '[~??before ~@(remove-quote pattern) ~??after]))
-        small-handler (when rescan?
-                        `(let [~changed ~body]
-                           (sub [~??before ~??changed ~??after])))
-        ;; number of elements that we start using the optimized strategy
-        optimize-at-count (if (or rescan? (:allow-rescan (meta pattern)))
-                            (:optimize-at-count (meta pattern) 10) 0)]
-    `(in-order
-       (raw
-         (rule ~(symbol (str "PRE-" name))
-           '~'(? v sequential?)
-           (let [v# (vec ~'v)]
-             (if (< (count v#) ~optimize-at-count)
-               v#
-               (success [(transient []) (vec ~'v)] (assoc ~'%env ::long true))))))
-       (guard (fn [_# env#] (::long env#))
-         (in-order
-           (iterated
-             (name-rule '~name
-               (make-rule ~(spliced full-pattern)
-                 (rule-fn-body ~name
-                   ~(pattern-args full-pattern)
-                   ~(:env-args (meta pattern))
-                   ~full-handler)
-                 raw-matches
-                 *post-processor*
-                 {:may-call-success0? false
-                  :src '~full-handler
-                  :pattern-meta '~(meta pattern)})))
-           (raw
-             (rule ~(symbol (str "POST-" name))
-               '~'[?result ?remainder]
-               (if (= ::not-found (get ~'result 0 ::not-found))
-                 ~'remainder
-                 (persistent!
-                   (if (seq ~'remainder)
-                     (reduce conj! ~'result ~'remainder)
-                     ~'result)))))))
-       (guard (fn [_# env#] (not (:long env#)))
-         (iterated
-           (name-rule '~(symbol (str "SMALL-" name))
-             (make-rule ~(spliced small-pattern)
-               (rule-fn-body ~name
-                 ~(pattern-args small-pattern)
-                 ~(:env-args (meta pattern))
-                 ~small-handler)
-               raw-matches
-               *post-processor*
-               {:may-call-success0? false
-                :src '~small-handler
-                :pattern-meta '~(meta pattern)})))))))
+  ([pattern body]
+   `(scan-rule nil ~pattern ~body))
+  ([name pattern body]
+   (when-not (:no-assert (meta pattern))
+     (assert (matcher ''[??_] pattern) "Pattern must be a vector"))
+   (let [result  (gensym 'result)  ?result   (symbol (str "?"  result))
+         before  (gensym 'before)  ??before  (symbol (str "??" before))
+         after   (gensym 'after)   ??after   (symbol (str "??" after))
+         changed (gensym 'changed) ??changed (symbol (str "??" changed))
+         remove-quote second ;; second element in (quote x) is the element itself.
+         full-pattern (sub '[~?result [~??before ~@(remove-quote pattern) ~??after]])
+         rescan? (:rescan (meta pattern))
+         full-handler (if rescan?
+                        `(let [changed# ~body]
+                           [(reduce conj! ~result ~before)
+                            (into (vec changed#) ~after)])
+                        `(let [changed# ~body]
+                           [(reduce conj! (reduce conj! ~result ~before) changed#)
+                            ~after]))
+         small-pattern (when rescan?
+                         (sub '[~??before ~@(remove-quote pattern) ~??after]))
+         small-handler (when rescan?
+                         `(let [~changed ~body]
+                            (sub [~??before ~??changed ~??after])))
+         ;; number of elements that we start using the optimized strategy
+         optimize-at-count (if (or rescan? (:allow-rescan (meta pattern)))
+                             (:optimize-at-count (meta pattern) 10) 0)]
+     `(in-order
+        (raw
+          (rule ~@(when name [(symbol (str "PRE-" name))])
+            '~'(? v sequential?)
+            (let [v# (vec ~'v)]
+              (if (< (count v#) ~optimize-at-count)
+                v#
+                (success [(transient []) (vec ~'v)] (assoc ~'%env ::long true))))))
+        (guard (fn [_# env#] (::long env#))
+          (in-order
+            (iterated
+              (cond->>
+                  (make-rule ~(spliced full-pattern)
+                    (rule-fn-body ~@(when name [name])
+                      ~(pattern-args full-pattern)
+                      ~(:env-args (meta pattern))
+                      ~full-handler)
+                    raw-matches
+                    *post-processor*
+                    {:may-call-success0? false
+                     :src '~full-handler
+                     :pattern-meta '~(meta pattern)})
+                ~(boolean name) (name-rule '~name)))
+            (raw
+              (rule ~@(when name [(symbol (str "POST-" name))])
+                '~'[?result ?remainder]
+                (if (= ::not-found (get ~'result 0 ::not-found))
+                  ~'remainder
+                  (persistent!
+                    (if (seq ~'remainder)
+                      (reduce conj! ~'result ~'remainder)
+                      ~'result)))))))
+        (guard (fn [_# env#] (not (:long env#)))
+          (iterated
+            (cond->>
+                (make-rule ~(spliced small-pattern)
+                  (rule-fn-body ~@(when name [name])
+                    ~(pattern-args small-pattern)
+                    ~(:env-args (meta pattern))
+                    ~small-handler)
+                  raw-matches
+                  *post-processor*
+                  {:may-call-success0? false
+                   :src '~small-handler
+                   :pattern-meta '~(meta pattern)})
+              ~(boolean name) (name-rule '~(symbol (str "SMALL-" name))))))))))
 
 (comment
   (def e1
@@ -135,8 +139,8 @@
   (e1 [1 2 2 3 3 3 4 4 4 4])
 
   (def e2
-    (scan-rule minimal-example
-      '[?a ?a]
+    (scan-rule
+      '[?a ??!_ ?a]
       [a]))
 
   (e2 [1 2 2 3 3 3 4 4 4 4])
