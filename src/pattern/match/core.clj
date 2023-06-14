@@ -262,7 +262,8 @@
   (let [f (cond (symbol? form) (resolve form)
                 (listy? form)
                 (cond
-                  ('#{fn* fn comp some-fn every-pred partial} (first form))
+                  (or ('#{fn* fn comp some-fn every-pred partial} (first form))
+                    (`#{fn comp some-fn every-pred partial} (first form)))
                   (let [f (eval form)]
                     (when (ifn? f) f))
                   (= 2 (count form))

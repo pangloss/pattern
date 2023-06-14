@@ -456,17 +456,32 @@
   (is (= [] (matcher '{:a 1 :b ?a} {:a 1 :b '?a}))
       "Patterns are not matched within literal maps. A matcher will be treated as a literal value.")
   (is (= [[:a :b]] (matcher '(?:chain ?_ keys ?k) {:a 1 :b 2}))
-      "Use chain to do other types of map matches"))
+      "Use chain to do other types of map matches")
 
+  (is (= [[:a :b] [1 2]]
+        (matcher '(?:*map ?k ?v) {:a 1 :b 2})))
+  (is (= [[:a :b] [1 2]]
+        (matcher '(?:map* ?k ?v) {:a 1 :b 2})))
+  (is (= [nil nil]
+        (matcher '(?:*map ?k ?v) {})))
+
+  (is (= [[:a :b] [1 2]]
+        (matcher '(?:+map ?k ?v) {:a 1 :b 2})))
+  (is (nil?
+        (matcher '(?:+map ?k ?v) {}))))
+
+(deftest set-matcher
+  (is (= [[:b :a]]
+        (matcher '(?:set ?k) #{:a :b}))))
 
 
 (deftest anon-matchers
   (is (= '(1)
-         (matcher '[?x (?) (?)] [1 2 3])))
+        (matcher '[?x (?) (?)] [1 2 3])))
   (is (= '(1)
-         (matcher '[?x ?_ ?_] [1 2 3])))
+        (matcher '[?x ?_ ?_] [1 2 3])))
   (is (= '(1)
-         (matcher '[?x ??_] [1 2 3])))
+        (matcher '[?x ??_] [1 2 3])))
   (testing "These don't match"
     (is (nil? (matcher '[?x _ _] [1 2 3])))
     (is (nil? (matcher '[?x ?_] [1 2 3])))))

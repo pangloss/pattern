@@ -441,30 +441,30 @@
   (apply hash-map x))
 
 (defn match-in-map [[_ & kvs] comp-env]
-  (compile-pattern* (list '??:chain '??_ `into-map (list* '?:map kvs))
+  (compile-pattern* `(~'??:chain ~'??_ into-map (~'?:map ~@kvs))
                     comp-env))
 
 (defn match-+map
   "Create a ?:+map matcher than can match a key/value pair at least once."
   [[_ k v] comp-env]
-  (compile-pattern* (list '?:chain '?_ 'seq (list (list '?:* [k v])))
+  (compile-pattern* `(~'?:chain ~'?_ seq ((~'?:* ~[k v])))
                     comp-env))
 
 (defn match-*map
   "Create a ?:*map matcher than can match a key/value pair multiple times."
   [[_ k v] comp-env]
-  (compile-pattern* (list '?:chain
-                          (list '? '_ (some-fn nil? map?))
-                          'seq (list '| nil (list (list '?:* [k v]))))
+  (compile-pattern* `(~'?:chain
+                      (~'? ~'_ ~(some-fn nil? map?))
+                      seq (~'| nil ((~'?:* ~[k v]))))
                     comp-env))
 
 (defn match-*set
   "Create a ?:set matcher than can match the items in a set."
   [[_ item] comp-env]
-  (compile-pattern* (list '?:chain
-                          (list '? '_ (some-fn nil? set?))
-                          'seq (list '| nil (list (list '?:* item))))
-                    comp-env))
+  (compile-pattern* `(~'?:chain
+                      (~'? ~'_ ~(some-fn nil? set?))
+                      seq (~'| nil ((~'?:* ~item))))
+    comp-env))
 
 
 (defn- match-optional

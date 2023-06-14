@@ -252,13 +252,11 @@ the parsed form.
 ### Adding new matchers
 
 The ?:chain rule can often be used to create a custom matcher.
-This is the implementation of the ?:map one, simplified to replace `sub` for
-`quo`. `quo` is only needed internally within pattern to allow the system to
-bootstrap itself.
+This is the implementation of the ?:map one. 
 
-This matcher starts with an unnamed matcher that ensures the matched datum is either a map or nil: `(? _ ~(some-fn nil? map?))`
+This matcher starts with an unnamed matcher that ensures the matched datum is either a map or nil: `(? _ (some-fn nil? map?))`
 Then if that matches, calls `seq` on that datum, turning the map into a list of `[key value]` pairs.
-The result may match either `nil` if the map is empty, or each key value pair must match the given `k` and `v` pattern forms, which are spliced into the matcher here: `(| nil ((?:* [~k ~v])))`.
+The result may match either `nil` if the map is empty, or each key value pair must match the given `k` and `v` pattern forms, which are spliced into the matcher here: `(| nil ((?:* ~[k v])))`.
 
 The generated matcher is then compiled with `compile-pattern*`, passing along the compilation environment.
 
@@ -268,16 +266,14 @@ Finally, new matchers must be registered with their name and optional aliases.
 (defn match-*map
   "Create a ?:*map matcher than can match a key/value pair multiple times."
   [[_ k v] comp-env]
-  (compile-pattern*
-    (sub (?:chain
-           (? _ ~(some-fn nil? map?))
-           seq
-           (| nil ((?:* [~k ~v])))))
-    comp-env))
+  (compile-pattern* `(~'?:chain
+                      (~'? ~'_ ~(some-fn nil? map?))
+                      seq
+                      (~'| nil ((~'?:* ~[k v]))))
+                    comp-env))
 
 (register-matcher '?:*map #'match-*map {:aliases ['?:map*]})
 ```
-
 
 ## Substitution
 
