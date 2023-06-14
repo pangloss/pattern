@@ -550,8 +550,11 @@
   the `at-least` minimum valid match count. If at-least is not specified, the
   minimum is 0, in which case the matcher will always succeed."
   [at-least at-most [_ p0 :as pattern] comp-env]
-  (let [at-least (max at-least (:min (meta p0) 0))
-        at-most (or at-most (:max (meta p0) Long/MAX_VALUE))
+  (let [min-pattern-size (:min (meta p0) 0)
+        at-least (cond (not at-least) min-pattern-size
+                       (symbol? at-least) at-least
+                       :else (max at-least min-pattern-size))
+        at-most (if (symbol? at-most) at-most (or at-most (:max (meta p0)) Long/MAX_VALUE))
         match-part (match-optional pattern (assoc comp-env :optional/mode :sequence))
         matcher-vars (:var-names (meta match-part))
         reserve-min-tail (or (:reserve-min-tail comp-env) (len 0))
@@ -563,76 +566,84 @@
                              reserve-min-tail))]
     (letfn [(test-match [reps dict]
               (let [evars (:sequence/existing dict)]
-                (and (<= at-least reps)
-                     (every? #(if-let [existing (evars %)]
-                                (when (contains? dict %)
-                                  (let [evalue (:value existing)]
-                                    (if (sequential? evalue)
-                                      (= (take reps evalue)
-                                         (let [val (:value (dict %))]
-                                           (if (sequential? val)
-                                             (take reps val)
-                                             val)))
-                                      (= evalue (:value (dict %))))))
-                                true)
-                             matcher-vars))))
+                (and (if (symbol? at-least)
+                       ;; no match if undefined
+                       (<= (max (:value (dict at-least) Long/MAX_VALUE) min-pattern-size) reps)
+                       (<= at-least reps))
+                  (every? #(if-let [existing (evars %)]
+                             (when (contains? dict %)
+                               (let [evalue (:value existing)]
+                                 (if (sequential? evalue)
+                                   (= (take reps evalue)
+                                     (let [val (:value (dict %))]
+                                       (if (sequential? val)
+                                         (take reps val)
+                                         val)))
+                                   (= evalue (:value (dict %))))))
+                             true)
+                    matcher-vars))))
             (level-sequences [reps dict]
               ;; Ensure that all sequences are the same length, even if some matchers are optional.
               (reduce (fn [dict var-name]
                         (let [entry (dict var-name)
                               val (:value entry)]
                           (if (and (sequential? val)
-                                   (< (count val) reps))
+                                (< (count val) reps))
                             (update-in dict [var-name :value] conj nil)
                             dict)))
-                      dict matcher-vars))
+                dict matcher-vars))
             (gather [dict n data env matches]
-              (if (and (< (.repetition ^Env env) at-most)
-                       (has-n? (:n reserve-min-tail) data))
+              (if (and (if (symbol? at-most)
+                         ;; no match if undefined
+                         (< (.repetition ^Env env) (:value (dict at-most) 0))
+                         (< (.repetition ^Env env) at-most))
+                    (has-n? (:n reserve-min-tail) data))
                 (bouncing
-                 (or (match-part
-                      data dict
-                      (assoc env
-                             :succeed
-                             (fn [dict n']
-                               (let [reps (inc (.repetition ^Env env))
-                                     dict (level-sequences reps dict)]
-                                 (gather dict (+ n n') (drop n' data)
-                                         (assoc env :repetition reps)
-                                         (if (test-match reps dict)
-                                           (conj matches [dict (+ n n')])
-                                           matches))))))
-                     matches))
+                  (or (match-part
+                        data dict
+                        (assoc env
+                          :succeed
+                          (fn [dict n']
+                            (let [reps (inc (.repetition ^Env env))
+                                  dict (level-sequences reps dict)]
+                              (gather dict (+ n n') (drop n' data)
+                                (assoc env :repetition reps)
+                                (if (test-match reps dict)
+                                  (conj matches [dict (+ n n')])
+                                  matches))))))
+                    matches))
                 matches))]
       (with-meta
         (fn many-matcher [data dictionary ^Env env]
           (let [dict (reduce (fn [d var] ;; Populate the dictionary with a set of empty matches if none exist
                                (update d var #(or % {:name var :value [] :type '?:*})))
-                             (assoc dictionary
-                                    :sequence/existing (select-keys dictionary matcher-vars)
-                                    :sequence/id (gensym))
-                             matcher-vars)
+                       (assoc dictionary
+                         :sequence/existing (select-keys dictionary matcher-vars)
+                         :sequence/id (gensym))
+                       matcher-vars)
                 matches
                 (trampolining
-                 (gather dict 0 data
-                         ;; Alter lookup behavior and make no-match in match-optional fail
-                         (assoc env
-                                :lookup sequence-lookup
-                                :store sequence-extend-dict
-                                :repetition 0
-                                :optional/no-match (constantly false))
-                         (if (test-match 0 dict)
-                           [[dict 0]]
-                           [])))]
+                  (gather dict 0 data
+                    ;; Alter lookup behavior and make no-match in match-optional fail
+                    (assoc env
+                      :lookup sequence-lookup
+                      :store sequence-extend-dict
+                      :repetition 0
+                      :optional/no-match (constantly false))
+                    (if (test-match 0 dict)
+                      [[dict 0]]
+                      [])))]
             (loop [matches matches]
               (when-let [[dict n] (peek matches)]
                 (or ((.succeed env) dict n)
-                    (recur (pop matches)))))))
+                  (recur (pop matches)))))))
         (update (meta match-part)
-                :length (fn [l]
-                          (if (and at-least (= at-least at-most))
-                            (len (* (:n l) at-least))
-                            (var-len (* (:n l) (or at-least 0))))))))))
+          :length (fn [l]
+                    (if (symbol? at-least)
+                      (var-len (:n l))
+                      (if (and at-least (= at-least at-most))
+                        (len (* (:n l) at-least))
+                        (var-len (* (:n l) (or at-least 0)))))))))))
 
 
 (defn- match-many
