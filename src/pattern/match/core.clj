@@ -45,6 +45,13 @@
 (defonce restriction-position (atom {::default 2}))
 (def ^:dynamic enable-restart-pattern? #{})
 
+(def resolver-eval-whitelist
+  (atom
+    (into #{}
+      (concat
+        '[fn* fn comp some-fn every-pred partial]
+        `[fn comp some-fn every-pred partial]))))
+
 (defn matcher-type-for-dispatch
   "The same as matcher-type, but with aliases resolved."
   ([pattern]
@@ -262,8 +269,7 @@
   (let [f (cond (symbol? form) (resolve form)
                 (listy? form)
                 (cond
-                  (or ('#{fn* fn comp some-fn every-pred partial} (first form))
-                    (`#{fn comp some-fn every-pred partial} (first form)))
+                  (@resolver-eval-whitelist (first form))
                   (let [f (eval form)]
                     (when (ifn? f) f))
                   (= 2 (count form))
