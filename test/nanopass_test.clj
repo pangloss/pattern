@@ -159,6 +159,13 @@
 (defn gennice [s]
   (symbol (str (name s) "." (swap! niceid inc))))
 
+;; defpass no longer allows unknown dialects, so define placeholders:
+(def-dialect LambdaCalc
+  (terminals [var symbol?]))
+
+(def-dialect CPS
+  (terminals [var symbol?]))
+
 (defpass naive-cps (=> LambdaCalc CPS)
   (let-rulefn [(M (=> Expr MExpr)
                   [(rule '(fn [?var] ?expr)
