@@ -175,9 +175,7 @@
        :var-abbrs (apply merge-with f/op (map (comp :var-abbrs meta) matchers))
        :var-prefixes (apply merge-with f/op (map (comp :var-prefixes meta) matchers))
        :length (len 1)
-       `spliceable-pattern
-       (fn ([_] (compile-pattern `(~'?:1 ~@pattern)))
-         ([_ comp_env] (compile-pattern* `(~'?:1 ~@pattern) comp_env)))})))
+       `spliceable-pattern (fn [_] `(~'?:1 ~@pattern))})))
 
 (defn- match-element
   "Match a single element.
@@ -328,9 +326,7 @@
            :var-prefixes {name (if prefix [prefix] [])}
            :var-abbrs {name (if abbr [abbr] [])}
            :length (var-len 0)})
-        (assoc `spliceable-pattern
-          (fn ([this] this)
-            ([_ comp-env] (compile-pattern* variable comp-env))))))))
+        (assoc `spliceable-pattern (fn [this] variable))))))
 
 (defn- match-as
   "This matcher allows you to capture the overarching pattern matched by some
@@ -651,12 +647,7 @@
                               (if (and at-least (= at-least at-most))
                                 (len (* (:n l) at-least))
                                 (var-len (* (:n l) (or at-least 0)))))))
-          (assoc `spliceable-pattern
-            (fn ([this] this)
-              ([_ comp-env]
-               (compile-pattern*
-                 `(~'?:n [~at-least ~at-most] ~@(rest pattern))
-                 comp-env)))))))))
+          (assoc `spliceable-pattern (fn [_] `(~'?:n [~at-least ~at-most] ~@(rest pattern)))))))))
 
 (defn- match-many
   "See [[match-sequence]]"
@@ -791,7 +782,7 @@
     (??:remove pred-to-remove [??matches])
 
   Matches the entire collection if at least one member matches the predicate."
-  [[match-type pred-name result-pattern] comp-env]
+  [[match-type pred-name result-pattern :as pattern] comp-env]
   (let [pred (resolve-fn pred-name
                #(throw (ex-info "Some predicate did not resolve to a function" {:pred pred-name})))
         pred (if ('#{?:remove ??:remove} match-type) (complement pred) pred)
@@ -815,9 +806,7 @@
           (on-failure :missing name dictionary env 0 data nil)))
       (cond-> (meta result-matcher)
         true (assoc :length (if vlen? (var-len 1) (len 1)))
-        vlen? (assoc `spliceable-pattern (fn
-                                           ([this] this)
-                                           ([_ comp-env] (assert false "Not implemented."))))))))
+        vlen? (assoc `spliceable-pattern (fn [this] pattern))))))
 
 (defn- match-regex
   "Match a string with the given regular expression. To succeed, the regex must

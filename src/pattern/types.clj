@@ -48,7 +48,7 @@
 
 (defprotocol SpliceablePattern
   :extend-via-metadata true
-  (spliceable-pattern [pattern] [pattern comp_env]))
+  (spliceable-pattern [pattern]))
 
 (defn rule-combinator? [r]
   (or (satisfies? RuleCombinator r)
