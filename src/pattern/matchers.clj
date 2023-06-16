@@ -29,6 +29,7 @@
   (:use pattern.match.core)
   (:require [genera :refer [trampoline trampolining bouncing]]
             [uncomplicate.fluokitten.core :as f]
+            [pattern.types :refer [spliceable-pattern]]
             [pattern.match.core :as m]
             [pattern.match.predicator :refer [var-abbr]])
   (:import (pattern.types Env)))
@@ -146,22 +147,22 @@
                                 ;; This construct would have to be carefully redesigned for trampoline
                                 ;; (at least on sequence matches).
                                 (assoc env :succeed
-                                       (fn match-list-success [new-dictionary n]
-                                         (if (> n (count data-list))
-                                           (throw (ex-info "Matcher ate too much" {:n n}))
-                                           (lp datum (drop n data-list) (next matchers) new-dictionary)))))]
+                                  (fn match-list-success [new-dictionary n]
+                                    (if (> n (count data-list))
+                                      (throw (ex-info "Matcher ate too much" {:n n}))
+                                      (lp datum (drop n data-list) (next matchers) new-dictionary)))))]
                         result
                         (on-failure :mismatch pattern dictionary env 1 data datum
-                                    :retry retry))
+                          :retry retry))
                       (if (empty? data-list)
                         ((.succeed env) dictionary 1)
                         (on-failure :too-long pattern dictionary env 1 data datum
-                                    :retry retry))))
+                          :retry retry))))
                   (retry [data-list]
                     (if (list-pred data-list)
                       (bouncing (lp data-list data-list matchers dictionary))
                       (on-failure :type pattern dictionary env 1 data data-list
-                                  :retry retry)))]
+                        :retry retry)))]
             (let [datum (first data)
                   c (when (sequential? datum) (count datum))]
               (when (if (and c variable-length?)
@@ -173,8 +174,10 @@
        :var-modes (apply merge-with f/op (map (comp :var-modes meta) matchers))
        :var-abbrs (apply merge-with f/op (map (comp :var-abbrs meta) matchers))
        :var-prefixes (apply merge-with f/op (map (comp :var-prefixes meta) matchers))
-       :length (len 1)})))
-
+       :length (len 1)
+       `spliceable-pattern
+       (fn ([_] (compile-pattern `(~'?:1 ~@pattern)))
+         ([_ comp_env] (compile-pattern* `(~'?:1 ~@pattern) comp_env)))})))
 
 (defn- match-element
   "Match a single element.
@@ -317,13 +320,17 @@
                 (or (and (sat? dictionary datum)
                          ((.succeed env) ((.store env) name datum '?? abbr dictionary env) i))
                     (recur (loop-next i) (update-datum datum data n))))))))
-      (if (or (nil? name) (= '_ name))
-        {:length (var-len 0)}
-        {:var-names [name]
-         :var-modes {name (matcher-mode variable)}
-         :var-prefixes {name (if prefix [prefix] [])}
-         :var-abbrs {name (if abbr [abbr] [])}
-         :length (var-len 0)}))))
+      (->
+        (if (or (nil? name) (= '_ name))
+          {:length (var-len 0)}
+          {:var-names [name]
+           :var-modes {name (matcher-mode variable)}
+           :var-prefixes {name (if prefix [prefix] [])}
+           :var-abbrs {name (if abbr [abbr] [])}
+           :length (var-len 0)})
+        (assoc `spliceable-pattern
+          (fn ([this] this)
+            ([_ comp-env] (compile-pattern* variable comp-env))))))))
 
 (defn- match-as
   "This matcher allows you to capture the overarching pattern matched by some
@@ -637,14 +644,19 @@
               (when-let [[dict n] (peek matches)]
                 (or ((.succeed env) dict n)
                   (recur (pop matches)))))))
-        (update (meta match-part)
-          :length (fn [l]
-                    (if (symbol? at-least)
-                      (var-len (:n l))
-                      (if (and at-least (= at-least at-most))
-                        (len (* (:n l) at-least))
-                        (var-len (* (:n l) (or at-least 0)))))))))))
-
+        (-> (meta match-part)
+          (update :length (fn [l]
+                            (if (symbol? at-least)
+                              (var-len (:n l))
+                              (if (and at-least (= at-least at-most))
+                                (len (* (:n l) at-least))
+                                (var-len (* (:n l) (or at-least 0)))))))
+          (assoc `spliceable-pattern
+            (fn ([this] this)
+              ([_ comp-env]
+               (compile-pattern*
+                 `(~'?:n [~at-least ~at-most] ~@(rest pattern))
+                 comp-env)))))))))
 
 (defn- match-many
   "See [[match-sequence]]"
@@ -801,9 +813,11 @@
                   (on-failure :not-found pred-name dictionary env match-len data datum)))
               (on-failure :not-sequential name dictionary env 1 data datum)))
           (on-failure :missing name dictionary env 0 data nil)))
-      (assoc
-        (meta result-matcher)
-        :length (if vlen? (var-len 1) (len 1))))))
+      (cond-> (meta result-matcher)
+        true (assoc :length (if vlen? (var-len 1) (len 1)))
+        vlen? (assoc `spliceable-pattern (fn
+                                           ([this] this)
+                                           ([_ comp-env] (assert false "Not implemented."))))))))
 
 (defn- match-regex
   "Match a string with the given regular expression. To succeed, the regex must

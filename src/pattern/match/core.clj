@@ -61,7 +61,7 @@
      (@matcher-alias t t))))
 
 (defmulti compile-pattern*
-  "The multimethod patterns are registered to. This function is used within pattern combinators
+  "The multimethod that patterns are registered to. This function is used within pattern combinators
   to instantiate child patterns."
   matcher-type-for-dispatch)
 
