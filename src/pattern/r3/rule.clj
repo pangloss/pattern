@@ -7,7 +7,7 @@
 (def ^:dynamic *debug-rules* false)
 
 (def ^:dynamic *post-processor*
-    "Transform the resulting value or env of a successful rule in the context of
+  "Transform the resulting value or env of a successful rule in the context of
   the original value and env.
 
   Argument and return signature:
@@ -64,6 +64,14 @@
      (fn rule-succeeded [d e _] [d e])
      (fn rule-failed [] [datum env]))))
 
+(defprotocol RebuildRule
+  (-rebuild-rule [rule match-procedure handler]
+    "Rebuild a rule with the same value extraction and post-processing.
+
+  Optionally specify replacement match-procedure or replacement handler.
+
+  Metadata may be updated the usual way."))
+
 (deftype Rule [match-procedure handler get-values post-process metadata]
   IFn
   (applyTo [rule args]
@@ -81,7 +89,12 @@
   (withMeta [rule metadata]
     (Rule. match-procedure handler get-values post-process metadata))
   IMeta
-  (meta [rule] metadata))
+  (meta [rule] metadata)
+
+  RebuildRule
+  (-rebuild-rule [rule new-match-procedure new-handler]
+    (Rule. (or new-match-procedure match-procedure) (or new-handler handler)
+      get-values post-process metadata)))
 
 
 (defmethod print-method Rule [r ^java.io.Writer w]

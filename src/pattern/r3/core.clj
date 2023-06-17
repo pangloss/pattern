@@ -8,7 +8,7 @@
             [clojure.walk :as walk]
             [pattern.types :refer [->SuccessUnmodified ->Success ->SuccessEnv]]
             [pattern.r3.rule :refer [->Rule *post-processor* *identity-rule-post-processor*
-                                     make-rule]])
+                                     make-rule -rebuild-rule]])
   (:import (pattern.types Success SuccessEnv SuccessUnmodified)
            (clojure.lang IFn IObj IMeta)))
 
@@ -177,32 +177,54 @@
          p (@spliced (@scheme-style pattern))]
      `(let [p# ~p]
         (make-rule p#
-          (rule-fn-body ~(pattern-args pattern) ~(:env-args (meta pattern))
+          (rule-fn-body ~args ~(:env-args (meta pattern))
             (sub ~(second pattern)))
           raw-matches
           *post-processor*
           {:src '(sub ~(second pattern))
-           :pattern-meta '~(meta pattern)}))))
+           :pattern-meta '~(meta pattern)
+           :pattern-args '~(with-meta args nil)}))))
   ([pattern handler-body]
-   `(let [p# ~(@spliced (@scheme-style pattern))]
-      (make-rule p#
-        (rule-fn-body ~(pattern-args pattern) ~(:env-args (meta pattern))
-          ~handler-body)
-        raw-matches
-        *post-processor*
-        {:may-call-success0? ~(may-call-success0? handler-body)
-         :src '~handler-body
-         :pattern-meta '~(meta pattern)})))
+   (let [args (pattern-args pattern)]
+     `(let [p# ~(@spliced (@scheme-style pattern))]
+        (make-rule p#
+          (rule-fn-body ~args ~(:env-args (meta pattern))
+            ~handler-body)
+          raw-matches
+          *post-processor*
+          {:may-call-success0? ~(may-call-success0? handler-body)
+           :src '~handler-body
+           :pattern-args '~(with-meta args nil)
+           :pattern-meta '~(meta pattern)}))))
   ([name pattern handler-body]
    (let [fname (if (symbol? name) name (gensym '-))
-         name (if (symbol? name) (list 'quote name) name)]
+         name (if (symbol? name) (list 'quote name) name)
+         args (pattern-args pattern)]
      `(name-rule ~name
         (let [p# ~(@spliced (@scheme-style pattern))]
           (make-rule p#
-            (rule-fn-body ~fname ~(pattern-args pattern) ~(:env-args (meta pattern))
+            (rule-fn-body ~fname ~args ~(:env-args (meta pattern))
               ~handler-body)
             raw-matches
             *post-processor*
             {:may-call-success0? ~(may-call-success0? handler-body)
              :src '~handler-body
+             :pattern-args '~(with-meta args nil)
              :pattern-meta '~(meta pattern)}))))))
+
+
+(defmacro rebuild-rule [rule pattern handler-body]
+  `(let [p# ~(when pattern
+               (@spliced (@scheme-style pattern)))
+         r# ~rule]
+
+     (-rebuild-rule r#
+       (when ~(boolean pattern) p#)
+       (when ~(boolean handler-body)
+         (rule-fn-body ~(if pattern (pattern-args pattern)
+                            #_
+                            (get-in (meta (if-let [b (&env rule)]
+                                            @b
+                                            (resolve rule))) [:rule :pattern-args]))
+           ~(:env-args (meta pattern))
+           ~handler-body)))))
