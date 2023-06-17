@@ -14,7 +14,9 @@
 
 (defn raw-matches
   "A success continuation that just returns the match 'dictionary', which may be
-  either a dictionary or a function that behaves the same way as calling a map."
+  either a dictionary or a function that behaves the same way as calling a map.
+
+  See also [[pattern.match.core/all-values]] [[value-dict]] [[symbol-dict]]"
   [match-procedure]
   (comp list identity))
 
@@ -212,19 +214,28 @@
              :pattern-args '~(with-meta args nil)
              :pattern-meta '~(meta pattern)}))))))
 
+(defn rebuild-body [args env-args handler]
+  (when handler
+    (eval (list 'rule-fn-body args env-args handler))))
 
-(defmacro rebuild-rule [rule pattern handler-body]
-  `(let [p# ~(when pattern
-               (@spliced (@scheme-style pattern)))
-         r# ~rule]
+(defmacro rebuild-rule
+  "Update either the pattern or the handler body (or both) of the given rule.
 
-     (-rebuild-rule r#
-       (when ~(boolean pattern) p#)
-       (when ~(boolean handler-body)
-         (rule-fn-body ~(if pattern (pattern-args pattern)
-                            #_
-                            (get-in (meta (if-let [b (&env rule)]
-                                            @b
-                                            (resolve rule))) [:rule :pattern-args]))
-           ~(:env-args (meta pattern))
-           ~handler-body)))))
+  Both the pattern and the handler-body must be quoted (unlike in [[rule]], where
+  the handler-body is not quoted. This is to allow programmatic manipulation
+  of the existing handler body, or otherwise generating it. The current version
+  of both is present in the rule metadata."
+  [rule pattern handler-body]
+  (let [args (when pattern `'~(with-meta (pattern-args pattern) nil))]
+    `(let [p# ~(when pattern
+                 (@spliced (@scheme-style pattern)))
+           r# ~rule
+           args# (or ~args (get-in (meta r#) [:rule :pattern-args]))
+           env-args# '~(:env-args (meta pattern))
+           hb# ~handler-body]
+       (cond->
+         (-rebuild-rule r#
+           ;; TODO: apply-replacements. (capture the ones at rule definition?)
+           (when ~(boolean pattern) (compile-pattern p#))
+           (when ~(boolean handler-body) (rebuild-body args# env-args# hb#)))
+         ~(boolean handler-body) (vary-meta assoc-in [:rule :src] hb#)))))
