@@ -680,3 +680,117 @@
   (is (= {:x 2 :misc [:a 'y 'x]}
         ((compile-pattern '[?x (??:remove int? ?misc)])
          [2 :a 1 2 'y 3 4 'x]))))
+
+
+(deftest match-a-set-of-maps
+  (let [r (scan-rule combine
+            '[(?:as* coll
+                (?:1
+                  (?:map :pos ?pos)
+                  (?:* (?:map :pos (| ?pos :ws)))
+                  (?:map :pos ?pos)))]
+            [{:text (clojure.string/join (map :text coll)) :pos pos}])]
+
+    (is (= [{:text "My", :pos :word}
+            {:text " ", :pos :ws}
+            {:text "HAPPY FEET", :pos :brand-name}
+            {:text " ", :pos :ws}
+            {:text "Πάτοι Παπουτσιών Νο", :pos :word}
+            {:text "38", :pos :number}]
+          (r
+            [{:text "My", :pos :word}
+             {:text " ", :pos :ws}
+             {:text "HAPPY", :foreign true, :pos :brand-name}
+             {:text " ", :pos :ws}
+             {:text "FEET", :foreign true, :pos :brand-name}
+             {:text " ", :pos :ws}
+             {:text "Πάτοι", :pos :word}
+             {:text " ", :pos :ws}
+             {:text "Παπουτσιών", :pos :word}
+             {:text " ", :pos :ws}
+             {:text "Νο", :pos :word}
+             {:text "38", :pos :number}])))))
+
+(deftest match-a-set-of-maps-scanner
+  (let [r
+        (scanner {:min-len 2 :max-len 5 :extreme false :rescan false}
+          (rule combine
+            '[(?:as* coll
+                (?:1
+                  (?:map :pos ?pos)
+                  (?:* (?:map :pos (| ?pos :ws)))
+                  (?:map :pos ?pos)))]
+            [{:text (clojure.string/join (map :text coll)) :pos pos}]))]
+
+    (is (= [{:text "My", :pos :word}
+            {:text " ", :pos :ws}
+            {:text "HAPPY FEET", :pos :brand-name}
+            {:text " ", :pos :ws}
+            {:text "Πάτοι Παπουτσιών Νο", :pos :word}
+            {:text "38", :pos :number}]
+          (r
+            [{:text "My", :pos :word}
+             {:text " ", :pos :ws}
+             {:text "HAPPY", :foreign true, :pos :brand-name}
+             {:text " ", :pos :ws}
+             {:text "FEET", :foreign true, :pos :brand-name}
+             {:text " ", :pos :ws}
+             {:text "Πάτοι", :pos :word}
+             {:text " ", :pos :ws}
+             {:text "Παπουτσιών", :pos :word}
+             {:text " ", :pos :ws}
+             {:text "Νο", :pos :word}
+             {:text "38", :pos :number}])))))
+
+
+(deftest rebuild-a-rule
+  (let [r1 (pattern.match.predicator/with-predicates
+             {'a int?}
+             (rule combine
+               '[?a 1 ?b]
+               [a a b b]))]
+
+    (is (= [0 0 2 2] (r1 [0 1 2])))
+    (is (= [0 0 :x :x] (r1 [0 1 :x])))
+
+    (testing "rewrite handler only"
+      (let [r2 (pattern.r3.core/rebuild-rule r1 nil '[b b {b a} a a])]
+        (is (= [2 2 {2 0} 0 0] (r2 [0 1 2])))
+        (is (= [:x :x {:x 0} 0 0] (r2 [0 1 :x])))))
+
+    (testing "rewrite rule only"
+      (let [r3 (pattern.r3.core/rebuild-rule r1 '[?a 1 ?a:b] nil)]
+        (is (= [0 0 2 2] (r3 [0 1 2])))
+        (is (= [0 1 :x] (r3 [0 1 :x])) "not transformed")))
+
+    (testing "rewrite rule only"
+      (let [r4 (pattern.r3.core/rebuild-rule r1
+                 (-> (get-in (meta r1) [:rule :pattern])
+                   pop
+                   ;; ensure be is int via predicate on a
+                   (conj '?a:b))
+                 '(+ a b))]
+        (is (= 42 (r4 [40 1 2])))
+        (is (= [40 1 :x] (r4 [40 1 :x])) "not transformed")))))
+
+
+
+(comment
+  (def rl
+    (pattern/rule-list
+      r))
+
+  (pattern.types/spliceable-pattern (:match (:rule (meta r))))
+
+  (defn zip-seq [z]
+    (lazy-seq
+      (when-not (zip/end? z)
+        (cons (zip/node z)
+          (zip-seq (zip/next z))))))
+
+  (defn to-splice [x]
+    (when (satisfies? pattern.types/SpliceablePattern x)
+      (pattern.types/spliceable-pattern x)))
+
+  (map to-splice (zip-seq (pattern.r3.combinators/rule-zipper r)))
+  (map meta (zip-seq (pattern.r3.combinators/rule-zipper r))))

@@ -216,7 +216,7 @@
 
 (defn rebuild-body [args env-args handler]
   (when handler
-    (eval (list 'rule-fn-body args env-args handler))))
+    (eval (list `rule-fn-body args env-args handler))))
 
 (defmacro rebuild-rule
   "Update either the pattern or the handler body (or both) of the given rule.
@@ -226,17 +226,19 @@
   of the existing handler body, or otherwise generating it. The current version
   of both is present in the rule metadata."
   [rule pattern handler-body]
-  (let [args (when pattern `'~(with-meta (pattern-args pattern) nil))]
-    `(let [p# ~(when pattern
-                 (@spliced (@scheme-style pattern)))
-           r# ~rule
-           args# (or ~args (get-in (meta r#) [:rule :pattern-args]))
-           env-args# '~(:env-args (meta pattern))
-           hb# ~handler-body]
-       (cond->
-         (-rebuild-rule r#
-           (when ~(boolean pattern)
-             (compile-pattern (apply-replacements p#
-                                (get-in (meta r#) [:rule :pattern.match.core/pattern-replace]))))
-           (when ~(boolean handler-body) (rebuild-body args# env-args# hb#)))
-         ~(boolean handler-body) (vary-meta assoc-in [:rule :src] hb#)))))
+  `(let [raw-pattern# ~pattern
+         args# (when ~(boolean pattern) (pattern-args raw-pattern#))
+         p# ~(when pattern
+               (@spliced (@scheme-style pattern)))
+         r# ~rule
+         args# (or args# (get-in (meta r#) [:rule :pattern-args]))
+         env-args# '~(:env-args (meta pattern))
+         hb# ~handler-body
+         r# (-rebuild-rule r#
+              (when ~(boolean pattern)
+                (compile-pattern (apply-replacements p#
+                                   (get-in (meta r#) [:rule :pattern.match.core/pattern-replace]))))
+              (when ~(boolean handler-body) (rebuild-body args# env-args# hb#)))]
+     (cond-> r#
+       ~(boolean handler-body) (vary-meta assoc-in [:rule :src] hb#)
+       ~(boolean pattern) (vary-meta assoc-in [:rule :pattern] p#))))
