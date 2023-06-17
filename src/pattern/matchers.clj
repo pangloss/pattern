@@ -175,6 +175,7 @@
        :var-modes (apply merge-with f/op (map (comp :var-modes meta) matchers))
        :var-abbrs (apply merge-with f/op (map (comp :var-abbrs meta) matchers))
        :var-prefixes (apply merge-with f/op (map (comp :var-prefixes meta) matchers))
+       :greedy (some (comp :greedy meta) matchers)
        :list-length list-length
        :length (len 1)
        `spliceable-pattern (fn [_] `(~'?:1 ~@pattern))})))
@@ -294,8 +295,9 @@
         name (var-name variable)
         prefix (matcher-prefix variable)
         abbr (var-abbr prefix name)
+        greedy? (matcher-mode? variable "!")
         [loop-start loop-continue? loop-next update-datum]
-        (if (or force-greedy (matcher-mode? variable "!"))
+        (if (or force-greedy greedy?)
           [identity
            (if force-greedy
              = ;; don't shrink to impossible sizes
@@ -332,6 +334,7 @@
            :var-modes {name (matcher-mode variable)}
            :var-prefixes {name (if prefix [prefix] [])}
            :var-abbrs {name (if abbr [abbr] [])}
+           :greedy greedy?
            :length (var-len 0)})
         (assoc `spliceable-pattern (fn [this] variable))))))
 
@@ -491,7 +494,8 @@
         list-matcher (compile-pattern* pattern comp-env)
         md (meta list-matcher)
         step-size (max 1 (:n (:list-length md)))
-        var-len? (:v (:list-length md))]
+        var-len? (:v (:list-length md))
+        greedy? (and var-len? (:greedy md))]
     ;; TODO: if list len is 0, just always match once and move on.
     (with-meta
       (fn optional-matcher [data orig-dictionary ^Env env]
@@ -503,17 +507,38 @@
                         (dissoc :optional/no-match)
                         (assoc :succeed
                           (fn [dict' _]
-                            (if (and many? (seq next-data))
-                              (or ((.succeed env) dict' (+ n size))
-                                (lp dict' (+ n size) step-size (take step-size next-data) (drop step-size next-data) next-data))
-                              ((.succeed env) dict' (+ n size)))))))
-                    (when optional? ((.succeed env) dict 0))
+                            (or ((.succeed env) dict' (+ n size))
+                              (when (and many? (seq next-data))
+                                (lp dict' (+ n size) step-size
+                                  (take step-size next-data) (drop step-size next-data) next-data)))))))
                     ;; did not match. Backtrack and try taking another element into this matcher
-                    (when (and var-len? (seq next-data))
+                    (if (and var-len? (seq next-data))
                       (let [size (inc size)]
-                        (lp dict n size (take size prev-data) (drop size prev-data) prev-data)))))]
+                        (lp dict n size (take size prev-data) (drop size prev-data) prev-data))
+                      (when optional? ((.succeed env) dict 0)))))
+
+                ;; greedy version:
+                (lp! [dict n size this-data next-data prev-data]
+                  ;; todo: bouncing here
+                  (or
+                    (list-matcher [this-data] dict
+                      (-> env
+                        (dissoc :optional/no-match)
+                        (assoc :succeed
+                          (fn [dict' _]
+                            (or ((.succeed env) dict' (+ n size))
+                              (when (and many? (seq next-data))
+                                (lp! dict' (+ n size) (count next-data) next-data () next-data)))))))
+                    ;; did not match. Backtrack and try taking another element into this matcher
+                    (if (< step-size size)
+                      (let [size (dec size)]
+                        (lp! dict n size (take size prev-data) (drop size prev-data) prev-data))
+                      (when optional? ((.succeed env) dict 0)))))]
+
           ;; todo: trampoline here
-          (lp orig-dictionary 0 step-size (take step-size data) (drop step-size data) data)))
+          (if greedy?
+            (lp! orig-dictionary 0 (count data) data () data)
+            (lp orig-dictionary 0 step-size (take step-size data) (drop step-size data) data))))
       (cond-> (meta list-matcher)
         true (assoc :length (:list-length md)
                :pattern full-pattern)
@@ -662,7 +687,9 @@
                               (if (and at-least (= at-least at-most))
                                 (len (* (:n l) at-least))
                                 (var-len (* (:n l) (or at-least 0)))))))
-          (assoc `spliceable-pattern (fn [_] `(~'?:n [~at-least ~at-most] ~@(rest pattern)))))))))
+          (assoc
+            :greedy (not= at-least at-most) ;; only not greedy if fixed-length
+            `spliceable-pattern (fn [_] `(~'?:n [~at-least ~at-most] ~@(rest pattern)))))))))
 
 (defn- match-many
   "See [[match-sequence]]"

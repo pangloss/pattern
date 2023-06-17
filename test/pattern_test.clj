@@ -36,31 +36,31 @@
       '[?:and & "." nil]       (<- '(?.:and b)))))
 
 
-(deftest seq-focus1
-  #rtrace
+(deftest optional-based-matchers
   (is (= '(1 [3] 4)
-        (matcher '[(?:1 ?a ??b ?a +) ?c] '[1 3 1 + 4]))))
+        (matcher '[(?:1 ?a ??b ?a +) ?c] '[1 3 1 + 4])))
 
-(deftest seq-focus1
-  #rtrace
   (is (= '(1 [3 9] 4)
         (matcher '[(?:1 ?a ??b ?a +) ?c (?:1 ?a ??b ?a +)]
+          '[1 3 9 1 + 4 1 3 9 1 +])))
+
+  (is (= []
+        (matcher '[(?:* 1 +)] '[1 + 1 +])))
+
+  (is (= [[1 1] '[+ +]]
+        (matcher '[(?:* ?x ?y)] '[1 + 1 +])))
+
+  (is (= [[1 2] '[+ +]]
+        (matcher '[(?:* ?x ?y)] '[1 + 2 +])))
+
+  (is (= '(1 [] [3 9 1 + 4 1 3 9 1 +])
+        (matcher '[(?:1 ?a ??b) (?:1 ??c)]
           '[1 3 9 1 + 4 1 3 9 1 +]))))
 
-(deftest seq-focus2
-  #rtrace
-  (is (= []
-         (matcher '[(?:* 1 +)] '[1 + 1 +]))))
-
-(deftest seq-focus2
-  #rtrace
-  (is (= [[1 1] '[+ +]]
-         (matcher '[(?:* ?x ?y)] '[1 + 1 +]))))
-
-(deftest seq-focus2
-  #rtrace
-  (is (= [[1 2] '[+ +]]
-         (matcher '[(?:* ?x ?y)] '[1 + 2 +]))))
+(deftest seq-focus7
+  (is (= '(1 [3 9 1 + 4 1 3 9 1 +] [])
+        (matcher '[(?:1 ?a ??!b) (?:1 ??c)]
+          '[1 3 9 1 + 4 1 3 9 1 +]))))
 
 (deftest sequence-matching
 
@@ -85,9 +85,8 @@
   (is (= '(1 3)
         (matcher '[(?:1 ?a ?b ?a +) ?b] '[1 3 1 + 3])))
 
-  #rtrace
   (is (= '(1 [3])
-        (matcher '[(?:1 ?a ??b ?a +) ?b] '[1 3 1 + 3])))
+        (matcher '[(?:1 ?a ??b ?a +) ?b] '[1 3 1 + [3]])))
 
   (is (nil?
         (matcher '[(?:1 ?a ?b ?a +) ?b] '[1 3 1 + 1 3 1 + 3]))
