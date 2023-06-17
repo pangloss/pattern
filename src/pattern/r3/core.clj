@@ -235,7 +235,8 @@
            hb# ~handler-body]
        (cond->
          (-rebuild-rule r#
-           ;; TODO: apply-replacements. (capture the ones at rule definition?)
-           (when ~(boolean pattern) (compile-pattern p#))
+           (when ~(boolean pattern)
+             (compile-pattern (apply-replacements p#
+                                (get-in (meta r#) [:rule :pattern.match.core/pattern-replace]))))
            (when ~(boolean handler-body) (rebuild-body args# env-args# hb#)))
          ~(boolean handler-body) (vary-meta assoc-in [:rule :src] hb#)))))
