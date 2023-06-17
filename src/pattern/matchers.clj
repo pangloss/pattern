@@ -493,62 +493,44 @@
   (when (seq pattern)
     (let [mode (:optional/mode comp-env)
           optional? (nil? mode) ;; used directly via ?:?
-          many? (not= :one mode)
+          one? (= :one mode)
+          many? (= :sequence mode)
           comp-env (dissoc comp-env :optional/mode)
-          list-matcher (compile-pattern* pattern comp-env)
-          md (meta list-matcher)
+          md-matcher (compile-pattern* pattern comp-env)
+          md (meta md-matcher)
           step-size (max 1 (:n (:list-length md)))
           var-len? (:v (:list-length md))
-          greedy? (and var-len? (:greedy md))]
+          greedy? (and var-len? (:greedy md))
+          tail-var (gensym 'tail)
+          ;; TODO: if reserve-min-tail is set, chop the tail off before hitting the list-matcher
+          ;; TODO: if reserve-min-tail is set and the pattern is not var, don't include the pattern?
+          tail-pattern (symbol (str "??" tail-var))
+          list-matcher (compile-pattern* (concat pattern (list tail-pattern)) comp-env)]
       (with-meta
         (fn optional-matcher [data orig-dictionary ^Env env]
-          (letfn [(lp [dict n size this-data next-data prev-data]
+          (letfn [(lp [dict n size this-data]
                     (bouncing
                       (or
                         (list-matcher [this-data] dict
-                          (-> env
-                            (dissoc :optional/no-match)
-                            (assoc :succeed
-                              (fn [dict' _]
-                                (or ((.succeed env) dict' (+ n size))
-                                  (when (and many? (seq next-data))
-                                    (lp dict' (+ n size) step-size
-                                      (take step-size next-data) (drop step-size next-data) next-data)))))))
-                        ;; did not match. Backtrack and try taking another element into this matcher
-                        (if (and var-len? (seq next-data))
-                          (let [size (inc size)]
-                            (lp dict n size (take size prev-data) (drop size prev-data) prev-data))
-                          (when optional? ((.succeed env) dict 0))))))
-
-                  ;; greedy version:
-                  (lp! [dict n size this-data next-data prev-data]
-                    (bouncing
-                      (or
-                        (list-matcher [this-data] dict
-                          (-> env
-                            (dissoc :optional/no-match)
-                            (assoc :succeed
-                              (fn [dict' _]
-                                (or ((.succeed env) dict' (+ n size))
-                                  (when (and many? (seq next-data))
-                                    (lp! dict' (+ n size) (count next-data) next-data () next-data)))))))
-                        ;; did not match. Backtrack and try taking another element into this matcher
-                        (if (< step-size size)
-                          (let [size (dec size)]
-                            (lp! dict n size (take size prev-data) (drop size prev-data) prev-data))
-                          (when optional? ((.succeed env) dict 0))))))]
+                          (assoc env :succeed
+                            (fn [dict' _] ;; size returned by list matcher is always 1.
+                              (let [tail (:value (get dict' tail-var))
+                                    tail (if many? (last tail) tail)
+                                    tail-size (count tail)
+                                    size (- size tail-size)]
+                                (or ((.succeed env) (dissoc dict' tail-var) (+ n size))
+                                  (when (and many? (seq tail))
+                                    (lp dict' (+ n size) tail-size tail)))))))
+                        (when optional? ((.succeed env) dict 0)))))]
 
             (if (seq data)
-              (trampolining
-                (if greedy?
-                  (lp! orig-dictionary 0 (count data) data () data)
-                  (lp orig-dictionary 0 step-size (take step-size data) (drop step-size data) data)))
+              (trampolining (lp orig-dictionary 0 (count data) data))
               (when optional? ((.succeed env) orig-dictionary 0)))))
-        (cond-> (meta list-matcher)
+        (cond-> (meta md-matcher)
           true (assoc :length (:list-length md)
                  :pattern full-pattern)
-          many? (assoc-in [:length :v] true)
-          many? (assoc-in [:length :n] 0))))))
+          (not one?) (assoc-in [:length :v] true)
+          (not one?) (assoc-in [:length :n] 0))))))
 
 (defn- match-one
   "Match the given set of patterns once."

@@ -1,6 +1,7 @@
 (ns pattern.r3.rule
   (:require [pattern.match.core :refer [run-matcher value-dict compile-pattern]]
-            [pattern.match.predicator :refer [*pattern-replace* apply-replacements]])
+            [pattern.match.predicator :refer [*pattern-replace* apply-replacements]]
+            [genera.trampoline :refer [bounce?]])
   (:import (pattern.types Success SuccessEnv SuccessUnmodified)
            (clojure.lang IFn IObj IMeta)))
 
@@ -121,7 +122,7 @@
                               (if on-result
                                 (on-result rule r data dict env)
                                 r))))]
-    (if (fn? r)
+    (if (bounce? r)
       r ;; this does get hit when using `sub`, but don't recall why.
       (let [[result new-env] r
             new-env (unwrap-env new-env result)
