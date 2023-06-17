@@ -325,7 +325,8 @@
                        (recur avs (conj vals val))))
                    (apply f datum vals)))))
            (fn restriction [dictionary datum] (f datum)))
-         (constantly true))])))
+         (constantly true))
+       (boolean f)])))
 
 (defn lookup [name dict env]
   (let [name (var-key name env)]

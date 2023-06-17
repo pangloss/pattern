@@ -284,13 +284,15 @@
   them to apply on aggregate, use (?? x (on-all f)), or if you want the value to
   be applied to a function, you can use (?? x (apply f))."
   [variable {:keys [reserve-min-tail] :as comp-env}]
-  (let [[sat-mode sat?] (var-restriction variable
-                          (update comp-env :restrictions
-                            (fnil conj []) (fn [i] (when (int? i)
-                                                    (list 'on-all #(= i (count %)))))))
-        sat? (if (= 'on-all sat-mode)
-               sat?
-               (fn [dict s] (every? #(sat? dict %) s)))
+  (let [[sat-mode sat? f?] (var-restriction variable
+                             (update comp-env :restrictions
+                               (fnil conj []) (fn [i] (when (int? i)
+                                                       (list 'on-all #(= i (count %)))))))
+        sat? (if f?
+               (if (= 'on-all sat-mode)
+                 sat?
+                 (fn [dict s] (every? #(sat? dict %) s)))
+               sat?)
         force-greedy (not (:v reserve-min-tail)) ;; no later list matchers are variable-sized.
         reserved-tail (or (:n reserve-min-tail) 0)
         name (var-name variable)
