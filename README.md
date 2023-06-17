@@ -152,50 +152,125 @@ Each matcher in the list has a matcher implementation function with detailed doc
 
 (better docs coming eventually!)
 
-| Matcher | Implementation | Notes |
-| --- | --- | --- |
-| `?` | match-element | Match a single element |
-| `??` | match-segment | Match 0 or more elements |
-| `??!` | | Same as `??`, but greedy |
-| `?:map` | match-map | Match a map with specific keys |
-| `?:*map` | match-*map | Match each key-value pair in a map |
-| `?:+map` | match-+map | Like `?:*map`, but require at least one match |
-| `?:as` | match-as | Capture an entire sub pattern if the contained pattern matches |
-| `?:?` | match-optional | Match 0 or 1 instance |
-| `?:1` | match-one | Match exactly 1 instance |
-| `?:*` | match-many | Match any number of instances |
-| `?:+` | match-at-least-one | Match at least one instance |
-| `?:chain` | match-chain | Alternate between patterns and functions on the matched data |
-| `??:chain` | | Same as `?:chain` but capture sequence data |
-| `\|` | match-or | Match alternative patterns on the same data |
-| `&` | match-and | Match all patterns on the same data |
-| `?:=` | match-literal | Match a literal value (usually not needed) |
-| `?:not` | match-not | Match only if the contained pattern does not |
-| `?:when` | match-when | If the predicate, match the pattern |
-| `?:if` | match-if | If the predicate, match the then pattern, otherwise the else pattern |
-| `?:letrec` | match-letrec | Create named subpatterns that can be used later |
-| `?:ref` | match-ref | Use a named subpattern |
-| `?:fresh` | match-fresh | Match a new copy of the given name |
-| `?:all-fresh` | match-all-fresh | Don't unify with captures outside the block |
-| `?:restartable` | match-restartable | If the pattern doesn't match, raise a condition that can provide a value |
-| `?:re-matches` | match-regex | Match with a regex, binding captures |
-| `?:re-seq` | match-regex | Multiple matches with a regex, binding captures |
+| Matcher         | Implementation     | Notes                                                                    |
+|-----------------|--------------------|--------------------------------------------------------------------------|
+| `?`             | match-element      | Match a single element                                                   |
+| `??`            | match-segment      | Match 0 or more elements                                                 |
+| `??!`           |                    | Same as `??`, but greedy                                                 |
+| `?:map`         | match-map          | Match a map with specific keys                                           |
+| `?:*map`        | match-*map         | Match each key-value pair in a map                                       |
+| `?:+map`        | match-+map         | Like `?:*map`, but require at least one match                            |
+| `?:as`          | match-as           | Capture an entire sub pattern if the contained pattern matches           |
+| `?:?`           | match-optional     | Match 0 or 1 instance                                                    |
+| `?:1`           | match-one          | Match exactly 1 instance                                                 |
+| `?:*`           | match-many         | Match any number of instances                                            |
+| `?:+`           | match-at-least-one | Match at least one instance                                              |
+| `?:chain`       | match-chain        | Alternate between patterns and functions on the matched data             |
+| `??:chain`      |                    | Same as `?:chain` but capture sequence data                              |
+| `\|`            | match-or           | Match alternative patterns on the same data                              |
+| `&`             | match-and          | Match all patterns on the same data                                      |
+| `?:=`           | match-literal      | Match a literal value (needed if the form looks like a matcher pattern)  |
+| `?:not`         | match-not          | Match only if the contained pattern does not                             |
+| `?:when`        | match-when         | If the predicate, match the pattern                                      |
+| `?:if`          | match-if           | If the predicate, match the then pattern, otherwise the else pattern     |
+| `?:letrec`      | match-letrec       | Create named subpatterns that can be used later                          |
+| `$`             | match-ref          | Use a named subpattern defined in `?:letrec`                             |
+| `?:fresh`       | match-fresh        | Match a new copy of the given name                                       |
+| `?:all-fresh`   | match-all-fresh    | Don't unify with captures outside the block                              |
+| `?:restartable` | match-restartable  | If the pattern doesn't match, raise a condition that can provide a value |
+| `?:re-matches`  | match-regex        | Match with a regex, binding captures                                     |
+| `?:re-seq`      | match-regex        | Multiple matches with a regex, binding captures                          |
+| `?:filter`      | match-filter       | Match only the items in the list where the predicate returns true        |
+| `??:filter`     |                    | Inline sequence version of ?:filter                                      |
+| `?:remove`      |                    | Match only the items in the list where the predicate returns false       |
+| `??:remove`     |                    | Inline sequence version of ?:remove                                      |
+    
+      
+#### A little about regex matchers
+
+
+The `?:re-matches` pattern takes a second form which is a pattern that matches the structure
+returned by `clojure.core/re-matches`:
+``` clojure
+(let [matcher (pattern/compile-pattern
+                '(?:re-matches #"(\d+) (.+)" ?re-matches))]
+  (matcher "123 [a b c]"))
+``` 
+
+That returned structure can itself be matched:
+``` clojure
+(let [matcher (pattern/compile-pattern
+                '(?:re-matches #"(\d+) (.+)"
+                   [?full_match ?group1 ?group2]))]
+  (matcher "123 [a b c]"))
+``` 
+
+There is no way that I know of to discover group names, so here `foo` will not
+be included in the bound names matched by the compiled pattern.
+Here, `?foo` will bind to 999 just fine, because the named group in the regex
+is not exposed outside of the regex itself.
+``` clojure
+(let [matcher (pattern/compile-pattern
+                '[(?:re-matches #"(?<foo>\d+) (.+)"
+                    [?full_match ?group1 ?group2])
+                  ?foo])]
+  (matcher ["123 [a b c]" "999"]))
+``` 
+
+Within the pattern, I can specify the name with ?foo, though. If I do then
+the two instances must unify. This now fails to match:
+``` clojure
+(let [matcher (pattern/compile-pattern
+                '[(?:re-matches #"(?<foo>\d+) (.+)"
+                    [?full_match ?foo ?group2])
+                  ?foo])]
+  (matcher ["123 [a b c]" "999"]))
+``` 
+
+Named matches can still be useful in the regex and they together with all
+features are perfectly acceptable to use.  Here the number at the beginning
+and the end of the string must match for the regex to match.
+``` clojure
+(let [matcher (pattern/compile-pattern
+                '(?:re-matches #"(?<foo>\d+) (.+) \k<foo>"
+                   [?full_match ?group2 ?group1]))]
+  (matcher "123 [a b c] 123"))
+``` 
+
+The captured data may have further matchers applied to it. Here I use the
+?:chain matcher to parse the second group with read-string, then match within
+the parsed form.
+``` clojure
+(let [matcher (pattern/compile-pattern
+                '(?:re-matches #"(?<foo>\d+) (.+) \k<foo>"
+                   [?full_match
+                    ?group2
+                    (?:chain ?group1 read-string [?x ?y ?z])]))]
+  (matcher "123 [a b c] 123"))
+```
 
 ### Adding new matchers
 
 The ?:chain rule can often be used to create a custom matcher.
-This is the implementation of the ?:map one:
+This is the implementation of the ?:map one. 
+
+This matcher starts with an unnamed matcher that ensures the matched datum is either a map or nil: `(? _ (some-fn nil? map?))`
+Then if that matches, calls `seq` on that datum, turning the map into a list of `[key value]` pairs.
+The result may match either `nil` if the map is empty, or each key value pair must match the given `k` and `v` pattern forms, which are spliced into the matcher here: `(| nil ((?:* ~[k v])))`.
+
+The generated matcher is then compiled with `compile-pattern*`, passing along the compilation environment.
+
+Finally, new matchers must be registered with their name and optional aliases.
 
 ``` clojure
 (defn match-*map
   "Create a ?:*map matcher than can match a key/value pair multiple times."
   [[_ k v] comp-env]
-  (compile-pattern*
-    (quo `(?:chain
-            (? _ ~(some-fn nil? map?))
-            seq
-            (| nil ((?:* [~k ~v])))))
-    comp-env))
+  (compile-pattern* `(~'?:chain
+                      (~'? ~'_ ~(some-fn nil? map?))
+                      seq
+                      (~'| nil ((~'?:* ~[k v]))))
+                    comp-env))
 
 (register-matcher '?:*map #'match-*map {:aliases ['?:map*]})
 ```

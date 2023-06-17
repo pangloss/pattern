@@ -36,72 +36,167 @@
       '[:list :list nil nil]   (<- '(??:ref b))
       '[?:and & "." nil]       (<- '(?.:and b)))))
 
+
+(deftest optional-based-matchers
+  (is (= '(1 [3] 4)
+        (matcher '[(?:1 ?a ??b ?a +) ?c] '[1 3 1 + 4])))
+
+  (is (= '(1 [3 9] 4)
+        (matcher '[(?:1 ?a ??b ?a +) ?c (?:1 ?a ??b ?a +)]
+          '[1 3 9 1 + 4 1 3 9 1 +])))
+
+  (is (= []
+        (matcher '[(?:* 1 +)] '[1 + 1 +])))
+
+  (is (= [[1 1] '[+ +]]
+        (matcher '[(?:* ?x ?y)] '[1 + 1 +])))
+
+  (is (= [[1 2] '[+ +]]
+        (matcher '[(?:* ?x ?y)] '[1 + 2 +])))
+
+  (is (= '[[1 + 2 +]]
+        (matcher '[(?:?) ??x] '[1 + 2 +])))
+
+  (is (= '[[1 + 2 +]]
+        (matcher '[(?:1) ??x] '[1 + 2 +])))
+
+  (is (= '[[1 + 2 +]]
+        (matcher '[(?:*) ??x] '[1 + 2 +])))
+
+  (is (= '(1 [] [3 9 1 + 4 1 3 9 1 +])
+        (matcher '[(?:1 ?a ??b) (?:1 ??c)]
+          '[1 3 9 1 + 4 1 3 9 1 +])))
+
+  (is (= '([] [1] [+ 2 9 8 7 6 5 4 3 2 1 +])
+        (matcher '[??y (?:? ??z) ??!x] '[1 + 2 9 8 7 6 5 4 3 2 1 +])))
+
+  (is (= '([] [] [1 + 2 9 8 7 6 5 4 3 2 1 +])
+        (matcher '[??y (?:1 ??z) ??!x] '[1 + 2 9 8 7 6 5 4 3 2 1 +])))
+
+  (is (= '([] [[1 +] [9 8 7 6 5 4 3]] [1 +])
+        (matcher '[??y (?:* ??z 2) ??x] '[1 + 2 9 8 7 6 5 4 3 2 1 +]))))
+
+(deftest seq-focus7
+  (is (= '(1 [3 9 1 + 4 1 3 9 1 +] [])
+        (matcher '[(?:1 ?a ??!b) (?:1 ??c)]
+          '[1 3 9 1 + 4 1 3 9 1 +]))))
+
 (deftest sequence-matching
 
   (is (nil? (matcher '[?x ??x] [1 1])))
 
   (is (= [[1]]
-         (matcher '[?x ??x] [[1] 1])))
+        (matcher '[?x ??x] [[1] 1])))
 
   (testing "list matcher mistakenly used seqable? instead of sequential? causing strings to be matched as lists."
     (is (nil? (matcher '((?:* ?x)) '"abc")))
     (is (nil? (matcher '(??x) '"abc"))))
 
   (is (= '(1 3)
-         (matcher '[(?:? ?a ?b ?a +) ?b] '[1 3 1 + 3])))
-
-  (is (= '(nil 3)
-         (matcher '[(?:? ?a ?b ?a +) ?b] '[3])))
+        (matcher '[(?:? ?a ?b ?a +) ?b] '[1 3 1 + 3])))
 
   (is (= '(1 3)
-         (matcher '[(?:1 ?a ?b ?a +) ?b] '[1 3 1 + 3])))
+        (matcher '[(?:? ?a ?b ?a +) ?b] '[1 3 1 + 3])))
+
+  (is (= '(nil 3)
+        (matcher '[(?:? ?a ?b ?a +) ?b] '[3])))
+
+  (is (= '(1 3)
+        (matcher '[(?:1 ?a ?b ?a +) ?b] '[1 3 1 + 3])))
+
+  (is (= '(1 [3])
+        (matcher '[(?:1 ?a ??b ?a +) ?b] '[1 3 1 + [3]])))
 
   (is (nil?
-       (matcher '[(?:1 ?a ?b ?a +) ?b] '[1 3 1 + 1 3 1 + 3]))
-      "Don't match the optional pattern doubled")
+        (matcher '[(?:1 ?a ?b ?a +) ?b] '[1 3 1 + 1 3 1 + 3]))
+    "Don't match the optional pattern doubled")
 
   (is (nil?
-       (matcher '[(?:1 ?a ?b ?a +) ?b] '[3])))
+        (matcher '[(?:1 ?a ?b ?a +) ?b] '[3])))
 
   (is (= [[1 1] [3 3]]
-         (matcher '[(?:+ ?a ?b ?a +) ?b] '[1 3 1 + 1 3 1 + [3 3]]))
-      "Sequence can match the optional pattern doubled (with slight change for the last ?b)")
+        (matcher '[(?:+ ?a ?b ?a +) ?b] '[1 3 1 + 1 3 1 + [3 3]]))
+    "Sequence can match the optional pattern doubled (with slight change for the last ?b)")
 
   (is (= '(1 $$ (3))
-         (matcher '[(?:? ?a ?x ?a +) ??b] '[1 $$ 1 + 3])))
+        (matcher '[(?:? ?a ?x ?a +) ??b] '[1 $$ 1 + 3])))
 
   (is (= [1 '+ [2 '+]]
-         (matcher '[(?:? ?x ?b) ??a] '[1 + 2 +])))
+        (matcher '[(?:? ?x ?b) ??a] '[1 + 2 +])))
 
   (is (= [[1 2] '[+ +]]
-         (matcher '[(?:* ?x ?y)] '[1 + 2 +])))
+        (matcher '[(?:* ?x ?y)] '[1 + 2 +])))
 
   (is (= [[1 2] '[+ +]]
-         (matcher '[(?:* ^{:min 1 :max 5} ?x ?y)] '[1 + 2 +])))
+        (matcher '[(?:* ^{:min 1 :max 5} ?x ?y)] '[1 + 2 +])))
+
+  (testing "(?:n [min max] pattern)"
+    (is (= [[1 2] '[+ +]]
+          (matcher '[(?:n [1 5] ?x ?y)] '[1 + 2 +]))))
+
+  (testing "(?:n min pattern)"
+    (is (= [[1 2] '[+ +]]
+          (matcher '[(?:n 1 ?x ?y)] '[1 + 2 +])))
+
+    (is (= [[1 2] '[+ +]]
+          (matcher '[(?:n 2 ?x ?y)] '[1 + 2 +])))
+
+    (is (nil?
+          (matcher '[(?:n 3 ?x ?y)] '[1 + 2 +]))))
+
+  (testing "(?:n min-var pattern)"
+    (is (= [1 [1 2] '[+ +]]
+          (matcher '[?minvar [(?:n minvar ?x ?y)]] '[1 [1 + 2 +]])))
+
+    (is (= [2 [1 2] '[+ +]]
+          (matcher '[?minvar [(?:n minvar ?x ?y)]] '[2 [1 + 2 +]])))
+
+    (is (nil?
+          (matcher '[?minvar [(?:n minvar ?x ?y)]] '[3 [1 + 2 +]]))))
+
+  (testing "(?:n [nil max-var] pattern)"
+    (is (nil?
+          (matcher '[?maxvar [(?:n [nil maxvar] ?x ?y)]] '[1 [1 + 2 +]])))
+
+    (is (= [2 [1 2] '[+ +]]
+          (matcher '[?maxvar [(?:n [nil maxvar] ?x ?y)]] '[2 [1 + 2 +]])))
+
+    (is (= [3 [1 2] '[+ +]]
+          (matcher '[?maxvar [(?:n [nil maxvar] ?x ?y)]] '[3 [1 + 2 +]]))))
+
+  (testing "(?:n [min-var max-var] pattern)"
+    (is (nil?
+          (matcher '[?maxvar [(?:n [maxvar maxvar] ?x ?y)]] '[1 [1 + 2 +]])))
+
+    (is (= [2 [1 2] '[+ +]]
+          (matcher '[?maxvar [(?:n [maxvar maxvar] ?x ?y)]] '[2 [1 + 2 +]])))
+
+    (is (nil?
+          (matcher '[?maxvar [(?:n [maxvar maxvar] ?x ?y)]] '[3 [1 + 2 +]]))))
 
   (is (= [[1] ['+] [2 '+]]
-         (matcher '[(?:* ^{:min 1 :max 5} ?x ?y) (?? z) ?x] '[1 + 2 + [1]])))
+        (matcher '[(?:* ^{:min 1 :max 5} ?x ?y) (?? z) ?x] '[1 + 2 + [1]])))
 
   (is (= [[1 2]]
-         (matcher '[??x (?:* ?x)] [1 2 1 2])))
+        (matcher '[??x (?:* ?x)] [1 2 1 2])))
   (is (= [[1 2]]
-         (matcher '[(?:* ?x) ??x] [1 2 1 2])))
+        (matcher '[(?:* ?x) ??x] [1 2 1 2])))
   (is (= [[1] [1] 2 [1]]
-         (matcher '[(?:* (& ?x ?a)) ?z (?:* (& ?x ?b)) ?z] [1 2 1 2])))
+        (matcher '[(?:* (& ?x ?a)) ?z (?:* (& ?x ?b)) ?z] [1 2 1 2])))
   (is (= [[1 2]]
-         (matcher '[(?:+ ?x) (?:+ ?x)] [1 2 1 2])))
+        (matcher '[(?:+ ?x) (?:+ ?x)] [1 2 1 2])))
   (is (= [[1 2 1 2] []]
-         (matcher '[(?:+ ^{:min 3} ?y) ??x] [1 2 1 2])))
+        (matcher '[(?:+ ^{:min 3} ?y) ??x] [1 2 1 2])))
   (is (= [[1 2 1 2] []]
-         (matcher '[??!y (?:* ?x)] [1 2 1 2])))
+        (matcher '[??!y (?:* ?x)] [1 2 1 2])))
   (is (= [[1 2 1 2] []]
-         (matcher '[(?:+ ^{:min 3} ?y) (?:* ?x)] [1 2 1 2])))
+        (matcher '[(?:+ ^{:min 3} ?y) (?:* ?x)] [1 2 1 2])))
   (is (= [[1] [2 1 2]]
-         (matcher '[??!x (?:+ ^{:min 3} ?y)] [1 2 1 2])))
+        (matcher '[??!x (?:+ ^{:min 3} ?y)] [1 2 1 2])))
   (is (= [[1] [2 1 2]]
-         (matcher '[??x (?:* ^{:max 3} ?y)] [1 2 1 2])))
+        (matcher '[??x (?:* ^{:max 3} ?y)] [1 2 1 2])))
   (is (= [[1 2]]
-         (matcher '[??x ??x] [1 2 1 2]))))
+        (matcher '[??x ??x] [1 2 1 2]))))
 
 
 (deftest negative-match
@@ -413,17 +508,32 @@
   (is (= [] (matcher '{:a 1 :b ?a} {:a 1 :b '?a}))
       "Patterns are not matched within literal maps. A matcher will be treated as a literal value.")
   (is (= [[:a :b]] (matcher '(?:chain ?_ keys ?k) {:a 1 :b 2}))
-      "Use chain to do other types of map matches"))
+      "Use chain to do other types of map matches")
 
+  (is (= [[:a :b] [1 2]]
+        (matcher '(?:*map ?k ?v) {:a 1 :b 2})))
+  (is (= [[:a :b] [1 2]]
+        (matcher '(?:map* ?k ?v) {:a 1 :b 2})))
+  (is (= [nil nil]
+        (matcher '(?:*map ?k ?v) {})))
+
+  (is (= [[:a :b] [1 2]]
+        (matcher '(?:+map ?k ?v) {:a 1 :b 2})))
+  (is (nil?
+        (matcher '(?:+map ?k ?v) {}))))
+
+(deftest set-matcher
+  (is (= [[:b :a]]
+        (matcher '(?:set ?k) #{:a :b}))))
 
 
 (deftest anon-matchers
   (is (= '(1)
-         (matcher '[?x (?) (?)] [1 2 3])))
+        (matcher '[?x (?) (?)] [1 2 3])))
   (is (= '(1)
-         (matcher '[?x ?_ ?_] [1 2 3])))
+        (matcher '[?x ?_ ?_] [1 2 3])))
   (is (= '(1)
-         (matcher '[?x ??_] [1 2 3])))
+        (matcher '[?x ??_] [1 2 3])))
   (testing "These don't match"
     (is (nil? (matcher '[?x _ _] [1 2 3])))
     (is (nil? (matcher '[?x ?_] [1 2 3])))))

@@ -45,6 +45,13 @@
 (defonce restriction-position (atom {::default 2}))
 (def ^:dynamic enable-restart-pattern? #{})
 
+(def resolver-eval-whitelist
+  (atom
+    (into #{}
+      (concat
+        '[fn* fn comp some-fn every-pred partial]
+        `[fn comp some-fn every-pred partial]))))
+
 (defn matcher-type-for-dispatch
   "The same as matcher-type, but with aliases resolved."
   ([pattern]
@@ -54,7 +61,7 @@
      (@matcher-alias t t))))
 
 (defmulti compile-pattern*
-  "The multimethod patterns are registered to. This function is used within pattern combinators
+  "The multimethod that patterns are registered to. This function is used within pattern combinators
   to instantiate child patterns."
   matcher-type-for-dispatch)
 
@@ -262,7 +269,7 @@
   (let [f (cond (symbol? form) (resolve form)
                 (listy? form)
                 (cond
-                  ('#{fn* fn comp some-fn every-pred partial} (first form))
+                  (@resolver-eval-whitelist (first form))
                   (let [f (eval form)]
                     (when (ifn? f) f))
                   (= 2 (count form))
@@ -318,7 +325,8 @@
                        (recur avs (conj vals val))))
                    (apply f datum vals)))))
            (fn restriction [dictionary datum] (f datum)))
-         (constantly true))])))
+         (constantly true))
+       (boolean f)])))
 
 (defn lookup [name dict env]
   (let [name (var-key name env)]

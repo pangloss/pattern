@@ -46,11 +46,15 @@
   (child-rules [rc])
   (recombine [rc rules]))
 
+(defprotocol SpliceablePattern
+  :extend-via-metadata true
+  (spliceable-pattern [pattern]))
+
 (defn rule-combinator? [r]
   (or (satisfies? RuleCombinator r)
-      (let [m (meta r)]
-        (or (`child-rules m)
-            (`recombine m)))))
+    (let [m (meta r)]
+      (or (`child-rules m)
+        (`recombine m)))))
 
 (deftype Ok []
   Object
