@@ -107,10 +107,11 @@
   [pattern comp-env]
   (first
     (reduce (fn [[matchers comp-env] p]
-              (let [m (compile-pattern* p comp-env)]
+              (if-let [m (compile-pattern* p comp-env)]
                 [(cons m matchers)
                  (update comp-env
-                   :reserve-min-tail add-lengths (:length (meta m)))]))
+                   :reserve-min-tail add-lengths (:length (meta m)))]
+                [matchers comp-env]))
       [() (assoc comp-env :reserve-min-tail (len 0))]
       (reverse pattern))))
 
@@ -487,70 +488,73 @@
 
   This matcher is used as the repeating element for [[match-sequence]]."
   [[_ & pattern :as full-pattern] comp-env]
-  (let [mode (:optional/mode comp-env)
-        optional? (nil? mode) ;; used directly via ?:?
-        many? (not= :one mode)
-        comp-env (dissoc comp-env :optional/mode)
-        list-matcher (compile-pattern* pattern comp-env)
-        md (meta list-matcher)
-        step-size (max 1 (:n (:list-length md)))
-        var-len? (:v (:list-length md))
-        greedy? (and var-len? (:greedy md))]
-    ;; TODO: if list len is 0, just always match once and move on.
-    (with-meta
-      (fn optional-matcher [data orig-dictionary ^Env env]
-        (letfn [(lp [dict n size this-data next-data prev-data]
-                  ;; todo: bouncing here
-                  (or
-                    (list-matcher [this-data] dict
-                      (-> env
-                        (dissoc :optional/no-match)
-                        (assoc :succeed
-                          (fn [dict' _]
-                            (or ((.succeed env) dict' (+ n size))
-                              (when (and many? (seq next-data))
-                                (lp dict' (+ n size) step-size
-                                  (take step-size next-data) (drop step-size next-data) next-data)))))))
-                    ;; did not match. Backtrack and try taking another element into this matcher
-                    (if (and var-len? (seq next-data))
-                      (let [size (inc size)]
-                        (lp dict n size (take size prev-data) (drop size prev-data) prev-data))
-                      (when optional? ((.succeed env) dict 0)))))
+  (when (seq pattern)
+    (let [mode (:optional/mode comp-env)
+          optional? (nil? mode) ;; used directly via ?:?
+          many? (not= :one mode)
+          comp-env (dissoc comp-env :optional/mode)
+          list-matcher (compile-pattern* pattern comp-env)
+          md (meta list-matcher)
+          step-size (max 1 (:n (:list-length md)))
+          var-len? (:v (:list-length md))
+          greedy? (and var-len? (:greedy md))]
+      (with-meta
+        (fn optional-matcher [data orig-dictionary ^Env env]
+          (letfn [(lp [dict n size this-data next-data prev-data]
+                    (bouncing
+                      (or
+                        (list-matcher [this-data] dict
+                          (-> env
+                            (dissoc :optional/no-match)
+                            (assoc :succeed
+                              (fn [dict' _]
+                                (or ((.succeed env) dict' (+ n size))
+                                  (when (and many? (seq next-data))
+                                    (lp dict' (+ n size) step-size
+                                      (take step-size next-data) (drop step-size next-data) next-data)))))))
+                        ;; did not match. Backtrack and try taking another element into this matcher
+                        (if (and var-len? (seq next-data))
+                          (let [size (inc size)]
+                            (lp dict n size (take size prev-data) (drop size prev-data) prev-data))
+                          (when optional? ((.succeed env) dict 0))))))
 
-                ;; greedy version:
-                (lp! [dict n size this-data next-data prev-data]
-                  ;; todo: bouncing here
-                  (or
-                    (list-matcher [this-data] dict
-                      (-> env
-                        (dissoc :optional/no-match)
-                        (assoc :succeed
-                          (fn [dict' _]
-                            (or ((.succeed env) dict' (+ n size))
-                              (when (and many? (seq next-data))
-                                (lp! dict' (+ n size) (count next-data) next-data () next-data)))))))
-                    ;; did not match. Backtrack and try taking another element into this matcher
-                    (if (< step-size size)
-                      (let [size (dec size)]
-                        (lp! dict n size (take size prev-data) (drop size prev-data) prev-data))
-                      (when optional? ((.succeed env) dict 0)))))]
+                  ;; greedy version:
+                  (lp! [dict n size this-data next-data prev-data]
+                    (bouncing
+                      (or
+                        (list-matcher [this-data] dict
+                          (-> env
+                            (dissoc :optional/no-match)
+                            (assoc :succeed
+                              (fn [dict' _]
+                                (or ((.succeed env) dict' (+ n size))
+                                  (when (and many? (seq next-data))
+                                    (lp! dict' (+ n size) (count next-data) next-data () next-data)))))))
+                        ;; did not match. Backtrack and try taking another element into this matcher
+                        (if (< step-size size)
+                          (let [size (dec size)]
+                            (lp! dict n size (take size prev-data) (drop size prev-data) prev-data))
+                          (when optional? ((.succeed env) dict 0))))))]
 
-          ;; todo: trampoline here
-          (if greedy?
-            (lp! orig-dictionary 0 (count data) data () data)
-            (lp orig-dictionary 0 step-size (take step-size data) (drop step-size data) data))))
-      (cond-> (meta list-matcher)
-        true (assoc :length (:list-length md)
-               :pattern full-pattern)
-        many? (assoc-in [:length :v] true)
-        many? (assoc-in [:length :n] 0)))))
+            (if (seq data)
+              (trampolining
+                (if greedy?
+                  (lp! orig-dictionary 0 (count data) data () data)
+                  (lp orig-dictionary 0 step-size (take step-size data) (drop step-size data) data)))
+              (when optional? ((.succeed env) orig-dictionary 0)))))
+        (cond-> (meta list-matcher)
+          true (assoc :length (:list-length md)
+                 :pattern full-pattern)
+          many? (assoc-in [:length :v] true)
+          many? (assoc-in [:length :n] 0))))))
 
 (defn- match-one
   "Match the given set of patterns once."
   [[t & pattern] comp-env]
   (if (< 1 (count pattern))
     (match-optional (list* t pattern) (assoc comp-env :optional/mode :one))
-    (compile-pattern* (first pattern) comp-env)))
+    (when (seq pattern)
+      (compile-pattern* (first pattern) comp-env))))
 
 
 (defn- has-n?
@@ -594,102 +598,103 @@
   the `at-least` minimum valid match count. If at-least is not specified, the
   minimum is 0, in which case the matcher will always succeed."
   [at-least at-most [_ p0 :as pattern] comp-env]
-  (let [min-pattern-size (:min (meta p0) 0)
-        at-least (cond (not at-least) min-pattern-size
-                       (symbol? at-least) at-least
-                       :else (max at-least min-pattern-size))
-        at-most (if (symbol? at-most) at-most (or at-most (:max (meta p0)) Long/MAX_VALUE))
-        match-part (match-optional pattern (assoc comp-env :optional/mode :sequence :reserve-min-tail nil))
-        matcher-vars (:var-names (meta match-part))
-        reserve-min-tail (or (:reserve-min-tail comp-env) (len 0))
-        reserve-min-tail (let [l (:length (meta match-part))]
-                           (if (pos? (:n l))
-                             ;; need to fit whole repetitions
-                             (add-lengths reserve-min-tail (len (mod (:n reserve-min-tail)
-                                                                  (:n l))))
-                             reserve-min-tail))]
-    (letfn [(test-match [reps dict]
-              (let [evars (:sequence/existing dict)]
-                (and (if (symbol? at-least)
-                       ;; no match if undefined
-                       (<= (max (:value (dict at-least) Long/MAX_VALUE) min-pattern-size) reps)
-                       (<= at-least reps))
-                  (every? #(if-let [existing (evars %)]
-                             (when (contains? dict %)
-                               (let [evalue (:value existing)]
-                                 (if (sequential? evalue)
-                                   (= (take reps evalue)
-                                     (let [val (:value (dict %))]
-                                       (if (sequential? val)
-                                         (take reps val)
-                                         val)))
-                                   (= evalue (:value (dict %))))))
-                             true)
-                    matcher-vars))))
-            (level-sequences [reps dict]
-              ;; Ensure that all sequences are the same length, even if some matchers are optional.
-              (reduce (fn [dict var-name]
-                        (let [entry (dict var-name)
-                              val (:value entry)]
-                          (if (and (sequential? val)
-                                (< (count val) reps))
-                            (update-in dict [var-name :value] conj nil)
-                            dict)))
-                dict matcher-vars))
-            (gather [dict n data env matches]
-              (if (and (if (symbol? at-most)
+  (when (next pattern)
+    (let [min-pattern-size (:min (meta p0) 0)
+          at-least (cond (not at-least) min-pattern-size
+                         (symbol? at-least) at-least
+                         :else (max at-least min-pattern-size))
+          at-most (if (symbol? at-most) at-most (or at-most (:max (meta p0)) Long/MAX_VALUE))
+          match-part (match-optional pattern (assoc comp-env :optional/mode :sequence :reserve-min-tail nil))
+          matcher-vars (:var-names (meta match-part))
+          reserve-min-tail (or (:reserve-min-tail comp-env) (len 0))
+          reserve-min-tail (let [l (:length (meta match-part))]
+                             (if (pos? (:n l))
+                               ;; need to fit whole repetitions
+                               (add-lengths reserve-min-tail (len (mod (:n reserve-min-tail)
+                                                                    (:n l))))
+                               reserve-min-tail))]
+      (letfn [(test-match [reps dict]
+                (let [evars (:sequence/existing dict)]
+                  (and (if (symbol? at-least)
                          ;; no match if undefined
-                         (< (.repetition ^Env env) (:value (dict at-most) 0))
-                         (< (.repetition ^Env env) at-most))
-                    (has-n? (:n reserve-min-tail) data))
-                (bouncing
-                  (or (match-part
-                        data dict
-                        (assoc env
-                          :succeed
-                          (fn [dict n']
-                            (let [reps (inc (.repetition ^Env env))
-                                  dict (level-sequences reps dict)]
-                              (gather dict (+ n n') (drop n' data)
-                                (assoc env :repetition reps)
-                                (if (test-match reps dict)
-                                  (conj matches [dict (+ n n')])
-                                  matches))))))
-                    matches))
-                matches))]
-      (with-meta
-        (fn many-matcher [data dictionary ^Env env]
-          (let [dict (reduce (fn [d var] ;; Populate the dictionary with a set of empty matches if none exist
-                               (update d var #(or % {:name var :value [] :type '?:*})))
-                       (assoc dictionary
-                         :sequence/existing (select-keys dictionary matcher-vars)
-                         :sequence/id (gensym))
-                       matcher-vars)
-                matches
-                (trampolining
-                  (gather dict 0 data
-                    ;; Alter lookup behavior and make no-match in match-optional fail
-                    (assoc env
-                      :lookup sequence-lookup
-                      :store sequence-extend-dict
-                      :repetition 0)
-                    (if (test-match 0 dict)
-                      [[dict 0]]
-                      [])))]
-            (loop [matches matches]
-              (when-let [[dict n] (peek matches)]
-                (or ((.succeed env) dict n)
-                  (recur (pop matches)))))))
-        (-> (meta match-part)
-          (update :length (fn [l]
-                            (if (symbol? at-least)
-                              (var-len (:n l))
-                              (if (and at-least (= at-least at-most))
-                                (len (* (:n l) at-least))
-                                (var-len (* (:n l) (or at-least 0)))))))
-          (assoc
-            :greedy (not= at-least at-most) ;; only not greedy if fixed-length
-            `spliceable-pattern (fn [_] `(~'?:n [~at-least ~at-most] ~@(rest pattern)))))))))
+                         (<= (max (:value (dict at-least) Long/MAX_VALUE) min-pattern-size) reps)
+                         (<= at-least reps))
+                    (every? #(if-let [existing (evars %)]
+                               (when (contains? dict %)
+                                 (let [evalue (:value existing)]
+                                   (if (sequential? evalue)
+                                     (= (take reps evalue)
+                                       (let [val (:value (dict %))]
+                                         (if (sequential? val)
+                                           (take reps val)
+                                           val)))
+                                     (= evalue (:value (dict %))))))
+                               true)
+                      matcher-vars))))
+              (level-sequences [reps dict]
+                ;; Ensure that all sequences are the same length, even if some matchers are optional.
+                (reduce (fn [dict var-name]
+                          (let [entry (dict var-name)
+                                val (:value entry)]
+                            (if (and (sequential? val)
+                                  (< (count val) reps))
+                              (update-in dict [var-name :value] conj nil)
+                              dict)))
+                  dict matcher-vars))
+              (gather [dict n data env matches]
+                (if (and (if (symbol? at-most)
+                           ;; no match if undefined
+                           (< (.repetition ^Env env) (:value (dict at-most) 0))
+                           (< (.repetition ^Env env) at-most))
+                      (has-n? (:n reserve-min-tail) data))
+                  (bouncing
+                    (or (match-part
+                          data dict
+                          (assoc env
+                            :succeed
+                            (fn [dict n']
+                              (let [reps (inc (.repetition ^Env env))
+                                    dict (level-sequences reps dict)]
+                                (gather dict (+ n n') (drop n' data)
+                                  (assoc env :repetition reps)
+                                  (if (test-match reps dict)
+                                    (conj matches [dict (+ n n')])
+                                    matches))))))
+                      matches))
+                  matches))]
+        (with-meta
+          (fn many-matcher [data dictionary ^Env env]
+            (let [dict (reduce (fn [d var] ;; Populate the dictionary with a set of empty matches if none exist
+                                 (update d var #(or % {:name var :value [] :type '?:*})))
+                         (assoc dictionary
+                           :sequence/existing (select-keys dictionary matcher-vars)
+                           :sequence/id (gensym))
+                         matcher-vars)
+                  matches
+                  (trampolining
+                    (gather dict 0 data
+                      ;; Alter lookup behavior and make no-match in match-optional fail
+                      (assoc env
+                        :lookup sequence-lookup
+                        :store sequence-extend-dict
+                        :repetition 0)
+                      (if (test-match 0 dict)
+                        [[dict 0]]
+                        [])))]
+              (loop [matches matches]
+                (when-let [[dict n] (peek matches)]
+                  (or ((.succeed env) dict n)
+                    (recur (pop matches)))))))
+          (-> (meta match-part)
+            (update :length (fn [l]
+                              (if (symbol? at-least)
+                                (var-len (:n l))
+                                (if (and at-least (= at-least at-most))
+                                  (len (* (:n l) at-least))
+                                  (var-len (* (:n l) (or at-least 0)))))))
+            (assoc
+              :greedy (not= at-least at-most) ;; only not greedy if fixed-length
+              `spliceable-pattern (fn [_] `(~'?:n [~at-least ~at-most] ~@(rest pattern))))))))))
 
 (defn- match-many
   "See [[match-sequence]]"
