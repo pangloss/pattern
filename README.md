@@ -165,6 +165,7 @@ Each matcher in the list has a matcher implementation function with detailed doc
 | `?:1`           | match-one          | Match exactly 1 instance                                                 |
 | `?:*`           | match-many         | Match any number of instances                                            |
 | `?:+`           | match-at-least-one | Match at least one instance                                              |
+| `?:n`           | match-n-times      | Match the given sequence exactly n times.                                |
 | `?:chain`       | match-chain        | Alternate between patterns and functions on the matched data             |
 | `??:chain`      |                    | Same as `?:chain` but capture sequence data                              |
 | `\|`            | match-or           | Match alternative patterns on the same data                              |
