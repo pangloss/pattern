@@ -483,6 +483,12 @@
                       seq (~'| nil ((~'?:* ~item))))
     comp-env))
 
+(defn- has-n?
+  "Try to be fast at checking whether a list or vector has at least n elements."
+  [n data]
+  (or (zero? n)
+    (not= ::no (nth data (dec n) ::no))))
+
 (defn- match-optional
   "Match the given form 0 or 1 times. There may be any number of separate
   matcher patterns within this form, which all must match sequentially to make a
@@ -564,12 +570,6 @@
     (when (seq pattern)
       (compile-pattern* (first pattern) comp-env))))
 
-
-(defn- has-n?
-  "Try to be fast at checking whether a list or vector has at least n elements."
-  [n data]
-  (or (zero? n)
-    (not= ::no (nth data (dec n) ::no))))
 
 (defn- match-sequence
   "Match the given pattern repeatedly. A minimum and maximum number of matches
