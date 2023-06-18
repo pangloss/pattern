@@ -3,7 +3,7 @@
   (:require [genera :refer [defgenera defgenera= defgen defgen* defgen= defmethod* defmethod!
                             trampoline trampolining bouncing]]
             [uncomplicate.fluokitten.core :as f]
-            [pattern.types :refer [->Length map->Env]]
+            [pattern.types :refer [->Length]]
             [pattern.match.predicator :refer [*pattern-replace*]]
             [pattern.util :refer [listy?]]
             [pure-conditioning :as c :refer [condition restarts default manage restart-with handler-cond]]
@@ -344,31 +344,35 @@
         (assoc r :value val)))))
 
 (defn extend-dict [name value type abbr dict env]
-  (let [name (var-key name env)]
-    (if (or (nil? name) (= '_ name))
-      dict
-      (assoc dict name {:name name :value value :type type :abbr abbr}))))
+  (if ((.tails env) name)
+    (assoc dict name value)
+    (let [name (var-key name env)]
+      (if (or (nil? name) (= '_ name))
+        dict
+        (assoc dict name {:name name :value value :type type :abbr abbr})))))
 
 (defn sequence-extend-dict
   "Special version of extend-dict installed in the env when processing a sequence."
   [name value type abbr dict env]
-  (let [name (var-key name env)]
-    (if (or (nil? name) (= '_ name))
-      dict
-      (letfn [(add-to-var [m]
-                (if m
-                  (-> m
+  (if ((.tails env) name)
+    (assoc dict name value)
+    (let [name (var-key name env)]
+      (if (or (nil? name) (= '_ name))
+        dict
+        (letfn [(add-to-var [m]
+                  (if m
+                    (-> m
                       (update :value
-                              (fn [v]
-                                (let [val (:value m)]
-                                  (if (and (or (indexed? val) (seq? val))
-                                        (= (count val)
-                                          (.repetition ^Env env)))
-                                    (conj v value)
-                                    v))))
+                        (fn [v]
+                          (let [val (:value m)]
+                            (if (and (or (indexed? val) (seq? val))
+                                  (= (count val)
+                                    (.repetition ^Env env)))
+                              (conj v value)
+                              v))))
                       (assoc :abbr abbr))
-                  {:name name :value [value] :type type :abbr abbr}))]
-        (update dict name add-to-var)))))
+                    {:name name :value [value] :type type :abbr abbr}))]
+          (update dict name add-to-var))))))
 
 (defn all-names [match-procedure]
   (with-meta
@@ -462,7 +466,8 @@
     #_scope-path (atom [0])
     #_lookup lookup
     #_store extend-dict
-    #_repetition nil))
+    #_repetition nil
+    #_tails #{}))
 
 (defn run-matcher
   "Run the given matcher on the given datum, calling succeed with the match

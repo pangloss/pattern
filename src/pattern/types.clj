@@ -16,7 +16,8 @@
                 scope-path
                 lookup
                 store
-                repetition])
+                repetition
+                tails])
 
 (declare ->Length)
 
