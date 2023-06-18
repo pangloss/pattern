@@ -500,7 +500,6 @@
   (when (seq pattern)
     (let [mode (:optional/mode comp-env)
           optional? (nil? mode) ;; used directly via ?:?
-          one? (= :one mode)
           many? (= :sequence mode)
           comp-env (dissoc comp-env :optional/mode)
           md-matcher (compile-pattern* pattern comp-env)
@@ -559,8 +558,8 @@
         (cond-> (meta md-matcher)
           true (assoc :length (:list-length md)
                  :pattern full-pattern)
-          (not one?) (assoc-in [:length :v] true)
-          (not one?) (assoc-in [:length :n] 0))))))
+          optional? (assoc-in [:length :v] true)
+          optional? (assoc-in [:length :n] 0))))))
 
 (defn- match-one
   "Match the given set of patterns once."
@@ -719,7 +718,7 @@
   [[t n & pattern] comp-env]
   (let [[low high] (if (vector? n)
                      n
-                     [n nil])]
+                     [n n])]
     (match-sequence low high (cons t pattern) comp-env)))
 
 (defn- match-chain
