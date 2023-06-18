@@ -501,33 +501,53 @@
           md (meta md-matcher)
           step-size (max 1 (:n (:list-length md)))
           var-len? (:v (:list-length md))
+          reserve-min-tail (or (:n (:reserve-min-tail comp-env)) 0)
           greedy? (and var-len? (:greedy md))
           tail-var (gensym 'tail)
-          ;; TODO: if reserve-min-tail is set, chop the tail off before hitting the list-matcher
-          ;; TODO: if reserve-min-tail is set and the pattern is not var, don't include the pattern?
+          size-var (gensym 'size)
+          ;; if reserve-min-tail is set, chop the tail off before hitting the list-matcher
+          ;; if reserve-min-tail is set and the pattern is not var, don't include the pattern
           tail-pattern (symbol (str "??" tail-var))
-          list-matcher (compile-pattern* (concat pattern (list tail-pattern)) comp-env)]
+          list-matcher (if var-len?
+                         (compile-pattern* (concat pattern (list tail-pattern)) comp-env)
+                         md-matcher)
+          min-size (+ reserve-min-tail step-size)]
       (with-meta
         (fn optional-matcher [data orig-dictionary ^Env env]
-          (let [env (update env :tails conj tail-var)]
-            (letfn [(optional-segment-matcher [dict n size this-data]
+          (let [^Env env (cond-> env var-len? (update :tails conj tail-var))]
+            (letfn [(optional-segment-matcher [dict n size this-data orig-size]
+                      ;; I could check for enough data and short circuit here.
                       (bouncing
                         (or
                           (list-matcher [this-data] dict
                             (assoc env :succeed
-                              (fn opt-succeed [dict' _] ;; size returned by list matcher is always 1.
-                                (let [tail (get dict' tail-var)
-                                      tail-size (count tail)
-                                      size (- size tail-size)
-                                      dict' (dissoc dict' tail-var)]
-                                  (or ((.succeed env) dict' (+ n size))
-                                    (when (and many? (seq tail))
-                                      (optional-segment-matcher dict' (+ n size) tail-size tail)))))))
+                              (if var-len?
+                                (fn opt-succeed-var [dict' _] ;; size returned by list matcher is always 1.
+                                  (let [tail (get dict' tail-var)
+                                        tail-size (count tail) ;; not necessarily the same as the later orig-size - size if data has been chopped
+                                        size (- size tail-size)
+                                        dict' (dissoc dict' tail-var)]
+                                    ;; When matching many, I know the remaining size but immediately lose it and have to recalculate on the next iteration.
+                                    ;; I could add it to the dict.
+                                    (or ((.succeed env) (assoc dict' size-var (- orig-size size)) (+ n size))
+                                      (when (and many? (seq tail))
+                                        (optional-segment-matcher dict' (+ n size) tail-size tail orig-size)))))
+                                (fn opt-succeed [dict' _]
+                                  ((.succeed env) dict' (+ n size))))))
                           (when optional? ((.succeed env) dict 0)))))]
 
-              (if (seq data)
-                (trampolining (optional-segment-matcher orig-dictionary 0 (count data) data))
-                (when optional? ((.succeed env) orig-dictionary 0))))))
+              (let [size (or (when var-len? (or (get orig-dictionary size-var)
+                                              (count data)))
+                           (if (has-n? min-size data)
+                             min-size 0))]
+                ;; even if the match is fixed size, the data could be any size greater than the min because there may be a var len later.
+                (if (<= min-size size)
+                  (let [slice-size (if var-len?)
+                                  (when (pos? reserve-min-tail) (- size reserve-min-tail))
+                                  step-size
+                        data (if slice-size (take slice-size data) data)]
+                    (trampolining (optional-segment-matcher orig-dictionary 0 (or slice-size size) data size)))
+                  (when optional? ((.succeed env) orig-dictionary 0)))))))
         (cond-> (meta md-matcher)
           true (assoc :length (:list-length md)
                  :pattern full-pattern)
@@ -593,12 +613,12 @@
           match-part (match-optional pattern (assoc comp-env :optional/mode :sequence :reserve-min-tail nil))
           matcher-vars (:var-names (meta match-part))
           reserve-min-tail (or (:reserve-min-tail comp-env) (len 0))
-          reserve-min-tail (let [l (:length (meta match-part))]
-                             (if (pos? (:n l))
-                               ;; need to fit whole repetitions
-                               (add-lengths reserve-min-tail (len (mod (:n reserve-min-tail)
-                                                                    (:n l))))
-                               reserve-min-tail))]
+          reserve-min-tail (:n (let [l (:length (meta match-part))]
+                                 (if (pos? (:n l))
+                                   ;; need to fit whole repetitions
+                                   (add-lengths reserve-min-tail (len (mod (:n reserve-min-tail)
+                                                                        (:n l))))
+                                   reserve-min-tail)))]
       (letfn [(test-match [reps dict]
                 (let [evars (:sequence/existing dict)]
                   (and (if (symbol? at-least)
@@ -632,7 +652,7 @@
                            ;; no match if undefined
                            (< (.repetition ^Env env) (:value (dict at-most) 0))
                            (< (.repetition ^Env env) at-most))
-                      (has-n? (:n reserve-min-tail) data))
+                      (has-n? reserve-min-tail data))
                   (bouncing
                     (or (match-part
                           data dict
