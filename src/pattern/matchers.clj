@@ -140,7 +140,7 @@
     (with-meta
       (fn list-matcher [data dictionary ^Env env]
         (if (seq data)
-          (letfn [(lp [datum data-list matchers dictionary]
+          (letfn [(list-item-matcher [datum data-list matchers dictionary]
                     (if (seq matchers)
                       (if-let [result
                                ((first matchers)
@@ -149,10 +149,10 @@
                                 ;; This construct would have to be carefully redesigned for trampoline
                                 ;; (at least on sequence matches).
                                 (assoc env :succeed
-                                  (fn match-list-success [new-dictionary n]
+                                  (fn match-list-succeed [new-dictionary n]
                                     (if (> n (count data-list))
                                       (throw (ex-info "Matcher ate too much" {:n n}))
-                                      (lp datum (drop n data-list) (next matchers) new-dictionary)))))]
+                                      (list-item-matcher datum (drop n data-list) (next matchers) new-dictionary)))))]
                         result
                         (on-failure :mismatch pattern dictionary env 1 data datum
                           :retry retry))
@@ -162,7 +162,7 @@
                           :retry retry))))
                   (retry [data-list]
                     (if (list-pred data-list)
-                      (bouncing (lp data-list data-list matchers dictionary))
+                      (bouncing (list-item-matcher data-list data-list matchers dictionary))
                       (on-failure :type pattern dictionary env 1 data data-list
                         :retry retry)))]
             (let [datum (first data)
@@ -376,7 +376,7 @@
         (if (or multi? (seq data))
           (m data dictionary
             (assoc env :succeed
-              (fn [dict n]
+              (fn as-succeed [dict n]
                 ;; FIXME: remove the length check and update all relevant
                 ;; rules, etc to use either ?:as or ?:as*.
                 (let [datum (if (or multi? (not= 1 n))
@@ -508,24 +508,25 @@
           list-matcher (compile-pattern* (concat pattern (list tail-pattern)) comp-env)]
       (with-meta
         (fn optional-matcher [data orig-dictionary ^Env env]
-          (letfn [(lp [dict n size this-data]
-                    (bouncing
-                      (or
-                        (list-matcher [this-data] dict
-                          (assoc env :succeed
-                            (fn [dict' _] ;; size returned by list matcher is always 1.
-                              (let [tail (:value (get dict' tail-var))
-                                    tail (if many? (last tail) tail)
-                                    tail-size (count tail)
-                                    size (- size tail-size)]
-                                (or ((.succeed env) (dissoc dict' tail-var) (+ n size))
-                                  (when (and many? (seq tail))
-                                    (lp dict' (+ n size) tail-size tail)))))))
-                        (when optional? ((.succeed env) dict 0)))))]
+          (let [env (update env :tails conj tail-var)]
+            (letfn [(optional-segment-matcher [dict n size this-data]
+                      (bouncing
+                        (or
+                          (list-matcher [this-data] dict
+                            (assoc env :succeed
+                              (fn opt-succeed [dict' _] ;; size returned by list matcher is always 1.
+                                (let [tail (get dict' tail-var)
+                                      tail-size (count tail)
+                                      size (- size tail-size)
+                                      dict' (dissoc dict' tail-var)]
+                                  (or ((.succeed env) dict' (+ n size))
+                                    (when (and many? (seq tail))
+                                      (optional-segment-matcher dict' (+ n size) tail-size tail)))))))
+                          (when optional? ((.succeed env) dict 0)))))]
 
-            (if (seq data)
-              (trampolining (lp orig-dictionary 0 (count data) data))
-              (when optional? ((.succeed env) orig-dictionary 0)))))
+              (if (seq data)
+                (trampolining (optional-segment-matcher orig-dictionary 0 (count data) data))
+                (when optional? ((.succeed env) orig-dictionary 0))))))
         (cond-> (meta md-matcher)
           true (assoc :length (:list-length md)
                  :pattern full-pattern)
@@ -636,7 +637,7 @@
                           data dict
                           (assoc env
                             :succeed
-                            (fn [dict n']
+                            (fn seq-succeed [dict n']
                               (let [reps (inc (.repetition ^Env env))
                                     dict (level-sequences reps dict)]
                                 (gather dict (+ n n') (drop n' data)
@@ -733,7 +734,7 @@
                   (if m
                     (m data dict
                       (assoc env :succeed
-                        (fn [dict n]
+                        (fn chain-succeed [dict n]
                           (do-fn (rest matchers) fns (take n data) dict (or taken n)))))
                     (when taken
                       (bouncing ((.succeed env) dict taken)))))]
@@ -787,7 +788,7 @@
                             ;; no need to modify the success function
                             (if-let [result (result-matcher [[before cur (subvec after 1)]] dict
                                               (assoc env :succeed
-                                                (fn [dict n]
+                                                (fn some-succeed [dict n]
                                                   ((.succeed env) dict match-len))))]
                               result
                               (recur (conj before cur) (subvec after 1)))
@@ -830,7 +831,7 @@
                 (if (seq matching)
                   (result-matcher [matching] dictionary
                     (assoc env :succeed
-                      (fn [dict n]
+                      (fn filter-succeed [dict n]
                         ((.succeed env) dict match-len))))
                   (on-failure :not-found pred-name dictionary env match-len data datum)))
               (on-failure :not-sequential name dictionary env 1 data datum)))
@@ -876,7 +877,7 @@
                              (f regex str))]
             (m (list (vec matches)) dictionary
               (assoc env :succeed
-                (fn [dict n]
+                (fn regex-succeed [dict n]
                   ((.succeed env) dict 1))))
             (on-failure :mismatch regex dictionary env 1 data str))
           (on-failure :missing regex dictionary env 0 data nil)))
@@ -931,19 +932,19 @@
   (let [matchers (mapv #(compile-pattern* % comp-env) (rest pattern))]
     (with-meta
       (fn and-matcher [data dictionary ^Env env]
-        (letfn [(lp [matchers dictionary n]
+        (letfn [(and-expr-matcher [matchers dictionary n]
                   (if (seq matchers)
                     (if-let [r ((first matchers) data dictionary
                                 (assoc env :succeed
-                                       (fn [dict n']
-                                         (if (or (= n n') (nil? n))
-                                           (lp (rest matchers) dict n')
-                                           (on-failure :length-mismatch pattern
-                                                       dictionary env n' data nil)))))]
+                                  (fn and-succeed [dict n']
+                                    (if (or (= n n') (nil? n))
+                                      (and-expr-matcher (rest matchers) dict n')
+                                      (on-failure :length-mismatch pattern
+                                        dictionary env n' data nil)))))]
                       r
                       (on-failure :mismatch pattern dictionary env n data nil))
                     ((.succeed env) dictionary (or n 0))))]
-          (lp matchers dictionary nil)))
+          (and-expr-matcher matchers dictionary nil)))
       {:var-names (distinct (mapcat (comp :var-names meta) matchers))
        :var-modes    (apply merge-with f/op (map (comp :var-modes meta) matchers))
        :var-prefixes (apply merge-with f/op (map (comp :var-prefixes meta) matchers))
@@ -968,10 +969,10 @@
       (fn not-matcher [data dict ^Env env]
         (let [result (volatile! true)]
           (matcher data dict (assoc env :succeed
-                                    (fn [_ n]
-                                      (vreset! result false)
-                                      (on-failure :mismatch whole-pattern dict env n data nil
-                                                  :ignore (fn [] (vreset! result true))))))
+                               (fn not-succeed [_ n]
+                                 (vreset! result false)
+                                 (on-failure :mismatch whole-pattern dict env n data nil
+                                   :ignore (fn [] (vreset! result true))))))
           (if @result
             ((.succeed env) dict match-len))))
 
