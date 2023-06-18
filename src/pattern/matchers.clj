@@ -34,6 +34,7 @@
             [pattern.match.predicator :refer [var-abbr]])
   (:import (pattern.types Env)))
 
+(set! *warn-on-reflection* true)
 
 (defn- match-value
   "Match a value using [[clojure.core/=]] semantics."

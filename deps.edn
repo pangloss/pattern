@@ -1,24 +1,25 @@
 {:paths ["src" "resources"]
  :deps {org.clojure/clojure {:mvn/version "1.11.1"}
         pangloss/pure-conditioning {:git/url "https://github.com/pangloss/pure-conditioning"
-                                    :sha "ff5ffe10ab1cb7f757d8dfdf6953cbc817748d5b"}
+                                    :git/sha "61fa43215e0fce0fe83808b9e30c2bb4c170ffbd"}
         pangloss/fermor {:git/url "https://github.com/pangloss/fermor"
-                         :sha "d2255f221cfb9e4bbcf8b8c48791e4e5b6a3ca40"}
+                         :git/sha "e04c71ed541b85e7dd7df40dc1a2b47dae8fb4a8"}
         pangloss/genera {:git/url "https://github.com/pangloss/genera"
-                         :sha "184cd72cd7833084636e73d104eb326d7f9e4642"}
+                         :git/sha "fff908faf8903fd42fe22274b52a38eb1abb82af"}
         uncomplicate/fluokitten {:mvn/version "0.9.1"}
-        potemkin/potemkin {:mvn/version "0.4.5"}}
+        potemkin/potemkin {:mvn/version "0.4.6"}}
  :aliases
  {:test {:extra-paths ["test"]
          :extra-deps {org.clojure/test.check {:mvn/version "1.1.1"}}
          :jvm-opts ["-XX:-OmitStackTraceInFastThrow"]}
   :dev {:extra-paths ["dev"]
         :extra-deps {com.github.jpmonettas/flow-storm-debugger
-                     {:git/sha "a97bd356446892e49804660c0f821394d6ac12fa"}}}
+                     {:git/url "https://github.com/jpmonettas/flow-storm-debugger"
+                      :git/sha "d8bf2931d4337a510a79fd360e4cf160f2714ad7"}}}
   :runner
   {:extra-deps {com.cognitect/test-runner
-                {:git/url "https://github.com/cognitect-labs/test-runner"
-                 :sha "a85b3b02765fb68684ab9ee4a8598eacf7e471d2"}}
+                {:git/url "https://github.com/com.cognitect/test-runner"
+                 :git/sha "7284cda41fb9edc0f3bc6b6185cfb7138fc8a023"}}
    :main-opts ["-m" "cognitect.test-runner"
                "-d" "test"]}
   :jar {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.1.303"}}
@@ -30,5 +31,6 @@
   :deploy {:replace-deps {slipset/deps-deploy {:mvn/version "0.2.0"}}
            :exec-fn deps-deploy.deps-deploy/deploy
            :exec-args {:installer :remote :artifact "pattern.jar"}}
-  :dev/dw {:extra-deps {pangloss/genera {:local/root "../genera"}
+  :dev/dw {:extra-paths ["dev"]
+           :extra-deps {pangloss/genera {:local/root "../genera"}
                         pangloss/fermor {:local/root "../fermor"}}}}}
