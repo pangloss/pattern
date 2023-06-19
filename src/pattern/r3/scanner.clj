@@ -1,9 +1,10 @@
 (ns pattern.r3.scanner
   (:require
    [pattern.types :refer [spliceable-pattern recombine]]
-   [pattern.r3.core :refer [success success:env rebuild-rule]]
+   [pattern.r3.core :refer [success success:env rebuild-rule rule]]
    [pattern.r3.rule :refer [unwrap unwrap-env]]
-   [pattern.r3.combinators :refer [rule-list iterated rule-zipper]]
+   [pattern.r3.combinators :refer [rule-list iterated rule-zipper in-order]]
+   [pattern.r3.post-process :refer [raw]]
    [clojure.zip :as zip]))
 
 (defmulti scanner* (fn [opts the-rule] (get-in (meta the-rule) [:rule :rule-type])))
@@ -12,10 +13,7 @@
   ([the-rule] (scanner {} the-rule))
   ([opts the-rule] (scanner* opts the-rule)))
 
-
-(defn- make-rule
-  ([opts r pattern handler]
-   (make-rule opts r nil [pattern] [handler]))
+(defn- make-rule-rescanning
   ([opts r markers patterns handlers]
    (when (seq patterns)
      (let [before (gensym 'before)
@@ -32,29 +30,84 @@
            handlers (if one?
                       (first handlers)
                       `(cond ~@(mapcat vector markers handlers)))]
-       (->
-         (rebuild-rule r
-           pattern
-           `(when (seq ~segment)
-              (when-let [body# ~handlers]
-                (let [env# (unwrap-env ~'%env body#)
-                      body# (unwrap ::none body#)]
-                  (if (= ::none body#)
-                    (success:env env#)
-                    (let [body# (if (sequential? body#) body# [body#])]
-                      (success
-                        (if (seq ~before)
-                          (if (seq body#)
-                            (into ~before (concat body# ~after))
-                            (into ~before ~after))
-                          (if (seq ~after)
-                            (if (vector? body#)
-                              (into body# ~after)
-                              (vec (concat body# ~after)))
-                            (vec body#)))
-                        env#)))))))
-         (vary-meta assoc-in [:rule :scanner] true))))))
+       (cond->
+           (rebuild-rule r
+             pattern
+             `(when (seq ~segment)
+                (when-let [body# ~handlers]
+                  (let [env# (unwrap-env ~'%env body#)
+                        body# (unwrap ::none body#)]
+                    (if (= ::none body#)
+                      (success:env env#)
+                      (let [body# (if (sequential? body#) body# [body#])]
+                        (success
+                          (if (seq ~before)
+                            (if (seq body#)
+                              (into ~before (concat body# ~after))
+                              (into ~before ~after))
+                            (if (seq ~after)
+                              (if (vector? body#)
+                                (into body# ~after)
+                                (vec (concat body# ~after)))
+                              (vec body#)))
+                          env#)))))))
+         true (vary-meta assoc-in [:rule :scanner] true)
+         (:iterate opts true) iterated)))))
 
+(defn- make-rule-linear
+  [opts r markers patterns handlers]
+  (when (seq patterns)
+    (let [complete (gensym 'complete)
+          before (gensym 'before)
+          segment (gensym 'segment)
+          one? (= 1 (count patterns))
+          after (gensym 'after)
+          pattern [(symbol (str "?" complete))
+                   (list
+                     (symbol (str (if (:lazy opts) "??!" "??") before))
+                     (list '?:as* segment
+                       (if one?
+                         (first patterns)
+                         (list* '| (map (fn [m p] (list '?:as* m p)) markers patterns))))
+                     (symbol (str "??" after)))]
+          handlers (if one?
+                     (first handlers)
+                     `(cond ~@(mapcat vector markers handlers)))]
+      (in-order
+        (-> (rule '(? v sequential?)
+              [(transient []) (vec v)])
+          raw
+          (vary-meta assoc-in [:rule :scanner] true))
+        (-> (rebuild-rule r
+              pattern
+              `(when (seq ~segment)
+                 (when-let [success# ~handlers]
+                   (let [env# (unwrap-env ~'%env success#)
+                         body# (unwrap ::none success#)]
+                     (if (= ::none body#)
+                       (success:env env#)
+                       (let [complete# (reduce conj! ~complete ~before)
+                             complete# (reduce conj! complete# (if (sequential? body#) body# [body#]))]
+                         (success
+                           [complete# ~after]
+                           env#)))))))
+          (vary-meta assoc-in [:rule :scanner] true)
+          iterated)
+        (-> (rule '[?result ?remainder]
+              (if (= ::not-found (get result 0 ::not-found))
+                remainder
+                (persistent! (reduce conj! result remainder))))
+          raw
+          (vary-meta assoc-in [:rule :scanner] true))))))
+
+
+(defn- make-rule
+  ([opts r pattern handler]
+   (make-rule opts r nil [pattern] [handler]))
+  ([opts r markers patterns handlers]
+   (if (and (:linear opts) (:iterated opts true))
+     (make-rule-linear opts r markers patterns handlers)
+     (make-rule-rescanning opts r markers patterns handlers))))
 
 (defmethod scanner* :pattern/rule [{:keys [iterate lazy] :or {iterate true} :as opts} the-rule]
   ;; single rule approach:
@@ -64,9 +117,7 @@
     (if (:scanner m)
       the-rule
       (if pattern
-        (cond-> (make-rule opts the-rule pattern (:src m))
-          true (vary-meta assoc-in [:rule :scanner] true)
-          iterate iterated)
+        (make-rule opts the-rule pattern (:src m))
         the-rule))))
 
  
@@ -93,8 +144,14 @@
             (-> rules
               (conj (make-rule opts r markers patterns handlers))
               (conj (scanner opts child))))))
-      (cond-> (rule-list (remove nil? (conj rules (make-rule opts r markers patterns handlers))))
-        iterate iterated))))
+      ;; Don't be linear or iterate on sub-rules if there are multiple rules in the rule-list
+      (let [rule-opts (if (seq rules)
+                        (assoc opts :linear false :iterate false)
+                        opts)
+            rule (make-rule rule-opts r markers patterns handlers)
+            rules (conj rules rule)]
+        (cond-> (rule-list (remove nil? rules))
+          iterate iterated)))))
 
 (defmethod scanner* :default [opts the-rule]
   ;; all other rules can be inverted:

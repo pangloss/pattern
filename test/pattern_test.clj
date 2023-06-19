@@ -842,6 +842,36 @@
              {:text "Παπουτσιών", :pos :word}
              {:text " ", :pos :ws}
              {:text "Νο", :pos :word}
+             {:text "38", :pos :number}]))))
+
+  (let [r
+        (scanner {:linear true}
+          (rule combine
+            '[(?:as* coll
+                (?:1
+                  (?:map :pos ?pos)
+                  (?:* (?:map :pos (| ?pos :ws)))
+                  (?:map :pos ?pos)))]
+            {:text (clojure.string/join (map :text coll)) :pos pos}))]
+
+    (is (= [{:text "My", :pos :word}
+            {:text " ", :pos :ws}
+            {:text "HAPPY FEET", :pos :brand-name}
+            {:text " ", :pos :ws}
+            {:text "Πάτοι Παπουτσιών Νο", :pos :word}
+            {:text "38", :pos :number}]
+          (r
+            [{:text "My", :pos :word}
+             {:text " ", :pos :ws}
+             {:text "HAPPY", :foreign true, :pos :brand-name}
+             {:text " ", :pos :ws}
+             {:text "FEET", :foreign true, :pos :brand-name}
+             {:text " ", :pos :ws}
+             {:text "Πάτοι", :pos :word}
+             {:text " ", :pos :ws}
+             {:text "Παπουτσιών", :pos :word}
+             {:text " ", :pos :ws}
+             {:text "Νο", :pos :word}
              {:text "38", :pos :number}])))))
 
 
