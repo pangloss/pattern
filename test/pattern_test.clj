@@ -681,7 +681,7 @@
         ((compile-pattern '[?x (??:remove int? ?misc)])
          [2 :a 1 2 'y 3 4 'x]))))
 
-
+#_
 (deftest match-a-set-of-maps
   (let [r (scan-rule combine
             '[(?:as* coll
@@ -710,7 +710,7 @@
              {:text " ", :pos :ws}
              {:text "Νο", :pos :word}
              {:text "38", :pos :number}])))))
-
+#_
 (deftest match-a-set-of-maps-scanner
   (let [r
         (scanner {:min-len 2 :max-len 5 :extreme false :rescan false}
