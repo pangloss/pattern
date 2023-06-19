@@ -625,21 +625,3 @@
   (vary-meta
    (simplifier (apply rule-list rules))
    assoc-in [:rule :rule-type] ::rule-simplifier))
-
-(defn- scan-strategy
-  "Produce a set of views of the collection with one of the 4 scanning strategies"
-  [{:keys [greedy extreme min-len max-len] :or {greedy true}} coll]
-  (let [coll (vec coll)
-        len (count coll)
-        min-len (max (or min-len 1) 1)
-        max-len (or max-len len)]
-    (if extreme
-      (for [to-take (cond-> (range (min max-len len) (dec min-len) -1)
-                      (not greedy) reverse)
-            to-drop (range (inc (- len to-take)))]
-        [to-drop (+ to-drop to-take)])
-      (for [to-drop (range (inc (- len min-len)))
-            to-take (if greedy
-                      (range (min max-len (- len to-drop)) (dec min-len) -1)
-                      (range min-len (inc (min max-len (- len to-drop)))))]
-        [to-drop (+ to-drop to-take)]))))

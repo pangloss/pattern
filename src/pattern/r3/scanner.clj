@@ -1,7 +1,8 @@
 (ns pattern.r3.scanner
   (:require
    [pattern.types :refer [spliceable-pattern recombine]]
-   [pattern.r3.core :refer [rebuild-rule]]
+   [pattern.r3.core :refer [success success:env rebuild-rule]]
+   [pattern.r3.rule :refer [unwrap unwrap-env]]
    [pattern.r3.combinators :refer [rule-list iterated rule-zipper]]
    [clojure.zip :as zip]))
 
@@ -26,16 +27,22 @@
               (symbol (str "??" before))
               pattern
               (symbol (str "??" after)))
-            `(let [body# ~(:src m)]
-               (if (seq ~before)
-                 (if (seq body#)
-                   (into ~before (concat body# ~after))
-                   (into ~before ~after))
-                 (if (seq ~after)
-                   (if (vector? body#)
-                     (into body# ~after)
-                     (vec (concat body# ~after)))
-                   (vec body#)))))
+            `(when-let [body# ~(:src m)]
+               (let [env# (unwrap-env ~'%env body#)
+                     body# (unwrap ::none body#)]
+                 (if (= ::none body#)
+                   (success:env env#)
+                   (success
+                     (if (seq ~before)
+                       (if (seq body#)
+                         (into ~before (concat body# ~after))
+                         (into ~before ~after))
+                       (if (seq ~after)
+                         (if (vector? body#)
+                           (into body# ~after)
+                           (vec (concat body# ~after)))
+                         (vec body#)))
+                     env#)))))
         iterate iterated)
       the-rule)))
 
@@ -50,16 +57,22 @@
           handlers `(cond ~@(mapcat vector markers handlers))]
       (rebuild-rule r
         pattern
-        `(let [body# ~handlers]
-           (if (seq ~before)
-             (if (seq body#)
-               (into ~before (concat body# ~after))
-               (into ~before ~after))
-             (if (seq ~after)
-               (if (vector? body#)
-                 (into body# ~after)
-                 (vec (concat body# ~after)))
-               (vec body#))))))))
+        `(when-let [body# ~handlers]
+           (let [env# (unwrap-env ~'%env body#)
+                 body# (unwrap ::none body#)]
+             (if (= ::none body#)
+               (success:env env#)
+               (success
+                 (if (seq ~before)
+                   (if (seq body#)
+                     (into ~before (concat body# ~after))
+                     (into ~before ~after))
+                   (if (seq ~after)
+                     (if (vector? body#)
+                       (into body# ~after)
+                       (vec (concat body# ~after)))
+                     (vec body#)))
+                 env#))))))))
 
  
 (defmethod scanner* :pattern.r3.combinators/rule-list [{:keys [iterate] :or {iterate true} :as opts} the-rule]
