@@ -61,11 +61,13 @@
   ;;'[??before rule1-body ??after]
   (let [m (:rule (meta the-rule))
         pattern (spliceable-pattern (:match m))]
-    (if pattern
-      (cond-> (make-rule opts the-rule pattern (:src m))
-        true (vary-meta assoc-in [:rule :scanner] true)
-        iterate iterated)
-      the-rule)))
+    (if (:scanner m)
+      the-rule
+      (if pattern
+        (cond-> (make-rule opts the-rule pattern (:src m))
+          true (vary-meta assoc-in [:rule :scanner] true)
+          iterate iterated)
+        the-rule))))
 
  
 (defmethod scanner* :pattern.r3.combinators/rule-list [{:keys [iterate] :or {iterate true} :as opts} the-rule]
@@ -79,7 +81,7 @@
          rules []]
     (if child
       (let [m (:rule (meta child))]
-        (if (= :pattern/rule (:rule-type m))
+        (if (and (= :pattern/rule (:rule-type m)) (not (:scanner m)))
           (if-let [p (spliceable-pattern (:match m))]
             (recur children
               (or r child)

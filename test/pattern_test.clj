@@ -893,6 +893,13 @@
           (s [5 4 3 2 1 0]))))
 
   (let [ro (pattern/rule-list
+             (rule '[?a 1] nil)
+             (rule '[?a 1] :ok))
+        s (scanner (scanner ro))]
+    (is (= [5 4 3 :ok 0]
+          (s [5 4 3 2 1 0]))))
+
+  (let [ro (pattern/rule-list
              (rule '[?a 1] (pattern/success:env {:hi 1}))
              (rule '[?a 1] :ok))
         s (scanner ro)]
