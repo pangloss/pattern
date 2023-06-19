@@ -1,8 +1,16 @@
 (ns pattern.r3.scanner
-  (:require [pattern :refer [spliceable-pattern recombine rebuild-rule sub rule rule-list iterated rule-zipper]]
-            [clojure.zip :as zip]))
+  (:require
+   [pattern.types :refer [spliceable-pattern recombine]]
+   [pattern.r3.core :refer [rebuild-rule]]
+   [pattern.r3.combinators :refer [rule-list iterated rule-zipper]]
+   [clojure.zip :as zip]))
 
 (defmulti scanner* (fn [opts the-rule] (get-in (meta the-rule) [:rule :rule-type])))
+
+(defn scanner
+  ([the-rule] (scanner {} the-rule))
+  ([opts the-rule] (scanner* opts the-rule)))
+
 
 (defmethod scanner* :pattern/rule [{:keys [iterate] :or {iterate true}} the-rule]
   ;; single rule approach:
@@ -93,11 +101,6 @@
     (if z
       (recur (zip/right z) (conj rules (scanner* opts (zip/node z))))
       (recombine the-rule rules))))
-
-(defn scanner
-  ([the-rule] (scanner {} the-rule))
-  ([opts the-rule] (scanner* opts the-rule)))
-
 
 (comment
 
