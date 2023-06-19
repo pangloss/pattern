@@ -16,7 +16,7 @@
   ([the-rule] `(scanner {} ~the-rule))
   ([opts the-rule]
    (or
-     (when (and (seq? the-rule) (#{'rule `rule} (first the-rule)))
+     (when (and (seq? the-rule) (symbol? (first the-rule)) (= #'rule (resolve (first the-rule))))
        (let [[name pattern body]
              (case (count the-rule)
                3 (let [[_ pattern body] the-rule] [nil pattern body])
