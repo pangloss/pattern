@@ -13,73 +13,59 @@
   ([opts the-rule] (scanner* opts the-rule)))
 
 
-(defmethod scanner* :pattern/rule [{:keys [iterate lazy] :or {iterate true}} the-rule]
+(defn- make-rule
+  ([opts r pattern handler]
+   (make-rule opts r nil [pattern] [handler]))
+  ([opts r markers patterns handlers]
+   (when (seq patterns)
+     (let [before (gensym 'before)
+           segment (gensym 'segment)
+           one? (= 1 (count patterns))
+           after (gensym 'after)
+           pattern (list
+                     (symbol (str (if (:lazy opts) "??!" "??") before))
+                     (list '?:as* segment
+                       (if one?
+                         (first patterns)
+                         (list* '| (map (fn [m p] (list '?:as* m p)) markers patterns))))
+                     (symbol (str "??" after)))
+           handlers (if one?
+                      (first handlers)
+                      `(cond ~@(mapcat vector markers handlers)))]
+       (->
+         (rebuild-rule r
+           pattern
+           `(when (seq ~segment)
+              (when-let [body# ~handlers]
+                (let [env# (unwrap-env ~'%env body#)
+                      body# (unwrap ::none body#)]
+                  (if (= ::none body#)
+                    (success:env env#)
+                    (let [body# (if (sequential? body#) body# [body#])]
+                      (success
+                        (if (seq ~before)
+                          (if (seq body#)
+                            (into ~before (concat body# ~after))
+                            (into ~before ~after))
+                          (if (seq ~after)
+                            (if (vector? body#)
+                              (into body# ~after)
+                              (vec (concat body# ~after)))
+                            (vec body#)))
+                        env#)))))))
+         (vary-meta assoc-in [:rule :scanner] true))))))
+
+
+(defmethod scanner* :pattern/rule [{:keys [iterate lazy] :or {iterate true} :as opts} the-rule]
   ;; single rule approach:
   ;;'[??before rule1-body ??after]
   (let [m (:rule (meta the-rule))
-        before (gensym 'before)
-        segment (gensym 'segment)
-        pattern (spliceable-pattern (:match m))
-        after (gensym 'after)]
+        pattern (spliceable-pattern (:match m))]
     (if pattern
-      (cond->
-          (rebuild-rule the-rule
-            (list
-              (symbol (str (if lazy "??!" "??") before))
-              (list '?:as* segment pattern)
-              (symbol (str "??" after)))
-            `(when (seq ~segment)
-               (when-let [body# ~(:src m)]
-                 (let [env# (unwrap-env ~'%env body#)
-                       body# (unwrap ::none body#)]
-                   (if (= ::none body#)
-                     (success:env env#)
-                     (let [body# (if (sequential? body#) body# [body#])]
-                       (success
-                         (if (seq ~before)
-                           (if (seq body#)
-                             (into ~before (concat body# ~after))
-                             (into ~before ~after))
-                           (if (seq ~after)
-                             (if (vector? body#)
-                               (into body# ~after)
-                               (vec (concat body# ~after)))
-                             (vec body#)))
-                         env#)))))))
+      (cond-> (make-rule opts the-rule pattern (:src m))
+        true (vary-meta assoc-in [:rule :scanner] true)
         iterate iterated)
       the-rule)))
-
-(defn- merge-rules [opts r markers patterns handlers]
-  (when (seq markers)
-    (let [before (gensym 'before)
-          segment (gensym 'segment)
-          after (gensym 'after)
-          pattern (list
-                    (symbol (str (if (:lazy opts) "??!" "??") before))
-                    (list '?:as* segment
-                      (list* '| (map (fn [m p] (list '?:as* m p)) markers patterns)))
-                    (symbol (str "??" after)))
-          handlers `(cond ~@(mapcat vector markers handlers))]
-      (rebuild-rule r
-        pattern
-        `(when (seq ~segment)
-           (when-let [body# ~handlers]
-             (let [env# (unwrap-env ~'%env body#)
-                   body# (unwrap ::none body#)]
-               (if (= ::none body#)
-                 (success:env env#)
-                 (let [body# (if (sequential? body#) body# [body#])]
-                   (success
-                     (if (seq ~before)
-                       (if (seq body#)
-                         (into ~before (concat body# ~after))
-                         (into ~before ~after))
-                       (if (seq ~after)
-                         (if (vector? body#)
-                           (into body# ~after)
-                           (vec (concat body# ~after)))
-                         (vec body#)))
-                     env#))))))))))
 
  
 (defmethod scanner* :pattern.r3.combinators/rule-list [{:keys [iterate] :or {iterate true} :as opts} the-rule]
@@ -103,9 +89,9 @@
               rules))
           (recur children nil [] [] []
             (-> rules
-              (conj (merge-rules opts r markers patterns handlers))
+              (conj (make-rule opts r markers patterns handlers))
               (conj (scanner opts child))))))
-      (cond-> (rule-list (remove nil? (conj rules (merge-rules opts r markers patterns handlers))))
+      (cond-> (rule-list (remove nil? (conj rules (make-rule opts r markers patterns handlers))))
         iterate iterated))))
 
 (defmethod scanner* :default [opts the-rule]
