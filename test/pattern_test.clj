@@ -878,12 +878,27 @@
     (is (= '[1 2 3 4 {:a 1} {:b 2} :c {:x 1} :d]
           (srx '(1 2 3 4 :a 1 :b 9 :x :c 1 :d)))))
 
-  (let [odds (scanner {:lazy false :iterate false}
+  (let [odds (scanner {:lazy true :iterate false}
                (rule '(?? x odd?)
                  (when (next x)
                    (apply + x))))]
-    (is (= [2 4 6]
-          (odds '[2 3 1 6]))))
+    (is (= [2 3 1 6 5 4]
+          (odds '[2 3 1 6 5 1 3]))))
+
+  (let [odds (scanner {:lazy true}
+               (rule '(?? x odd?)
+                 (when (next x)
+                   (apply + x))))]
+    (is (= [2 4 6 5 4]
+          (odds '[2 3 1 6 5 1 3]))))
+
+  (let [odds (scanner
+               ;; I had to make the sequence greedy with ??!
+               (rule '(??! x odd?)
+                 (when (next x)
+                   (apply + x))))]
+    (is (= [2 4 6 9]
+          (odds '[2 3 1 6 5 1 3]))))
 
   (let [ro (pattern/rule-list
              (rule '[?a 1] nil)
