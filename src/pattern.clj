@@ -4,7 +4,6 @@
             pattern.substitute
             pattern.r3.core
             pattern.r3.rule
-            pattern.r3.scan
             pattern.r3.scanner
             pattern.r3.post-process
             pattern.r3.combinators
