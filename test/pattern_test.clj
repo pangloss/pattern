@@ -903,7 +903,7 @@
 
 (deftest match-a-set-of-maps-scanner
   (let [r
-        (scanner {:min-len 2 :max-len 5 :extreme false :rescan false}
+        (scanner
           (rule combine
             '[(?:as* coll
                 (?:1
