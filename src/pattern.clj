@@ -39,8 +39,6 @@
               success:env
               name-rule
               rebuild-rule)
-             (pattern.r3.scan
-               scan-rule)
              (pattern.r3.rule
                rule-name)
              (pattern.r3.post-process
@@ -67,7 +65,8 @@
               in
               rule-zipper)
              (pattern.r3.scanner
-               scanner)
+               scanner
+               scan-rule)
              (pattern.nanopass.dialect
               def-dialect
               def-derived
