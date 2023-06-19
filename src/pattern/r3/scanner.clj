@@ -10,9 +10,20 @@
 
 (defmulti scanner* (fn [opts the-rule] (get-in (meta the-rule) [:rule :rule-type])))
 
-(defn scanner
-  ([the-rule] (scanner {} the-rule))
-  ([opts the-rule] (scanner* opts the-rule)))
+(declare scan-rule)
+
+(defmacro scanner
+  ([the-rule] `(scanner {} ~the-rule))
+  ([opts the-rule]
+   (or
+     (when (and (seq? the-rule) (= `rule (first the-rule)))
+       (let [[name pattern body]
+             (case (count the-rule)
+               3 (let [[_ pattern body] the-rule] [nil pattern body])
+               4 (let [[_ name pattern body] the-rule] [name pattern body]))]
+         (when (vector? (second pattern))
+           `(scan-rule ~name ~(vary-meta pattern merge opts) ~body))))
+     `(scanner* ~opts ~the-rule))))
 
 (defn- rescanning-body [opts markers patterns handlers]
   (let [before (gensym 'before)
@@ -150,7 +161,7 @@
           (recur children nil [] [] []
             (-> rules
               (conj (make-scanner-rule opts r markers patterns handlers))
-              (conj (scanner opts child))))))
+              (conj (scanner* opts child))))))
       ;; Don't be linear or iterate on sub-rules if there are multiple rules in the rule-list
       (let [rule-opts (if (seq rules)
                         (assoc opts :linear false :iterate false)
