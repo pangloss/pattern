@@ -910,7 +910,7 @@
                   (?:map :pos ?pos)
                   (?:* (?:map :pos (| ?pos :ws)))
                   (?:map :pos ?pos)))]
-            [{:text (clojure.string/join (map :text coll)) :pos pos}]))]
+            {:text (clojure.string/join (map :text coll)) :pos pos}))]
 
     (is (= [{:text "My", :pos :word}
             {:text " ", :pos :ws}
@@ -932,3 +932,44 @@
              {:text "Νο", :pos :word}
              {:text "38", :pos :number}])))))
 
+
+
+(deftest scanner-variations
+
+  (let [r (scanner {:iterate false}
+            (rule '[?a 1 ?b 2] [{a 1} {b 2}]))]
+    (is (= [:x :y {:a 1} {:b 2} :a 1 :b 2 :z]
+          (r [:x :y :a 1 :b 2 :a 1 :b 2 :z]))))
+
+  (let [rl (pattern/rule-list
+             (rule '[?a 1 ?b 9]     nil)
+             (rule '[?a 1 ??_ ?b 2] [{a 1} '... {b 2}])
+             (rule '[:x ?c 1]       [c {:x 1}]))
+        srl (scanner rl)]
+    (is (= '[1 2 3 4 {:a 1} ... {:d 2}]
+          (srl '(1 2 3 4 :a 1 :b 9 :x :c 1 :d 2)))))
+
+  (let [ro (pattern/in-order
+             (rule '[?a 1 ?b 9]     [{a 1} {b 2}])
+             (rule '[?a 1 ??_ ?b 2] [{a 1} '... {b 2}])
+             (rule '[:x ?c 1]       [c {:x 1}]))
+        sro (scanner ro)]
+    (is (= '[1 2 3 4 {:a 1} ... {:b 2} :x {:c 1} ... {:d 2}]
+          (sro '(1 2 3 4 :a 1 :b 2 :x :c 1 :d 2)))))
+
+  (let [rx (pattern/rule-list
+             (rule '[?a 1 ?b 9]     [{a 1} {b 2}])
+             (rule '[?a 1 ??_ ?b 2] [{a 1} '... {b 2}])
+             (pattern/in-order
+               (rule '[:x ?c 1]     [c {:x 1}])
+               (rule '[:y ?c 1]     [c {:y [c 1]}])))
+        srx (scanner rx)]
+    (is (= '[1 2 3 4 {:a 1} {:b 2} :c {:x 1} :d]
+          (srx '(1 2 3 4 :a 1 :b 9 :x :c 1 :d)))))
+
+  (let [odds (scanner {:lazy false :iterate false}
+               (rule '(?? x odd?)
+                 (when (next x)
+                   (apply + x))))]
+    (is (= [2 4 6]
+          (odds '[2 3 1 6])))))
