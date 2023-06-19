@@ -112,9 +112,11 @@
           (vary-meta assoc-in [:rule :scanner] true)
           iterated)
         (-> (rule '[?result ?remainder]
-              (if (= ::not-found (get result 0 ::not-found))
-                remainder
-                (persistent! (reduce conj! result remainder))))
+              (success
+                (if (= ::not-found (get result 0 ::not-found))
+                  remainder
+                  (persistent! (reduce conj! result remainder)))
+                (dissoc %env :rule/datum)))
           raw
           (vary-meta assoc-in [:rule :scanner] true))))))
 
@@ -252,12 +254,14 @@
               (raw
                 (->
                   (rule '~'[?result ?remainder]
-                    (if (= ::not-found (get ~'result 0 ::not-found))
-                      ~'remainder
-                      (persistent!
-                        (if (seq ~'remainder)
-                          (reduce conj! ~'result ~'remainder)
-                          ~'result))))
+                    (success
+                      (if (= ::not-found (get ~'result 0 ::not-found))
+                        ~'remainder
+                        (persistent!
+                          (if (seq ~'remainder)
+                            (reduce conj! ~'result ~'remainder)
+                            ~'result)))
+                      (dissoc ~'%env :rule/datum)))
                   (vary-meta assoc-in [:rule :scanner] true))))))
        (let [[pattern handler] (rescanning-body opts nil [pattern] [handler])
              form `(cond->>

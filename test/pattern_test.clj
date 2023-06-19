@@ -904,7 +904,7 @@
              (pattern/in-order
                (rule '[:x ?c 1]     [c {:x 1}])
                (rule '[:y ?c 1]     [c {:y [c 1]}])))
-        srx (scanner rx)]
+        srx (scanner {:linear false} rx)]
     (is (= '[1 2 3 4 {:a 1} {:b 2} :c {:x 1} :d]
           (srx '(1 2 3 4 :a 1 :b 9 :x :c 1 :d)))))
 
@@ -915,7 +915,7 @@
     (is (= [2 3 1 6 5 4]
           (odds '[2 3 1 6 5 1 3]))))
 
-  (let [odds (scanner {:lazy true}
+  (let [odds (scanner {:lazy true :linear false}
                (rule '(?? x odd?)
                  (when (next x)
                    (apply + x))))]
@@ -940,7 +940,7 @@
   (let [ro (pattern/rule-list
              (rule '[?a 1] nil)
              (rule '[?a 1] :ok))
-        s (scanner (scanner ro))]
+        s (scanner ro)]
     (is (= [5 4 3 :ok 0]
           (s [5 4 3 2 1 0]))))
 
@@ -963,5 +963,5 @@
                (rule '[?a 1] (pattern/success:env {:hi 1}))
                (rule '[?a 1] :ok))
           s (scanner ro)]
-      (is (= [[5 4 3 :ok 0] {:hi 1 :rule/datum [5 4 3 2 1 0]}]
+      (is (= [[5 4 3 :ok 0] {:hi 1}]
             (s [5 4 3 2 1 0] {}))))))
