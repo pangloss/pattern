@@ -5,6 +5,7 @@
             pattern.r3.core
             pattern.r3.rule
             pattern.r3.scan
+            pattern.r3.scanner
             pattern.r3.post-process
             pattern.r3.combinators
             pattern.r3.rewrite
@@ -64,8 +65,9 @@
               on-mutual
               rule-simplifier
               in
-              scanner
               rule-zipper)
+             (pattern.r3.scanner
+               scanner)
              (pattern.nanopass.dialect
               def-dialect
               def-derived
