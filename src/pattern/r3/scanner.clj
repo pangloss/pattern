@@ -105,7 +105,7 @@
   ([opts r pattern handler]
    (make-rule opts r nil [pattern] [handler]))
   ([opts r markers patterns handlers]
-   (if (and (:linear opts) (:iterated opts true))
+   (if (and (:linear opts true) (:iterated opts true))
      (make-rule-linear opts r markers patterns handlers)
      (make-rule-rescanning opts r markers patterns handlers))))
 
