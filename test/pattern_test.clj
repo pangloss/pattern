@@ -754,72 +754,6 @@
         ((compile-pattern '[?x (??:remove int? ?misc)])
          [2 :a 1 2 'y 3 4 'x]))))
 
-#_
-(deftest match-a-set-of-maps
-  (let [r (scan-rule combine
-            '[(?:as* coll
-                (?:1
-                  (?:map :pos ?pos)
-                  (?:* (?:map :pos (| ?pos :ws)))
-                  (?:map :pos ?pos)))]
-            [{:text (clojure.string/join (map :text coll)) :pos pos}])]
-
-    (is (= [{:text "My", :pos :word}
-            {:text " ", :pos :ws}
-            {:text "HAPPY FEET", :pos :brand-name}
-            {:text " ", :pos :ws}
-            {:text "Πάτοι Παπουτσιών Νο", :pos :word}
-            {:text "38", :pos :number}]
-          (r
-            [{:text "My", :pos :word}
-             {:text " ", :pos :ws}
-             {:text "HAPPY", :foreign true, :pos :brand-name}
-             {:text " ", :pos :ws}
-             {:text "FEET", :foreign true, :pos :brand-name}
-             {:text " ", :pos :ws}
-             {:text "Πάτοι", :pos :word}
-             {:text " ", :pos :ws}
-             {:text "Παπουτσιών", :pos :word}
-             {:text " ", :pos :ws}
-             {:text "Νο", :pos :word}
-             {:text "38", :pos :number}])))))
-
-
-(deftest match-a-set-of-maps-scanner
-  (let [r
-        (scanner
-          (pattern/rule-list
-            (rule combine
-              '[(?:as* coll
-                  (?:1
-                    (?:map :pos ?pos)
-                    (?:* (?:map :pos (| ?pos :ws)))
-                    (?:map :pos ?pos)))]
-              [{:text (clojure.string/join (map :text coll)) :pos pos}])))]
-
-
-
-    (is (= [{:text "My", :pos :word}
-            {:text " ", :pos :ws}
-            {:text "HAPPY FEET", :pos :brand-name}
-            {:text " ", :pos :ws}
-            {:text "Πάτοι Παπουτσιών Νο", :pos :word}
-            {:text "38", :pos :number}]
-          (r
-            [{:text "My", :pos :word}
-             {:text " ", :pos :ws}
-             {:text "HAPPY", :foreign true, :pos :brand-name}
-             {:text " ", :pos :ws}
-             {:text "FEET", :foreign true, :pos :brand-name}
-             {:text " ", :pos :ws}
-             {:text "Πάτοι", :pos :word}
-             {:text " ", :pos :ws}
-             {:text "Παπουτσιών", :pos :word}
-             {:text " ", :pos :ws}
-             {:text "Νο", :pos :word}
-             {:text "38", :pos :number}])))))
-
-
 (deftest rebuild-a-rule
   (let [r1 (pattern.match.predicator/with-predicates
              {'a int?}
@@ -849,28 +783,6 @@
                  '(+ a b))]
         (is (= 42 (r4 [40 1 2])))
         (is (= [40 1 :x] (r4 [40 1 :x])) "rule not applied")))))
-
-
-
-(comment
-  (def rl
-    (pattern/rule-list
-      r))
-
-  (pattern.types/spliceable-pattern (:match (:rule (meta r))))
-
-  (defn zip-seq [z]
-    (lazy-seq
-      (when-not (zip/end? z)
-        (cons (zip/node z)
-          (zip-seq (zip/next z))))))
-
-  (defn to-splice [x]
-    (when (satisfies? pattern.types/SpliceablePattern x)
-      (pattern.types/spliceable-pattern x)))
-
-  (map to-splice (zip-seq (pattern.r3.combinators/rule-zipper r)))
-  (map meta (zip-seq (pattern.r3.combinators/rule-zipper r))))
 
 (deftest match-a-set-of-maps
   (let [r (scan-rule combine
@@ -935,7 +847,6 @@
 
 
 (deftest scanner-variations
-
   (let [r (scanner {:iterate false}
             (rule '[?a 1 ?b 2] [{a 1} {b 2}]))]
     (is (= [:x :y {:a 1} {:b 2} :a 1 :b 2 :z]
