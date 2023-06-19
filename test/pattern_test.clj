@@ -783,17 +783,21 @@
              {:text " ", :pos :ws}
              {:text "Νο", :pos :word}
              {:text "38", :pos :number}])))))
-#_
+
+
 (deftest match-a-set-of-maps-scanner
   (let [r
-        (scanner {:min-len 2 :max-len 5 :extreme false :rescan false}
-          (rule combine
-            '[(?:as* coll
-                (?:1
-                  (?:map :pos ?pos)
-                  (?:* (?:map :pos (| ?pos :ws)))
-                  (?:map :pos ?pos)))]
-            [{:text (clojure.string/join (map :text coll)) :pos pos}]))]
+        (scanner
+          (pattern/rule-list
+            (rule combine
+              '[(?:as* coll
+                  (?:1
+                    (?:map :pos ?pos)
+                    (?:* (?:map :pos (| ?pos :ws)))
+                    (?:map :pos ?pos)))]
+              [{:text (clojure.string/join (map :text coll)) :pos pos}])))]
+
+
 
     (is (= [{:text "My", :pos :word}
             {:text " ", :pos :ws}

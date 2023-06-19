@@ -4,8 +4,6 @@
 
 (defmulti scanner* (fn [opts the-rule] (get-in (meta the-rule) [:rule :rule-type])))
 
-;; TODO handle rules without a spliceable pattern
-
 (defmethod scanner* :pattern/rule [{:keys [iterate] :or {iterate true}} the-rule]
   ;; single rule approach:
   ;;'[??before rule1-body ??after]
