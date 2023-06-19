@@ -834,9 +834,9 @@
     (testing "rewrite rule only"
       (let [r3 (pattern.r3.core/rebuild-rule r1 '[?a 1 ?a:b] nil)]
         (is (= [0 0 2 2] (r3 [0 1 2])))
-        (is (= [0 1 :x] (r3 [0 1 :x])) "not transformed")))
+        (is (= [0 1 :x] (r3 [0 1 :x])) "rule not applied")))
 
-    (testing "rewrite rule only"
+    (testing "rewrite rule and handler"
       (let [r4 (pattern.r3.core/rebuild-rule r1
                  (-> (get-in (meta r1) [:rule :pattern])
                    pop
@@ -844,7 +844,7 @@
                    (conj '?a:b))
                  '(+ a b))]
         (is (= 42 (r4 [40 1 2])))
-        (is (= [40 1 :x] (r4 [40 1 :x])) "not transformed")))))
+        (is (= [40 1 :x] (r4 [40 1 :x])) "rule not applied")))))
 
 
 

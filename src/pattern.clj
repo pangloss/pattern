@@ -36,7 +36,8 @@
               rule
               success
               success:env
-              name-rule)
+              name-rule
+              rebuild-rule)
              (pattern.r3.scan
                scan-rule)
              (pattern.r3.rule
@@ -63,7 +64,8 @@
               on-mutual
               rule-simplifier
               in
-              scanner)
+              scanner
+              rule-zipper)
              (pattern.nanopass.dialect
               def-dialect
               def-derived
@@ -73,7 +75,10 @@
               show-parse
               valid? validate
               descend-into)
-             (pattern.types ok ok?)
+             (pattern.types
+               ok ok?
+               spliceable-pattern
+               recombine)
              (pattern.nanopass.pass
               defpass
               let-rulefn))
