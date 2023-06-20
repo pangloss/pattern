@@ -22,7 +22,7 @@
       (select-keys [:src :handler-fn])
       (assoc
         :sym handler-sym
-        :call `(~handler-sym ~@(:handler-fn-args m))))))
+        :call `(~handler-sym ~(:handler-fn-args m))))))
 
 (defn- rescanning-body [opts markers patterns handlers]
   (let [before (gensym 'before)

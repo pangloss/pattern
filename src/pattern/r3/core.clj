@@ -117,14 +117,13 @@
          name* (if name
                  (symbol (str "rule-" name))
                  'rulebody)]
-     `(let [handler# (fn ~name*
-                       ~fn-args ~handler-body)]
+     `(let [handler# (fn ~name* [~fn-args] ~handler-body)]
         ['~fn-args
          handler#
          (fn ~'rule-dispatch [~'%env ~matches]
            (let [~@(extract-env-args env-args)
                  ~@(extract-args matches args)]
-             (handler# ~@fn-args)))]))))
+             (handler# ~fn-args)))]))))
 
 (defmacro rule
   "Create a single rule. There are 2 arities, both with unique behavior.
@@ -236,19 +235,21 @@
   (let [matches (gensym 'matches)
         fn-args (rule-fn-args args env-args)
         name* (if name
-                (symbol (str "rule-" name))
-                'rulebody)]
+                (symbol (str "rebuild-" name))
+                'rebuildbody)]
+    ;; Handler can get a huge number of function args, so pass them as a destructuring vector.
+    ;; TODO: if there is too much overhead, only do that if > 20 args
     `(let [handler# (volatile! nil)
            ->handler#
            (fn [~injection-names]
              (vreset! handler#
-               (fn ~name* ~fn-args ~handler-body)))]
+               (fn ~name* [~fn-args] ~handler-body)))]
        ['~fn-args
         ->handler#
         (fn ~'rule-dispatch [~'%env ~matches]
           (let [~@(extract-env-args env-args)
                 ~@(extract-args matches args)]
-            ((deref handler#) ~@fn-args)))])))
+            ((deref handler#) ~fn-args)))])))
 
 
 (defn rebuild-body [args env-args ->handler injection-names injection-data]
