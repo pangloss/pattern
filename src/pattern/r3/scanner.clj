@@ -16,8 +16,13 @@
   ([opts the-rule] (scanner* opts the-rule)))
 
 (defn rule-handler [r]
-  (let [m (:rule (meta r))]
-    `(~(:handler-fn m) ~@(:handler-fn-args m))))
+  (let [handler-sym (gensym 'handler)
+        m (:rule (meta r))]
+    (-> m
+      (select-keys [:src :handler-fn])
+      (assoc
+        :sym handler-sym
+        :call `(~handler-sym ~@(:handler-fn-args m))))))
 
 (defn- rescanning-body [opts markers patterns handlers]
   (let [before (gensym 'before)
@@ -31,12 +36,12 @@
                       (first patterns)
                       (list* '| (map (fn [m p] (list '?:as* m p)) markers patterns))))
                   (symbol (str "??" after)))
-        handlers (if one?
-                   (first handlers)
-                   `(cond ~@(mapcat vector markers handlers)))]
+        merged-handler (if one?
+                         (:call (first handlers))
+                         `(cond ~@(mapcat vector markers (map :call handlers))))]
     [pattern
      `(when (seq ~segment)
-        (when-let [body# ~handlers]
+        (when-let [body# ~merged-handler]
           (let [env# (unwrap-env ~'%env body#)
                 body# (unwrap ::none body#)]
             (if (= ::none body#)
@@ -52,7 +57,9 @@
                         (into body# ~after)
                         (vec (concat body# ~after)))
                       (vec body#)))
-                  env#))))))]))
+                  env#))))))
+     (mapv :sym handlers)
+     (mapv :handler-fn handlers)]))
 
 (defn- linear-body [opts markers patterns handlers]
   (let [complete (gensym 'complete)
@@ -68,12 +75,13 @@
                        (first patterns)
                        (list* '| (map (fn [m p] (list '?:as* m p)) markers patterns))))
                    (symbol (str "??" after)))]
-        handlers (if one?
-                   (first handlers)
-                   `(cond ~@(mapcat vector markers handlers)))]
+        ;; handlers is now a map
+        merged-handler (if one?
+                         (:call (first handlers))
+                         `(cond ~@(mapcat vector markers (map :call handlers))))]
     [pattern
      `(when (seq ~segment)
-        (when-let [success# ~handlers]
+        (when-let [success# ~merged-handler]
           (let [env# (unwrap-env ~'%env success#)
                 body# (unwrap ::none success#)]
             (if (= ::none body#)
@@ -82,26 +90,28 @@
                     complete# (reduce conj! complete# (if (sequential? body#) body# [body#]))]
                 (success
                   [complete# ~after]
-                  env#))))))]))
+                  env#))))))
+     (mapv :sym handlers)
+     (mapv :handler-fn handlers)]))
 
 (defn- make-rule-rescanning
   ([opts r markers patterns handlers]
    (when (seq patterns)
-     (let [[pattern handler] (rescanning-body opts markers patterns handlers)]
-       (cond-> (rebuild-rule r pattern handler)
+     (let [[pattern handler injection-names injection-data] (rescanning-body opts markers patterns handlers)]
+       (cond-> (rebuild-rule r pattern handler injection-names injection-data)
          true (vary-meta assoc-in [:rule :scanner] true)
          (:iterate opts true) iterated)))))
 
 (defn- make-rule-linear
   [opts r markers patterns handlers]
   (when (seq patterns)
-    (let [[pattern handler] (linear-body opts markers patterns handlers)]
+    (let [[pattern handler injection-names injection-data] (linear-body opts markers patterns handlers)]
       (in-order
         (-> (rule '(? v sequential?)
               [(transient []) (vec v)])
           raw
           (vary-meta assoc-in [:rule :scanner] true))
-        (cond-> (rebuild-rule r pattern handler)
+        (cond-> (rebuild-rule r pattern handler injection-names injection-data)
           true (vary-meta assoc-in [:rule :scanner] true)
           (:iterate opts true) iterated)
         (-> (rule '[?result ?remainder]

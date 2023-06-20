@@ -765,12 +765,12 @@
     (is (= [0 0 :x :x] (r1 [0 1 :x])))
 
     (testing "rewrite handler only"
-      (let [r2 (pattern.r3.core/rebuild-rule r1 nil '[b b {b a} a a])]
+      (let [r2 (pattern.r3.core/rebuild-rule r1 nil '[b b {b a} a a] [] [])]
         (is (= [2 2 {2 0} 0 0] (r2 [0 1 2])))
         (is (= [:x :x {:x 0} 0 0] (r2 [0 1 :x])))))
 
     (testing "rewrite rule only"
-      (let [r3 (pattern.r3.core/rebuild-rule r1 '[?a 1 ?a:b] nil)]
+      (let [r3 (pattern.r3.core/rebuild-rule r1 '[?a 1 ?a:b] nil nil nil)]
         (is (= [0 0 2 2] (r3 [0 1 2])))
         (is (= [0 1 :x] (r3 [0 1 :x])) "rule not applied")))
 
@@ -780,8 +780,10 @@
                    pop
                    ;; ensure be is int via predicate on a
                    (conj '?a:b))
-                 '(+ a b))]
-        (is (= 42 (r4 [40 1 2])))
+                 '(+ x a b)
+                 ;; inject x:
+                 ['x] [10])]
+        (is (= 52 (r4 [40 1 2])))
         (is (= [40 1 :x] (r4 [40 1 :x])) "rule not applied")))))
 
 (deftest match-a-set-of-maps-scanner

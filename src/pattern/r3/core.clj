@@ -231,10 +231,33 @@
              :handler-fn-args fn-args#
              :handler-fn handler#}))))))
 
-(defn rebuild-body [args env-args handler]
-  (when handler
+(defmacro rule-fn-rebuild-body
+  [name args env-args handler-body injection-names]
+  (let [matches (gensym 'matches)
+        fn-args (rule-fn-args args env-args)
+        name* (if name
+                (symbol (str "rule-" name))
+                'rulebody)]
+    `(let [handler# (volatile! nil)
+           ->handler#
+           (fn [~injection-names]
+             (vreset! handler#
+               (fn ~name* ~fn-args ~handler-body)))]
+       ['~fn-args
+        ->handler#
+        (fn ~'rule-dispatch [~'%env ~matches]
+          (let [~@(extract-env-args env-args)
+                ~@(extract-args matches args)]
+            ((deref handler#) ~@fn-args)))])))
+
+
+(defn rebuild-body [args env-args ->handler injection-names injection-data]
+  (when ->handler
     ;; ignore the fn-args and fn-body, just return the dispatcher
-    (last (eval (list `rule-fn-body args env-args handler)))))
+    (let [[args ->handler dispatch]
+          (eval (list `rule-fn-rebuild-body nil args env-args ->handler injection-names))]
+      (->handler injection-data)
+      dispatch)))
 
 (defmacro rebuild-rule
   "Update either the pattern or the handler body (or both) of the given rule.
@@ -242,8 +265,14 @@
   Both the pattern and the handler-body must be quoted (unlike in [[rule]], where
   the handler-body is not quoted. This is to allow programmatic manipulation
   of the existing handler body, or otherwise generating it. The current version
-  of both is present in the rule metadata."
-  [rule pattern handler-body]
+  of both is present in the rule metadata.
+
+  When rebuilding a rule using eval, anything that may contain local state must
+  be injected. In the handler function, refer to data that will be injected with
+  normal symbols. Provide those symbols as a vector of injection-names. The
+  corresponding data to be injected should be in the same order in
+  injection-data."
+  [rule pattern handler-body handler-injection-names handler-injection-data]
   `(let [raw-pattern# ~pattern
          args# (when ~(boolean pattern) (pattern-args raw-pattern#))
          p# ~(when pattern
@@ -251,12 +280,12 @@
          r# ~rule
          args# (or args# (get-in (meta r#) [:rule :pattern-args]))
          env-args# '~(:env-args (meta pattern))
-         hb# ~handler-body
+         src# ~handler-body
          r# (-rebuild-rule r#
               (when ~(boolean pattern)
                 (compile-pattern (apply-replacements p#
                                    (get-in (meta r#) [:rule :pattern.match.core/pattern-replace]))))
-              (when ~(boolean handler-body) (rebuild-body args# env-args# hb#)))]
+              (when ~(boolean handler-body) (rebuild-body args# env-args# src# ~(vec handler-injection-names) ~(vec handler-injection-data))))]
      (cond-> r#
-       ~(boolean handler-body) (vary-meta assoc-in [:rule :src] hb#)
+       ~(boolean handler-body) (vary-meta assoc-in [:rule :src] src#)
        ~(boolean pattern) (vary-meta assoc-in [:rule :pattern] p#))))
