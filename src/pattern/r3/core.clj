@@ -119,13 +119,12 @@
                  'rulebody)]
      `(let [handler# (fn ~name*
                        ~fn-args ~handler-body)]
-        (fn ~'rule-dispatch
-          ([command#]
-           (if (= :args command#) '~fn-args handler#))
-          ([~'%env ~matches]
+        ['~fn-args
+         handler#
+         (fn ~'rule-dispatch [~'%env ~matches]
            (let [~@(extract-env-args env-args)
                  ~@(extract-args matches args)]
-             (handler# ~@fn-args))))))))
+             (handler# ~@fn-args)))]))))
 
 (defmacro rule
   "Create a single rule. There are 2 arities, both with unique behavior.
@@ -186,42 +185,51 @@
    (let [args (pattern-args pattern)
          matches (gensym 'matches)
          p (@spliced (@scheme-style pattern))]
-     `(let [p# ~p]
+     `(let [p# ~p
+            [fn-args# handler# dispatcher#]
+            (rule-fn-body ~args ~(:env-args (meta pattern)) (sub ~(second pattern)))]
         (make-rule p#
-          (rule-fn-body ~args ~(:env-args (meta pattern))
-            (sub ~(second pattern)))
+          dispatcher#
           raw-matches
           *post-processor*
           {:src '(sub ~(second pattern))
            :pattern-meta '~(meta pattern)
-           :pattern-args '~(with-meta args nil)}))))
+           :pattern-args '~(with-meta args nil)
+           :handler-fn-args fn-args#
+           :handler-fn handler#}))))
   ([pattern handler-body]
    (let [args (pattern-args pattern)]
-     `(let [p# ~(@spliced (@scheme-style pattern))]
+     `(let [p# ~(@spliced (@scheme-style pattern))
+            [fn-args# handler# dispatcher#]
+            (rule-fn-body ~args ~(:env-args (meta pattern)) ~handler-body)]
         (make-rule p#
-          (rule-fn-body ~args ~(:env-args (meta pattern))
-            ~handler-body)
+          dispatcher#
           raw-matches
           *post-processor*
           {:may-call-success0? ~(may-call-success0? handler-body)
            :src '~handler-body
            :pattern-args '~(with-meta args nil)
-           :pattern-meta '~(meta pattern)}))))
+           :pattern-meta '~(meta pattern)
+           :handler-fn-args fn-args#
+           :handler-fn handler#}))))
   ([name pattern handler-body]
    (let [fname (if (symbol? name) name (gensym '-))
          name (if (symbol? name) (list 'quote name) name)
          args (pattern-args pattern)]
      `(name-rule ~name
-        (let [p# ~(@spliced (@scheme-style pattern))]
+        (let [p# ~(@spliced (@scheme-style pattern))
+              [fn-args# handler# dispatcher#]
+              (rule-fn-body ~fname ~args ~(:env-args (meta pattern)) ~handler-body)]
           (make-rule p#
-            (rule-fn-body ~fname ~args ~(:env-args (meta pattern))
-              ~handler-body)
+            dispatcher#
             raw-matches
             *post-processor*
             {:may-call-success0? ~(may-call-success0? handler-body)
              :src '~handler-body
              :pattern-args '~(with-meta args nil)
-             :pattern-meta '~(meta pattern)}))))))
+             :pattern-meta '~(meta pattern)
+             :handler-fn-args fn-args#
+             :handler-fn handler#}))))))
 
 (defn rebuild-body [args env-args handler]
   (when handler

@@ -16,8 +16,8 @@
   ([opts the-rule] (scanner* opts the-rule)))
 
 (defn rule-handler [r]
-  (let [f (get-in (meta r) [:rule :handler])]
-    `(~(f :handler) ~@(f :args))))
+  (let [m (:rule (meta r))]
+    `(~(:handler-fn m) ~@(:handler-fn-args m))))
 
 (defn- rescanning-body [opts markers patterns handlers]
   (let [before (gensym 'before)
