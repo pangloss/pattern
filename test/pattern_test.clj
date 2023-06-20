@@ -787,15 +787,15 @@
         (is (= [40 1 :x] (r4 [40 1 :x])) "rule not applied")))))
 
 (deftest match-a-set-of-maps-scanner
-  (let [r
-        (scanner
-          (rule combine
-            '[(?:as* coll
-                (?:1
-                  (?:map :pos ?pos)
-                  (?:* (?:map :pos (| ?pos :ws)))
-                  (?:map :pos ?pos)))]
-            {:text (clojure.string/join (map :text coll)) :pos pos}))]
+  (let [joiner (fn [coll] (clojure.string/join (map :text coll)))
+        r (scanner
+            (rule combine
+              '[(?:as* coll
+                  (?:1
+                    (?:map :pos ?pos)
+                    (?:* (?:map :pos (| ?pos :ws)))
+                    (?:map :pos ?pos)))]
+              {:text (joiner coll) :pos pos}))]
 
     (is (= [{:text "My", :pos :word}
             {:text " ", :pos :ws}
