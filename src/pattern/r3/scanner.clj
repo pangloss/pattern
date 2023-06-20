@@ -13,7 +13,7 @@
 
 (defn scanner
   ([the-rule] (scanner* {} the-rule))
-  ([opts the-rule] (scanner* opts the-rule)))
+  ([{:keys [linear iterate lazy] :or {linear true iterate true} :as opts} the-rule] (scanner* opts the-rule)))
 
 (defn rule-handler [r]
   (let [handler-sym (gensym 'handler)
@@ -133,11 +133,17 @@
      (make-rule-linear opts r markers patterns handlers)
      (make-rule-rescanning opts r markers patterns handlers))))
 
-(defmethod scanner* :pattern/rule [{:keys [iterate lazy] :or {iterate true} :as opts} the-rule]
+(defn- get-pattern [opts match]
+  (let [pattern (spliceable-pattern match)]
+    (if (and (seq? pattern) (= '?? (first pattern)) (= ::no (:lazy opts ::no)))
+      (concat '(??!) (rest pattern))
+      pattern)))
+
+(defmethod scanner* :pattern/rule [opts the-rule]
   ;; single rule approach:
   ;;'[??before rule1-body ??after]
   (let [m (:rule (meta the-rule))
-        pattern (spliceable-pattern (:match m))]
+        pattern (get-pattern opts (:match m))]
     (if (:scanner m)
       the-rule
       (if pattern
@@ -157,7 +163,7 @@
     (if child
       (let [m (:rule (meta child))]
         (if (and (= :pattern/rule (:rule-type m)) (not (:scanner m)))
-          (if-let [p (spliceable-pattern (:match m))]
+          (if-let [p (get-pattern opts (:match m))]
             (recur children
               (or r child)
               (conj markers (gensym 'rule))

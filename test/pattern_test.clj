@@ -936,3 +936,22 @@
           s (scanner ro)]
       (is (= [[5 4 3 :ok 0] {:hi 1}]
             (s [5 4 3 2 1 0] {}))))))
+
+(deftest scanner-examples
+  (let [sum (scanner (rule '(?? i number?)
+                       (apply + i)))]
+    (is (= [:x 6 :y 22 :z 3]
+          (sum [ :x 1 2 3 :y 4 5 6 7 :z 1 2]))))
+
+  (let [sum (scanner (rule '(?:* (? i number?))
+                       (apply + i)))]
+    (is (= [:x 6 :y 22 :z 3]
+          (sum [ :x 1 2 3 :y 4 5 6 7 :z 1 2]))))
+
+  (let [sum-points (scanner
+                     (pattern/rule-list
+                       (rule '(?:* (? i number?)) (apply + i))
+                       (rule '[:x ?x :y ?y] {:point/x x :point/y y})))]
+
+    (is (= [#:point{:x 6, :y 22} :z 3]
+          (sum-points [ :x 1 2 3 :y 4 5 6 7 :z 1 2])))))
