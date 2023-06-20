@@ -48,17 +48,21 @@
               (if (= ::none body#)
                 (success:env env#)
                 (let [body# (if (sequential? body#) body# [body#])]
-                  (success
-                    (if (seq ~before)
-                      (if (seq body#)
-                        (into ~before (concat body# ~after))
-                        (into ~before ~after))
-                      (if (seq ~after)
-                        (if (vector? body#)
-                          (into body# ~after)
-                          (vec (concat body# ~after)))
-                        (vec body#)))
-                    env#)))))))
+                  (if (= ~segment body#)
+                    (if (= ~'%env env#)
+                      nil ;; rule failed
+                      (success:env env#))
+                    (success
+                      (if (seq ~before)
+                        (if (seq body#)
+                          (into ~before (concat body# ~after))
+                          (into ~before ~after))
+                        (if (seq ~after)
+                          (if (vector? body#)
+                            (into body# ~after)
+                            (vec (concat body# ~after)))
+                          (vec body#)))
+                      env#))))))))
      (mapv :sym handlers)
      (mapv :handler-fn handlers)]))
 
@@ -70,7 +74,7 @@
         one? (not (next patterns))
         pattern [(symbol (str "?" complete))
                  (list
-                   (symbol (str (if (:lazy opts) "??!" "??") before))
+                   (symbol (str "??" before))
                    (list '?:as* segment
                      (if one?
                        (first patterns)
@@ -88,11 +92,16 @@
                   body# (unwrap ::none success#)]
               (if (= ::none body#)
                 (success:env env#)
-                (let [complete# (reduce conj! ~complete ~before)
-                      complete# (reduce conj! complete# (if (sequential? body#) body# [body#]))]
-                  (success
-                    [complete# ~after]
-                    env#)))))))
+                (let [body# (if (sequential? body#) body# [body#])]
+                  (if (= ~segment body#)
+                    (if (= ~'%env env#)
+                      nil ;; rule failed
+                      (success:env env#))
+                    (let [complete# (reduce conj! ~complete ~before)
+                          complete# (reduce conj! complete# body#)]
+                      (success
+                        [complete# ~after]
+                        env#)))))))))
      (mapv :sym handlers)
      (mapv :handler-fn handlers)]))
 

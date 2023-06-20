@@ -954,4 +954,19 @@
                        (rule '[:x ?x :y ?y] {:point/x x :point/y y})))]
 
     (is (= [#:point{:x 6, :y 22} :z 3]
-          (sum-points [ :x 1 2 3 :y 4 5 6 7 :z 1 2])))))
+          (sum-points [ :x 1 2 3 :y 4 5 6 7 :z 1 2]))))
+
+  (testing "specifying lazy leaves the ?? matcher alone instead of replacing it with ??!."
+    (let [sum (scanner {:lazy true}
+                (rule '(?? i number?)
+                  (apply + i)))]
+      (is (= [:x 3 3 :y 9 13 :z 3]
+            (sum [ :x 1 2 3 :y 4 5 6 7 :z 1 2]))))
+
+    ;; Must iterate the lazy scanner to get to the fixed point:
+    (let [sum (scanner {:lazy true}
+                (rule '(?? i number?)
+                  (apply + i)))
+          sum (pattern/iterated sum)]
+      (is (= [:x 6 :y 22 :z 3]
+            (sum [ :x 1 2 3 :y 4 5 6 7 :z 1 2]))))))
