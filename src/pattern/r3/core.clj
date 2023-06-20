@@ -103,20 +103,29 @@
 (defn- may-call-success0? [body]
   (boolean (some #{'(success) 'success:env
                    `(success) `success:env}
-                 (tree-seq list? seq body))))
+             (tree-seq list? seq body))))
+
+(defn rule-fn-args [args env-args]
+  (vec (concat ['%env] (take-nth 2 (extract-env-args env-args)) args)))
 
 (defmacro rule-fn-body
   ([args env-args handler-body]
    `(rule-fn-body nil ~args ~env-args ~handler-body))
   ([name args env-args handler-body]
    (let [matches (gensym 'matches)
+         fn-args (rule-fn-args args env-args)
          name* (if name
                  (symbol (str "rule-" name))
                  'rulebody)]
-     `(fn ~name* [~'%env ~matches]
-        (let [~@(extract-env-args env-args)
-              ~@(extract-args matches args)]
-          ~handler-body)))))
+     `(let [handler# (fn ~name*
+                       ~fn-args ~handler-body)]
+        (fn ~'rule-dispatch
+          ([command#]
+           (if (= :args command#) '~fn-args handler#))
+          ([~'%env ~matches]
+           (let [~@(extract-env-args env-args)
+                 ~@(extract-args matches args)]
+             (handler# ~@fn-args))))))))
 
 (defmacro rule
   "Create a single rule. There are 2 arities, both with unique behavior.

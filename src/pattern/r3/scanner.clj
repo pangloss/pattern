@@ -8,22 +8,16 @@
    [pattern.r3.post-process :refer [raw]]
    [clojure.zip :as zip]))
 
-(defmulti scanner* (fn [opts the-rule] (get-in (meta the-rule) [:rule :rule-type])))
+(defmulti scanner* (fn [opts the-rule]
+                    (get-in (meta the-rule) [:rule :rule-type])))
 
-(declare scan-rule)
+(defn scanner
+  ([the-rule] (scanner* {} the-rule))
+  ([opts the-rule] (scanner* opts the-rule)))
 
-(defmacro scanner
-  ([the-rule] `(scanner {} ~the-rule))
-  ([opts the-rule]
-   (or
-     (when (and (seq? the-rule) (symbol? (first the-rule)) (= #'rule (resolve (first the-rule))))
-       (let [[name pattern body]
-             (case (count the-rule)
-               3 (let [[_ pattern body] the-rule] [nil pattern body])
-               4 (let [[_ name pattern body] the-rule] [name pattern body]))]
-         (when (vector? (second pattern))
-           `(scan-rule ~name ~(vary-meta pattern merge opts) ~body))))
-     `(scanner* ~opts ~the-rule))))
+(defn rule-handler [r]
+  (let [f (get-in (meta r) [:rule :handler])]
+    `(~(f :handler) ~@(f :args))))
 
 (defn- rescanning-body [opts markers patterns handlers]
   (let [before (gensym 'before)
@@ -137,7 +131,7 @@
     (if (:scanner m)
       the-rule
       (if pattern
-        (make-scanner-rule opts the-rule pattern (:src m))
+        (make-scanner-rule opts the-rule pattern (rule-handler the-rule))
         the-rule))))
 
  
@@ -158,7 +152,7 @@
               (or r child)
               (conj markers (gensym 'rule))
               (conj patterns p)
-              (conj handlers (:src m))
+              (conj handlers (rule-handler child))
               rules))
           (recur children nil [] [] []
             (-> rules

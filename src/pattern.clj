@@ -64,8 +64,7 @@
               in
               rule-zipper)
              (pattern.r3.scanner
-               scanner
-               scan-rule)
+               scanner)
              (pattern.nanopass.dialect
               def-dialect
               def-derived
