@@ -94,13 +94,12 @@
      (mapv :sym handlers)
      (mapv :handler-fn handlers)]))
 
-(defn- make-rule-rescanning
-  ([opts r markers patterns handlers]
-   (when (seq patterns)
-     (let [[pattern handler injection-names injection-data] (rescanning-body opts markers patterns handlers)]
-       (cond-> (rebuild-rule r pattern handler injection-names injection-data)
-         true (vary-meta assoc-in [:rule :scanner] true)
-         (:iterate opts true) iterated)))))
+(defn- make-rule-rescanning [opts r markers patterns handlers]
+  (when (seq patterns)
+    (let [[pattern handler injection-names injection-data] (rescanning-body opts markers patterns handlers)]
+      (cond-> (rebuild-rule r pattern handler injection-names injection-data)
+        true (vary-meta assoc-in [:rule :scanner] true)
+        (:iterate opts true) iterated))))
 
 (defn- make-rule-linear
   [opts r markers patterns handlers]

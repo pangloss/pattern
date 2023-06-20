@@ -285,7 +285,7 @@
               (when ~(boolean pattern)
                 (compile-pattern (apply-replacements p#
                                    (get-in (meta r#) [:rule :pattern.match.core/pattern-replace]))))
-              (when ~(boolean handler-body) (rebuild-body args# env-args# src# ~(vec handler-injection-names) ~(vec handler-injection-data))))]
+              (when ~(boolean handler-body) (rebuild-body args# env-args# src# (vec ~handler-injection-names) (vec ~handler-injection-data))))]
      (cond-> r#
        ~(boolean handler-body) (vary-meta assoc-in [:rule :src] src#)
        ~(boolean pattern) (vary-meta assoc-in [:rule :pattern] p#))))
