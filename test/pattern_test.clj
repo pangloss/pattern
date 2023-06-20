@@ -3,7 +3,7 @@
             pattern.r3.core
             [pattern.match.core :as m :refer [matcher pattern-names var-name *disable-modes*
                                               compile-pattern matcher-prefix run-matcher]]
-            [pattern :refer [scan-rule scanner]]
+            [pattern :refer [scanner]]
             [pattern.types :refer [not-meta?]]
             pattern.matchers
             [pure-conditioning :as c :refer [manage restart-with handler-cond]])
@@ -469,7 +469,7 @@
                      (?:* (? x = ?a)) ;; doesn't match
                      ??rest]
             [5 3 1 5 8 1])))
-    #_ ;; FIXME: this used to work until I fixed a bug in this commit in building ?:?
+
     (is (= [5 [5 3 1 5] [8 1]]
           ;; Use the optional matcher to capture the first value in the
           ;; sequence, and the and matcher to capture it together with the rest
@@ -783,35 +783,6 @@
                  '(+ a b))]
         (is (= 42 (r4 [40 1 2])))
         (is (= [40 1 :x] (r4 [40 1 :x])) "rule not applied")))))
-
-(deftest match-a-set-of-maps
-  (let [r (scan-rule combine
-            '[(?:as* coll
-                (?:1
-                  (?:map :pos ?pos)
-                  (?:* (?:map :pos (| ?pos :ws)))
-                  (?:map :pos ?pos)))]
-            [{:text (clojure.string/join (map :text coll)) :pos pos}])]
-
-    (is (= [{:text "My", :pos :word}
-            {:text " ", :pos :ws}
-            {:text "HAPPY FEET", :pos :brand-name}
-            {:text " ", :pos :ws}
-            {:text "Πάτοι Παπουτσιών Νο", :pos :word}
-            {:text "38", :pos :number}]
-          (r
-            [{:text "My", :pos :word}
-             {:text " ", :pos :ws}
-             {:text "HAPPY", :foreign true, :pos :brand-name}
-             {:text " ", :pos :ws}
-             {:text "FEET", :foreign true, :pos :brand-name}
-             {:text " ", :pos :ws}
-             {:text "Πάτοι", :pos :word}
-             {:text " ", :pos :ws}
-             {:text "Παπουτσιών", :pos :word}
-             {:text " ", :pos :ws}
-             {:text "Νο", :pos :word}
-             {:text "38", :pos :number}])))))
 
 (deftest match-a-set-of-maps-scanner
   (let [r

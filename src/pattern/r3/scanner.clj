@@ -54,7 +54,6 @@
                       (vec body#)))
                   env#))))))]))
 
-
 (defn- linear-body [opts markers patterns handlers]
   (let [complete (gensym 'complete)
         before (gensym 'before)
@@ -102,9 +101,9 @@
               [(transient []) (vec v)])
           raw
           (vary-meta assoc-in [:rule :scanner] true))
-        (-> (rebuild-rule r pattern handler)
-          (vary-meta assoc-in [:rule :scanner] true)
-          iterated)
+        (cond-> (rebuild-rule r pattern handler)
+          true (vary-meta assoc-in [:rule :scanner] true)
+          (:iterate opts true) iterated)
         (-> (rule '[?result ?remainder]
               (success
                 (if (= ::not-found (get result 0 ::not-found))
@@ -119,7 +118,7 @@
   ([opts r pattern handler]
    (make-scanner-rule opts r nil [pattern] [handler]))
   ([opts r markers patterns handlers]
-   (if (and (:linear opts true) (:iterated opts true))
+   (if (:linear opts (:iterate opts true))
      (make-rule-linear opts r markers patterns handlers)
      (make-rule-rescanning opts r markers patterns handlers))))
 
@@ -181,6 +180,7 @@
       (recur (zip/right z) (conj rules (scanner* opts (zip/node z))))
       (recombine the-rule rules))))
 
+#_
 (defmacro scan-rule
   "Create a specialized rule variant that scans through a collection and
   replaces matching sequences with new sequences.
