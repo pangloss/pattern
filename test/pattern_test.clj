@@ -790,12 +790,10 @@
   (let [joiner (fn [coll] (clojure.string/join (map :text coll)))
         r (scanner
             (rule combine
-              '[(?:as* coll
-                  (?:1
-                    (?:map :pos ?pos)
-                    (?:* (?:map :pos (| ?pos :ws)))
-                    (?:map :pos ?pos)))]
-              {:text (joiner coll) :pos pos}))]
+              '[(?:map :pos ?pos)
+                (?:* (?:map :pos (| ?pos :ws)))
+                (?:map :pos ?pos)]
+              {:text (joiner (:rule/datum %env)) :pos pos}))]
 
     (is (= [{:text "My", :pos :word}
             {:text " ", :pos :ws}

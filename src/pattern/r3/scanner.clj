@@ -41,23 +41,24 @@
                          `(cond ~@(mapcat vector markers (map :call handlers))))]
     [pattern
      `(when (seq ~segment)
-        (when-let [body# ~merged-handler]
-          (let [env# (unwrap-env ~'%env body#)
-                body# (unwrap ::none body#)]
-            (if (= ::none body#)
-              (success:env env#)
-              (let [body# (if (sequential? body#) body# [body#])]
-                (success
-                  (if (seq ~before)
-                    (if (seq body#)
-                      (into ~before (concat body# ~after))
-                      (into ~before ~after))
-                    (if (seq ~after)
-                      (if (vector? body#)
-                        (into body# ~after)
-                        (vec (concat body# ~after)))
-                      (vec body#)))
-                  env#))))))
+        (let [~'%env (assoc ~'%env :rule/datum ~segment)]
+          (when-let [body# ~merged-handler]
+            (let [env# (unwrap-env ~'%env body#)
+                  body# (unwrap ::none body#)]
+              (if (= ::none body#)
+                (success:env env#)
+                (let [body# (if (sequential? body#) body# [body#])]
+                  (success
+                    (if (seq ~before)
+                      (if (seq body#)
+                        (into ~before (concat body# ~after))
+                        (into ~before ~after))
+                      (if (seq ~after)
+                        (if (vector? body#)
+                          (into body# ~after)
+                          (vec (concat body# ~after)))
+                        (vec body#)))
+                    env#)))))))
      (mapv :sym handlers)
      (mapv :handler-fn handlers)]))
 
@@ -81,16 +82,17 @@
                          `(cond ~@(mapcat vector markers (map :call handlers))))]
     [pattern
      `(when (seq ~segment)
-        (when-let [success# ~merged-handler]
-          (let [env# (unwrap-env ~'%env success#)
-                body# (unwrap ::none success#)]
-            (if (= ::none body#)
-              (success:env env#)
-              (let [complete# (reduce conj! ~complete ~before)
-                    complete# (reduce conj! complete# (if (sequential? body#) body# [body#]))]
-                (success
-                  [complete# ~after]
-                  env#))))))
+        (let [~'%env (assoc ~'%env :rule/datum ~segment)]
+          (when-let [success# ~merged-handler]
+            (let [env# (unwrap-env ~'%env success#)
+                  body# (unwrap ::none success#)]
+              (if (= ::none body#)
+                (success:env env#)
+                (let [complete# (reduce conj! ~complete ~before)
+                      complete# (reduce conj! complete# (if (sequential? body#) body# [body#]))]
+                  (success
+                    [complete# ~after]
+                    env#)))))))
      (mapv :sym handlers)
      (mapv :handler-fn handlers)]))
 
