@@ -233,7 +233,8 @@
 
 (defn rebuild-body [args env-args handler]
   (when handler
-    (eval (list `rule-fn-body args env-args handler))))
+    ;; ignore the fn-args and fn-body, just return the dispatcher
+    (last (eval (list `rule-fn-body args env-args handler)))))
 
 (defmacro rebuild-rule
   "Update either the pattern or the handler body (or both) of the given rule.
