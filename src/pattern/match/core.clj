@@ -175,6 +175,7 @@
   (symbol (apply str (take-while #{\?} (name x)))))
 (defgen= matcher-type [sequential?] :list)
 (defgen= matcher-type [simple-ref?] '?:ref)
+(defgen= matcher-type [(every-pred map? (complement record?))] :map)
 (defgen= matcher-type [compiled-matcher?] :compiled-matcher)
 (defgen= matcher-type [compiled*-matcher?] :compiled*-matcher)
 (defgen= matcher-type [fn?] :plain-function)

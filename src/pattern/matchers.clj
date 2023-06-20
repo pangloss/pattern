@@ -421,38 +421,39 @@
   not be stable and it is important for the rule engine which uses matcher keys
   to generate function signatures."
   [[_ & kv-pairs :as pattern] comp-env]
-  (assert (even? (count kv-pairs))
-          "Map matcher must have an even number of key-matcher pair arguments.")
-  (let [keys (vec (take-nth 2 kv-pairs))
-        key-var-names (into [] (map var-name) keys)
-        vals (mapv #(compile-pattern* % comp-env)
-                   (take-nth 2 (rest kv-pairs)))]
-    (with-meta
-      (fn map-matcher [data dictionary ^Env env]
-        (let [m (first data)]
-          (if (map? m)
-            (let [inner-env (assoc env :succeed (fn [dict n] dict))]
-              (loop [dict dictionary
-                     [k :as keys] keys
-                     [kvn :as key-var-names] key-var-names
-                     [v :as vals] vals]
-                (if (seq keys)
-                  (if-let [kv (if kvn
-                                ;; TODO: expand this to search the keyspace if
-                                ;; the key is not already bound.
-                                (if-let [binding ((.lookup env) kvn dict env)]
-                                  (find m (:value binding))
-                                  (throw (ex-info "Map pattern with unbound key binding"
-                                           {:key k :key-var-name kvn :pattern pattern})))
-                                (find m k))]
-                    (if-let [dict (v (list (val kv)) dict inner-env)]
-                      (recur dict (rest keys) (rest key-var-names) (rest vals))
-                      (on-failure :value pattern dict env 1 data m))
-                    (on-failure :key pattern dict env 1 data m))
-                  ((.succeed env) dict 1))))
-            (on-failure :not-map pattern dictionary env 1 data m))))
-      (assoc (apply merge-with f/op (map meta vals))
-             :length (len 1)))))
+  (let [kv-pairs (if (map? pattern) (apply concat (seq pattern)) kv-pairs)]
+    (assert (even? (count kv-pairs))
+      "Map matcher must have an even number of key-matcher pair arguments.")
+    (let [keys (vec (take-nth 2 kv-pairs))
+          key-var-names (into [] (map var-name) keys)
+          vals (mapv #(compile-pattern* % comp-env)
+                 (take-nth 2 (rest kv-pairs)))]
+      (with-meta
+        (fn map-matcher [data dictionary ^Env env]
+          (let [m (first data)]
+            (if (map? m)
+              (let [inner-env (assoc env :succeed (fn [dict n] dict))]
+                (loop [dict dictionary
+                       [k :as keys] keys
+                       [kvn :as key-var-names] key-var-names
+                       [v :as vals] vals]
+                  (if (seq keys)
+                    (if-let [kv (if kvn
+                                  ;; TODO: expand this to search the keyspace if
+                                  ;; the key is not already bound.
+                                  (if-let [binding ((.lookup env) kvn dict env)]
+                                    (find m (:value binding))
+                                    (throw (ex-info "Map pattern with unbound key binding"
+                                             {:key k :key-var-name kvn :pattern pattern})))
+                                  (find m k))]
+                      (if-let [dict (v (list (val kv)) dict inner-env)]
+                        (recur dict (rest keys) (rest key-var-names) (rest vals))
+                        (on-failure :value pattern dict env 1 data m))
+                      (on-failure :key pattern dict env 1 data m))
+                    ((.succeed env) dict 1))))
+              (on-failure :not-map pattern dictionary env 1 data m))))
+        (assoc (apply merge-with f/op (map meta vals))
+          :length (len 1))))))
 
 (defn into-map [x]
   (apply hash-map x))
@@ -1207,6 +1208,7 @@
 
 (register-matcher :value match-value)
 (register-matcher :list #'match-list)
+(register-matcher :map #'match-map)
 (register-matcher '?:= match-literal {:aliases ['?:literal]})
 (register-matcher :compiled-matcher match-compiled)
 (register-matcher :compiled*-matcher match-compiled*)

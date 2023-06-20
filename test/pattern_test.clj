@@ -519,15 +519,27 @@
   (is (nil?
        (matcher `(?:map :struct [?a {:x :y}])
                 {:struct [99 {:x :zzz}]})))
+
   (is (= [5 5 20]
          (matcher `(?:map :from ?from :from ?x :to ?to)
                   {:from 5 :to 20}))
-      "Multiple matches against a given key are fine.")
+      "Multiple matches against a given key are fine. Only with ?:map. Or use (& ...).")
+
   (is (= [] (matcher `{:a 1 :b 2} {:a 1 :b 2})))
-  (is (nil? (matcher '{:a 1 :b ?a} {:a 1 :b 2}))
-      "Patterns are not matched within literal maps")
-  (is (= [] (matcher '{:a 1 :b ?a} {:a 1 :b '?a}))
-      "Patterns are not matched within literal maps. A matcher will be treated as a literal value.")
+
+  (is (= [2] (matcher '{:a 1 :b ?a} {:a 1 :b 2}))
+      "Patterns are matched within literal maps")
+
+  (is (= ['?a] (matcher '{:a 1 :b ?a} {:a 1 :b '?a}))
+      "Patterns are matched within literal maps.")
+
+  (is (= [1] (matcher '{:a ?b ?b 2} {:a 1 1 2}))
+      "A map key may be a matcher, but only if it is bound by the pattern first.
+       Map keys are ordered in Clojure only up to 8 elements, though!")
+
+  (is (= [] (matcher '(?:literal {:a 1 :b ?a}) {:a 1 :b '?a}))
+      "Patterns are matched within literal maps, but ?:literal prevents that")
+
   (is (= [[:a :b]] (matcher '(?:chain ?_ keys ?k) {:a 1 :b 2}))
       "Use chain to do other types of map matches")
 
@@ -790,9 +802,9 @@
   (let [joiner (fn [coll] (clojure.string/join (map :text coll)))
         r (scanner
             (rule combine
-              '[(?:map :pos ?pos)
-                (?:* (?:map :pos (| ?pos :ws)))
-                (?:map :pos ?pos)]
+              '[{:pos ?pos}
+                (?:* {:pos (| ?pos :ws)})
+                {:pos ?pos}]
               {:text (joiner (:rule/datum %env)) :pos pos}))]
 
     (is (= [{:text "My", :pos :word}
