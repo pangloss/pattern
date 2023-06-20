@@ -1243,6 +1243,7 @@
 
 (register-matcher :value match-value)
 (register-matcher :list #'match-list)
+(register-matcher :map #'match-map)
 (register-matcher '?:= match-literal {:aliases ['?:literal]})
 (register-matcher :compiled-matcher match-compiled)
 (register-matcher :compiled*-matcher match-compiled*)
