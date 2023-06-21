@@ -204,6 +204,9 @@
   [variable comp-env]
   (let [[sat-mode sat?] (var-restriction variable comp-env)
         name (var-name variable)
+        expanded (if (seq? variable)
+                   variable
+                   (list '? name))
         prefix (matcher-prefix variable)
         abbr (var-abbr prefix name)]
     (with-meta
@@ -218,13 +221,16 @@
                 ((.succeed env) ((.store env) name datum '? abbr dictionary env) 1))
               (on-failure :unsat variable dictionary env 1 data datum)))
           (on-failure :missing variable dictionary env 0 data nil)))
-      (if (or (nil? name) (= '_ name))
-        {:length (len 1)}
-        {:var-names [name]
-         :var-modes {name (matcher-mode variable)}
-         :var-prefixes {name (if prefix [prefix] [])}
-         :var-abbrs {name (if abbr [abbr] [])}
-         :length (len 1)}))))
+      (cond->
+        {:length (len 1)
+         :expanded expanded
+         `spliceable-pattern (fn [this] expanded)}
+        (and name (not= '_ name))
+        (merge
+          {:var-names [name]
+           :var-modes {name (matcher-mode variable)}
+           :var-prefixes {name (if prefix [prefix] [])}
+           :var-abbrs {name (if abbr [abbr] [])}})))))
 
 (defn- force-match
   "Experimental matcher for use within ?:chain to replace the matched value with
@@ -300,6 +306,9 @@
         prefix (matcher-prefix variable)
         abbr (var-abbr prefix name)
         greedy? (matcher-mode? variable "!")
+        expanded (if (seq? variable)
+                   variable
+                   (list (if greedy? '??! '??) name))
         [loop-start loop-continue? loop-next update-datum]
         (if (or force-greedy greedy?)
           [identity
@@ -331,16 +340,16 @@
                 (or (and (sat? dictionary datum)
                       ((.succeed env) ((.store env) name datum '?? abbr dictionary env) i))
                   (recur (loop-next i) (update-datum datum data n))))))))
-      (->
-        (if (or (nil? name) (= '_ name))
-          {:length (var-len 0)}
+      (cond-> {:length (var-len 0)
+               :greedy greedy?
+               :expanded expanded
+               `spliceable-pattern (fn [this] expanded)}
+        (and name (not= '_ name))
+        (merge
           {:var-names [name]
            :var-modes {name (matcher-mode variable)}
            :var-prefixes {name (if prefix [prefix] [])}
-           :var-abbrs {name (if abbr [abbr] [])}
-           :greedy greedy?
-           :length (var-len 0)})
-        (assoc `spliceable-pattern (fn [this] variable))))))
+           :var-abbrs {name (if abbr [abbr] [])}})))))
 
 (defn- match-as
   "This matcher allows you to capture the overarching pattern matched by some
