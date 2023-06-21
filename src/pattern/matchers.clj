@@ -373,6 +373,9 @@
   a sequence matcher. ?:as* will allow the search to continue into the empty sequence,
   allowing the above to correctly match an empty sequence.
 
+  ?:as* will always bind a sequence. ie. (?:as* x 1) binds x to [1] if it matches,
+  whereas (?:as x 1) binds x to 1.
+
   Strictly, (?:as x ?y) could be replaced by (& ?x ?y)...
 
   Allows a restriction to be added, similar to [[match-element]]."
