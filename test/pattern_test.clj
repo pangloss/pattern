@@ -937,16 +937,30 @@
       (is (= [[5 4 3 :ok 0] {:hi 1}]
             (s [5 4 3 2 1 0] {}))))))
 
+
 (deftest scanner-examples
+  ;; All of these variations do the same thing
   (let [sum (scanner (rule '(?? i number?)
                        (apply + i)))]
     (is (= [:x 6 :y 22 :z 3]
           (sum [ :x 1 2 3 :y 4 5 6 7 :z 1 2]))))
 
+
+
+  (pattern/with-predicates {'i int?}
+    (let [sum (scanner (rule '??i (apply + i)))]
+      (is (= [:x 6 :y 22 :z 3]
+            (sum [ :x 1 2 3 :y 4 5 6 7 :z 1 2])))))
+
+
+
+
   (let [sum (scanner (rule '(?:* (? i number?))
                        (apply + i)))]
     (is (= [:x 6 :y 22 :z 3]
           (sum [ :x 1 2 3 :y 4 5 6 7 :z 1 2]))))
+
+
 
   (let [sum-points (scanner
                      (pattern/rule-list
@@ -955,6 +969,24 @@
 
     (is (= [#:point{:x 6, :y 22} :z 3]
           (sum-points [ :x 1 2 3 :y 4 5 6 7 :z 1 2]))))
+
+
+
+  (let [sum (scanner (rule '??x (when (every? int? x) (apply + x))))]
+    (is (= [:x 6 :y 22 :z 3]
+          (sum [ :x 1 2 3 :y 4 5 6 7 :z 1 2]))))
+
+
+
+  (let [sum (scanner (rule '(|
+                              [(? i0 int?) (? i1 int?) (? i2 int?) (? i3 int?)]
+                              [(? i0 int?) (? i1 int?) (? i2 int?)]
+                              [(? i0 int?) (? i1 int?)])
+                       (apply + (:rule/datum %env))))]
+    (is (= [:x 6 :y 22 :z 3]
+          (sum [ :x 1 2 3 :y 4 5 6 7 :z 1 2]))))
+
+
 
   (testing "specifying lazy leaves the ?? matcher alone instead of replacing it with ??!."
     (let [sum (scanner {:lazy true}

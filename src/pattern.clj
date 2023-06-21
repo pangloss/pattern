@@ -10,6 +10,7 @@
             pattern.r3.rewrite
             pattern.nanopass.dialect
             pattern.nanopass.pass
+            pattern.match.predicator
             pattern.types
             pattern.util
             [potemkin :refer [import-vars]]))
@@ -80,4 +81,6 @@
                recombine)
              (pattern.nanopass.pass
               defpass
-              let-rulefn))
+              let-rulefn)
+             (pattern.match.predicator
+               with-predicates))
