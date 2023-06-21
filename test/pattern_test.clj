@@ -18,6 +18,7 @@
       '[?? ?? nil $$]          (<- '??$$)
       ;; an identifier-type can be hidden in a name before the first :
       '[?? ?? "->$" name]      (<- '??->$test:name)
+      '[?? ?? "!->$" name]     (<- '??!->$test:name)
       '[?? ?? "->$" x:name]    (<- '??->$test:x:name)
       '[?? ?? "->$" name]      (<- `??->$test:name)
       '[?? ?? "->$" x:name]    (<- `??->$test:x:name)
@@ -26,6 +27,8 @@
       '[? ? nil *:test:name]   (<- '?*:test:name)
       '[? ? nil ->$:test:name] (<- `?->$:test:name)
       '[? ? nil *:test:name]   (<- `?*:test:name)
+      ;; this matcher won't be greedy
+      '[?? ?? nil !*:name]     (<- '??!*:name)
       '[:list :list nil nil]   (<- '(+ ?a ?b))
       '[:value :value nil nil] (<- 1)
       '[:value :value nil nil] (<- '?)
@@ -755,7 +758,7 @@
          [2 :a 1 2 'y 3 4 'x]))))
 
 (deftest rebuild-a-rule
-  (let [r1 (pattern.match.predicator/with-predicates
+  (let [r1 (pattern/with-predicates
              {'a int?}
              (rule combine
                '[?a 1 ?b]
@@ -765,17 +768,17 @@
     (is (= [0 0 :x :x] (r1 [0 1 :x])))
 
     (testing "rewrite handler only"
-      (let [r2 (pattern.r3.core/rebuild-rule r1 nil '[b b {b a} a a] [] [])]
+      (let [r2 (pattern/rebuild-rule r1 nil '[b b {b a} a a] [] [])]
         (is (= [2 2 {2 0} 0 0] (r2 [0 1 2])))
         (is (= [:x :x {:x 0} 0 0] (r2 [0 1 :x])))))
 
     (testing "rewrite rule only"
-      (let [r3 (pattern.r3.core/rebuild-rule r1 '[?a 1 ?a:b] nil nil nil)]
+      (let [r3 (pattern/rebuild-rule r1 '[?a 1 ?a:b] nil nil nil)]
         (is (= [0 0 2 2] (r3 [0 1 2])))
         (is (= [0 1 :x] (r3 [0 1 :x])) "rule not applied")))
 
     (testing "rewrite rule and handler"
-      (let [r4 (pattern.r3.core/rebuild-rule r1
+      (let [r4 (pattern/rebuild-rule r1
                  (-> (get-in (meta r1) [:rule :pattern])
                    pop
                    ;; ensure be is int via predicate on a
