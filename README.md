@@ -337,6 +337,11 @@ A rule or rule combinator can be called like a function.
 (my-rule '(* 2 5)) # => (+ 5 5)
 ```
 
+If the rule body returns `nil` or `false`, the rule is treated the same as if
+the pattern didn't match, which lets you do any arbitrary check against what you
+matched. If you'd really like to to return `nil` or `false`, use `(success nil)`
+or `(success false)`.
+
 ## Rule Combinators
 
 Rule combinators allow multiple rules to be used together. 
