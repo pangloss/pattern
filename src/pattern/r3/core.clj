@@ -255,10 +255,21 @@
 (defn rebuild-body [args env-args ->handler injection-names injection-data]
   (when ->handler
     ;; ignore the fn-args and fn-body, just return the dispatcher
-    (let [[args ->handler dispatch]
-          (eval (list `rule-fn-rebuild-body nil args env-args ->handler injection-names))]
-      (->handler injection-data)
-      dispatch)))
+    (let [macro (list `rule-fn-rebuild-body nil args env-args ->handler injection-names)]
+      (try
+        (let [[args ->handler dispatch]
+              (eval macro)]
+          (->handler injection-data)
+          dispatch)
+        (catch Exception e
+          (println "Error evaluating macro:")
+          (prn macro)
+          (try
+            (clojure.pprint/pprint (macroexpand macro))
+            (catch Exception x
+              (println "Error macroexpanding:")
+              (clojure.pprint/pprint x)))
+          (throw e))))))
 
 (defmacro rebuild-rule
   "Update either the pattern or the handler body (or both) of the given rule.
