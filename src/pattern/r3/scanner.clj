@@ -12,8 +12,34 @@
                     (get-in (meta the-rule) [:rule :rule-type])))
 
 (defn scanner
+  "Convert any rule combinator to scan through a list or vector.
+
+  The linear and iterate options are true by default.
+
+  Linear scanner:
+
+  It will do one full pass through the collection, but will not iterate at the
+  top level.
+
+  For linear scanner on a rule or rule-list, results from a matching rule are
+  added to the final result and not rescanned. If you want to include the
+  returned result in the data to scan again, set rescan to true.
+
+  Not implemented yet: scanner on in-order combinator sets rescan to true by default.
+
+  Rescanning scanner:
+
+  Specified with the option {:linear false}.
+
+  By default, :iterate is set, so the rule will iterate at the top level and
+  rerun through the collection after each successful rule. If iterate is false,
+  the scanner will terminate on the first match.
+
+  Setting the :lazy option true will present the rules with the smallest
+  possible matches first. Lazy rescanning scanner works from the back of the
+  collection to the front."
   ([the-rule] (scanner* {} the-rule))
-  ([{:keys [linear iterate lazy] :or {linear true iterate true} :as opts} the-rule] (scanner* opts the-rule)))
+  ([{:keys [linear iterate lazy rescan] :or {linear true iterate true} :as opts} the-rule] (scanner* opts the-rule)))
 
 (defn rule-handler [r]
   (let [handler-sym (gensym 'handler)
