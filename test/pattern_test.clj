@@ -865,6 +865,10 @@
           (srl '(1 2 3 4 :a 1 :b 9 :x :c 1 :d 2)))))
 
   (let [ro (pattern/in-order
+             ;; FIXME: I think this result is not good.
+             ;; This has the given ordering because each rule is doing a full scan.
+             ;; If rules were combined like in rule-list, the 3rd rule would
+             ;; apply at :x before the second rule could change :c 1 to {:c 1}.
              (rule '[?a 1 ?b 9]     [{a 1} {b 2}])
              (rule '[?a 1 ??_ ?b 2] [{a 1} '... {b 2}])
              (rule '[:x ?c 1]       [c {:x 1}]))
