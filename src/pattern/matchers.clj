@@ -914,8 +914,9 @@
   or you may just capture the entire result:
 
       (?:re-matches #\"(.*)@(.*)\\.(com|org)\" ?matches)"
-  [[op regex capture-pattern :as pattern] comp-env]
-  (let [m (compile-pattern* capture-pattern comp-env)
+  [pattern comp-env]
+  (let [[op regex capture-pattern] (if (seq? pattern) pattern ['?:re-matches pattern '?_])
+        m (compile-pattern* capture-pattern comp-env)
         f (condp = op
             '?:re-matches re-matches
             '?:re-seq re-seq)]
