@@ -124,9 +124,11 @@
                       nil ;; rule failed
                       (success:env env#))
                     (let [complete# (reduce conj! ~complete ~before)
-                          complete# (reduce conj! complete# body#)]
+                          complete# (if ~(:rescan opts) complete# (reduce conj! complete# body#))]
                       (success
-                        [complete# ~after]
+                        (if ~(:rescan opts)
+                          [complete# (into body# ~after)]
+                          [complete# ~after])
                         env#)))))))))
      (mapv :sym handlers)
      (mapv :handler-fn handlers)]))
