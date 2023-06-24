@@ -1,6 +1,7 @@
 (ns pattern
-  (:require pattern.matchers
-            pattern.match.core
+  (:require pattern.match.core
+            pattern.matchers
+            pattern.matchers.set
             pattern.substitute
             pattern.r3.core
             pattern.r3.rule

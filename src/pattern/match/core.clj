@@ -459,7 +459,7 @@
     (meta f)))
 
 (defmethod compile-pattern* :default [pattern comp-env]
-  (throw (ex-info "Unknown matcher type" {:pattern pattern})))
+  (throw (ex-info "Unknown matcher for pattern" {:pattern pattern})))
 
 (defn new-env
   [succeed]
@@ -622,3 +622,33 @@
                 [matchers comp-env]))
       [() (assoc comp-env :reserve-min-tail (len 0))]
       (reverse pattern))))
+
+(defmulti merge-meta-key (fn [k v0 v1] k))
+(defmethod merge-meta-key :default [k v0 v1] (cond (and v0 v1) (f/op v0 v1) v0 v0 :else v1))
+(defmethod merge-meta-key :literal [k v0 v1] (and v0 v1))
+(defmethod merge-meta-key :greedy [k v0 v1] (or v0 v1))
+(defmethod merge-meta-key :var-modes [k v0 v1] (merge-with f/op v0 v1))
+(defmethod merge-meta-key :var-prefixes [k v0 v1] (merge-with f/op v0 v1))
+(defmethod merge-meta-key :var-abbrs [k v0 v1] (merge-with f/op v0 v1))
+(defmethod merge-meta-key :var-names [k v0 v1] (vec (distinct (concat v0 v1))))
+
+(defn- combine-map-args [map-or-maps more]
+  (let [maps (if (map? map-or-maps) [map-or-maps] map-or-maps)]
+    (if (seq more)
+      (concat maps more)
+      maps)))
+
+(defn merge-meta [map-or-maps & more]
+  (let [maps (combine-map-args map-or-maps more)]
+    (if (next maps)
+      (letfn [(merge-entry [m e]
+                (let [k (key e) v (val e)]
+                  (assoc m k (merge-meta-key k (get m k) v))))
+              (merge2 [m1 m2]
+                (reduce merge-entry (or m1 {}) (seq m2)))]
+        (reduce merge2 maps))
+      (first maps))))
+
+(defn merge-meta-subset [keys map-or-maps & more]
+  (let [maps (combine-map-args map-or-maps more)]
+    (merge-meta (map #(select-keys % keys) maps))))

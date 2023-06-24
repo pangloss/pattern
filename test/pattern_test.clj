@@ -522,27 +522,15 @@
   (is (nil?
        (matcher `(?:map :struct [?a {:x :y}])
                 {:struct [99 {:x :zzz}]})))
-
   (is (= [5 5 20]
          (matcher `(?:map :from ?from :from ?x :to ?to)
                   {:from 5 :to 20}))
-      "Multiple matches against a given key are fine. Only with ?:map. Or use (& ...).")
-
+      "Multiple matches against a given key are fine.")
   (is (= [] (matcher `{:a 1 :b 2} {:a 1 :b 2})))
-
   (is (= [2] (matcher '{:a 1 :b ?a} {:a 1 :b 2}))
-      "Patterns are matched within literal maps")
-
+      "Patterns are matched within literal maps now!")
   (is (= ['?a] (matcher '{:a 1 :b ?a} {:a 1 :b '?a}))
-      "Patterns are matched within literal maps.")
-
-  (is (= [1] (matcher '{:a ?b ?b 2} {:a 1 1 2}))
-      "A map key may be a matcher, but only if it is bound by the pattern first.
-       Map keys are ordered in Clojure only up to 8 elements, though!")
-
-  (is (= [] (matcher '(?:literal {:a 1 :b ?a}) {:a 1 :b '?a}))
-      "Patterns are matched within literal maps, but ?:literal prevents that")
-
+      "Patterns are not matched within literal maps. A matcher will be treated as a literal value.")
   (is (= [[:a :b]] (matcher '(?:chain ?_ keys ?k) {:a 1 :b 2}))
       "Use chain to do other types of map matches")
 
@@ -560,7 +548,7 @@
 
 (deftest set-matcher
   (is (= [[:b :a]]
-        (matcher '(?:set ?k) #{:a :b}))))
+        (matcher '(?:set* ?k) #{:a :b}))))
 
 
 (deftest anon-matchers
@@ -605,17 +593,17 @@
 
 (deftest test-matcher-prefix
   (is (= {'x ["t" "u"] 'y ["blog"]}
-         (:var-prefixes (meta (compile-pattern '[?->t:x ?<-u:x [[?blog:y]]])))))
+        (:var-prefixes (meta (compile-pattern '[?->t:x ?<-u:x [[?blog:y]]])))))
 
   (is (= {:x 1 :y 3}
-         ((compile-pattern '[?->t:x ?<-u:x [[?blog:y]]])
-          [1 1 [[3]]])))
+        ((compile-pattern '[?->t:x ?<-u:x [[?blog:y]]])
+         [1 1 [[3]]])))
 
   (is (= "99abc" (matcher-prefix '?->99abc:def)))
   (is (= 'def
-         (var-name '(?-> abc:def))))
+        (var-name '(?-> abc:def))))
   (is (= "abc"
-         (matcher-prefix '(?-> abc:def)))))
+        (matcher-prefix '(?-> abc:def)))))
 
 (deftest test-regex-matchers
   (is (= {:p "abcdef" :a "cd" :b "f"}
@@ -805,9 +793,9 @@
   (let [joiner (fn [coll] (clojure.string/join (map :text coll)))
         r (scanner
             (rule combine
-              '[{:pos ?pos}
-                (?:* {:pos (| ?pos :ws)})
-                {:pos ?pos}]
+              '[(?:map :pos ?pos)
+                (?:* (?:map :pos (| ?pos :ws)))
+                (?:map :pos ?pos)]
               {:text (joiner (:rule/datum %env)) :pos pos}))]
 
     (is (= [{:text "My", :pos :word}
