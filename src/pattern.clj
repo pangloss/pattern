@@ -4,11 +4,13 @@
             pattern.substitute
             pattern.r3.core
             pattern.r3.rule
+            pattern.r3.scanner
             pattern.r3.post-process
             pattern.r3.combinators
             pattern.r3.rewrite
             pattern.nanopass.dialect
             pattern.nanopass.pass
+            pattern.match.predicator
             pattern.types
             pattern.util
             [potemkin :refer [import-vars]]))
@@ -35,7 +37,8 @@
               rule
               success
               success:env
-              name-rule)
+              name-rule
+              rebuild-rule)
              (pattern.r3.rule
                rule-name)
              (pattern.r3.post-process
@@ -59,7 +62,10 @@
               directed
               on-mutual
               rule-simplifier
-              in)
+              in
+              rule-zipper)
+             (pattern.r3.scanner
+               scanner)
              (pattern.nanopass.dialect
               def-dialect
               def-derived
@@ -69,7 +75,12 @@
               show-parse
               valid? validate
               descend-into)
-             (pattern.types ok ok?)
+             (pattern.types
+               ok ok?
+               spliceable-pattern
+               recombine)
              (pattern.nanopass.pass
               defpass
-              let-rulefn))
+              let-rulefn)
+             (pattern.match.predicator
+               with-predicates))

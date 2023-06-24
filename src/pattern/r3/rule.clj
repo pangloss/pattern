@@ -31,7 +31,7 @@
 
 (declare match-rule invoke-rule)
 
-(defn- unwrap
+(defn unwrap
   "If a value was marked as (success x), unwraps and returns x."
   [original x]
   (if (instance? Success x)
@@ -42,7 +42,7 @@
         original
         x))))
 
-(defn- unwrap-env [env x]
+(defn unwrap-env [env x]
   (if (instance? SuccessEnv x)
     (.env ^SuccessEnv x)
     env))

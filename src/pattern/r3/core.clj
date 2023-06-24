@@ -103,20 +103,27 @@
 (defn- may-call-success0? [body]
   (boolean (some #{'(success) 'success:env
                    `(success) `success:env}
-                 (tree-seq list? seq body))))
+             (tree-seq list? seq body))))
+
+(defn rule-fn-args [args env-args]
+  (vec (concat ['%env] (take-nth 2 (extract-env-args env-args)) args)))
 
 (defmacro rule-fn-body
   ([args env-args handler-body]
    `(rule-fn-body nil ~args ~env-args ~handler-body))
   ([name args env-args handler-body]
    (let [matches (gensym 'matches)
+         fn-args (rule-fn-args args env-args)
          name* (if name
                  (symbol (str "rule-" name))
                  'rulebody)]
-     `(fn ~name* [~'%env ~matches]
-        (let [~@(extract-env-args env-args)
-              ~@(extract-args matches args)]
-          ~handler-body)))))
+     `(let [handler# (fn ~name* [~fn-args] ~handler-body)]
+        ['~fn-args
+         handler#
+         (fn ~'rule-dispatch [~'%env ~matches]
+           (let [~@(extract-env-args env-args)
+                 ~@(extract-args matches args)]
+             (handler# ~fn-args)))]))))
 
 (defmacro rule
   "Create a single rule. There are 2 arities, both with unique behavior.
@@ -177,46 +184,92 @@
    (let [args (pattern-args pattern)
          matches (gensym 'matches)
          p (@spliced (@scheme-style pattern))]
-     `(let [p# ~p]
+     `(let [p# ~p
+            [fn-args# handler# dispatcher#]
+            (rule-fn-body ~args ~(:env-args (meta pattern)) (sub ~(second pattern)))]
         (make-rule p#
-          (rule-fn-body ~args ~(:env-args (meta pattern))
-            (sub ~(second pattern)))
+          dispatcher#
           raw-matches
           *post-processor*
           {:src '(sub ~(second pattern))
            :pattern-meta '~(meta pattern)
-           :pattern-args '~(with-meta args nil)}))))
+           :pattern-args '~(with-meta args nil)
+           :handler-fn-args fn-args#
+           :handler-fn handler#}))))
   ([pattern handler-body]
    (let [args (pattern-args pattern)]
-     `(let [p# ~(@spliced (@scheme-style pattern))]
+     `(let [p# ~(@spliced (@scheme-style pattern))
+            [fn-args# handler# dispatcher#]
+            (rule-fn-body ~args ~(:env-args (meta pattern)) ~handler-body)]
         (make-rule p#
-          (rule-fn-body ~args ~(:env-args (meta pattern))
-            ~handler-body)
+          dispatcher#
           raw-matches
           *post-processor*
           {:may-call-success0? ~(may-call-success0? handler-body)
            :src '~handler-body
            :pattern-args '~(with-meta args nil)
-           :pattern-meta '~(meta pattern)}))))
+           :pattern-meta '~(meta pattern)
+           :handler-fn-args fn-args#
+           :handler-fn handler#}))))
   ([name pattern handler-body]
    (let [fname (if (symbol? name) name (gensym '-))
          name (if (symbol? name) (list 'quote name) name)
          args (pattern-args pattern)]
      `(name-rule ~name
-        (let [p# ~(@spliced (@scheme-style pattern))]
+        (let [p# ~(@spliced (@scheme-style pattern))
+              [fn-args# handler# dispatcher#]
+              (rule-fn-body ~fname ~args ~(:env-args (meta pattern)) ~handler-body)]
           (make-rule p#
-            (rule-fn-body ~fname ~args ~(:env-args (meta pattern))
-              ~handler-body)
+            dispatcher#
             raw-matches
             *post-processor*
             {:may-call-success0? ~(may-call-success0? handler-body)
              :src '~handler-body
              :pattern-args '~(with-meta args nil)
-             :pattern-meta '~(meta pattern)}))))))
+             :pattern-meta '~(meta pattern)
+             :handler-fn-args fn-args#
+             :handler-fn handler#}))))))
 
-(defn rebuild-body [args env-args handler]
-  (when handler
-    (eval (list `rule-fn-body args env-args handler))))
+(defmacro rule-fn-rebuild-body
+  [name args env-args handler-body injection-names]
+  (let [matches (gensym 'matches)
+        fn-args (rule-fn-args args env-args)
+        name* (if name
+                (symbol (str "rebuild-" name))
+                'rebuildbody)]
+    ;; Handler can get a huge number of function args, so pass them as a destructuring vector.
+    ;; TODO: if there is too much overhead, only do that if > 20 args
+    `(let [handler# (volatile! nil)
+           ->handler#
+           (fn [~injection-names]
+             (vreset! handler#
+               (fn ~name* [~fn-args] ~handler-body)))]
+       ['~fn-args
+        ->handler#
+        (fn ~'rule-dispatch [~'%env ~matches]
+          (let [~@(extract-env-args env-args)
+                ~@(extract-args matches args)]
+            ((deref handler#) ~fn-args)))])))
+
+
+(defn rebuild-body [args env-args ->handler injection-names injection-data]
+  (when ->handler
+    ;; ignore the fn-args and fn-body, just return the dispatcher
+    (let [macro (list `rule-fn-rebuild-body nil args env-args ->handler injection-names)]
+      (try
+        (let [[args ->handler dispatch]
+              (eval macro)]
+          (->handler injection-data)
+          dispatch)
+        (catch Exception e
+          (println "Error evaluating macro:")
+          (prn macro)
+          (try
+            (clojure.pprint/pprint (macroexpand macro))
+            (catch Exception x
+              (println "Error macroexpanding:")
+              (clojure.pprint/pprint x)))
+          (throw e))))))
 
 (defmacro rebuild-rule
   "Update either the pattern or the handler body (or both) of the given rule.
@@ -224,8 +277,14 @@
   Both the pattern and the handler-body must be quoted (unlike in [[rule]], where
   the handler-body is not quoted. This is to allow programmatic manipulation
   of the existing handler body, or otherwise generating it. The current version
-  of both is present in the rule metadata."
-  [rule pattern handler-body]
+  of both is present in the rule metadata.
+
+  When rebuilding a rule using eval, anything that may contain local state must
+  be injected. In the handler function, refer to data that will be injected with
+  normal symbols. Provide those symbols as a vector of injection-names. The
+  corresponding data to be injected should be in the same order in
+  injection-data."
+  [rule pattern handler-body handler-injection-names handler-injection-data]
   `(let [raw-pattern# ~pattern
          args# (when ~(boolean pattern) (pattern-args raw-pattern#))
          p# ~(when pattern
@@ -233,12 +292,12 @@
          r# ~rule
          args# (or args# (get-in (meta r#) [:rule :pattern-args]))
          env-args# '~(:env-args (meta pattern))
-         hb# ~handler-body
+         src# ~handler-body
          r# (-rebuild-rule r#
               (when ~(boolean pattern)
                 (compile-pattern (apply-replacements p#
                                    (get-in (meta r#) [:rule :pattern.match.core/pattern-replace]))))
-              (when ~(boolean handler-body) (rebuild-body args# env-args# hb#)))]
+              (when ~(boolean handler-body) (rebuild-body args# env-args# src# (vec ~handler-injection-names) (vec ~handler-injection-data))))]
      (cond-> r#
-       ~(boolean handler-body) (vary-meta assoc-in [:rule :src] hb#)
+       ~(boolean handler-body) (vary-meta assoc-in [:rule :src] src#)
        ~(boolean pattern) (vary-meta assoc-in [:rule :pattern] p#))))

@@ -89,5 +89,14 @@
                                                     pred-map))}
     body-fn))
 
-(defmacro with-predicates [pred-map & forms]
+(defmacro with-predicates
+  "For all rules defined within this block, matchers in rules with the given abbreviations or names will
+  automatically have the given predicate attached to them.
+
+      (with-predicates {'i int?}
+        (rule '[?i ?i1 ??i*]
+          ;; i, i1, and i* are guaranteed to be integers.
+          (apply + i i1 i*)))
+  "
+  [pred-map & forms]
   `(with-predicates* ~pred-map (fn [] ~@forms)))

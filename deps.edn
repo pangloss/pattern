@@ -15,7 +15,11 @@
   :dev {:extra-paths ["dev"]
         :extra-deps {com.github.jpmonettas/flow-storm-debugger
                      {:git/url "https://github.com/jpmonettas/flow-storm-debugger"
-                      :git/sha "d8bf2931d4337a510a79fd360e4cf160f2714ad7"}}}
+                      :git/sha "d8bf2931d4337a510a79fd360e4cf160f2714ad7"}
+                     com.clojure-goes-fast/clj-async-profiler {:mvn/version "1.0.4"}}
+        :jvm-opts ["-XX:-OmitStackTraceInFastThrow"
+                   ;; for async-profiler:
+                   "-Djdk.attach.allowAttachSelf" "-XX:+UnlockDiagnosticVMOptions" "-XX:+DebugNonSafepoints"]}
   :runner
   {:extra-deps {com.cognitect/test-runner
                 {:git/url "https://github.com/com.cognitect/test-runner"

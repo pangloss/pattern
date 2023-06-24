@@ -152,38 +152,40 @@ Each matcher in the list has a matcher implementation function with detailed doc
 
 (better docs coming eventually!)
 
-| Matcher         | Implementation     | Notes                                                                    |
-|-----------------|--------------------|--------------------------------------------------------------------------|
-| `?`             | match-element      | Match a single element                                                   |
-| `??`            | match-segment      | Match 0 or more elements                                                 |
-| `??!`           |                    | Same as `??`, but greedy                                                 |
-| `?:map`         | match-map          | Match a map with specific keys                                           |
-| `?:*map`        | match-*map         | Match each key-value pair in a map                                       |
-| `?:+map`        | match-+map         | Like `?:*map`, but require at least one match                            |
-| `?:as`          | match-as           | Capture an entire sub pattern if the contained pattern matches           |
-| `?:?`           | match-optional     | Match 0 or 1 instance                                                    |
-| `?:1`           | match-one          | Match exactly 1 instance                                                 |
-| `?:*`           | match-many         | Match any number of instances                                            |
-| `?:+`           | match-at-least-one | Match at least one instance                                              |
-| `?:chain`       | match-chain        | Alternate between patterns and functions on the matched data             |
-| `??:chain`      |                    | Same as `?:chain` but capture sequence data                              |
-| `\|`            | match-or           | Match alternative patterns on the same data                              |
-| `&`             | match-and          | Match all patterns on the same data                                      |
-| `?:=`           | match-literal      | Match a literal value (needed if the form looks like a matcher pattern)  |
-| `?:not`         | match-not          | Match only if the contained pattern does not                             |
-| `?:when`        | match-when         | If the predicate, match the pattern                                      |
-| `?:if`          | match-if           | If the predicate, match the then pattern, otherwise the else pattern     |
-| `?:letrec`      | match-letrec       | Create named subpatterns that can be used later                          |
-| `$`             | match-ref          | Use a named subpattern defined in `?:letrec`                             |
-| `?:fresh`       | match-fresh        | Match a new copy of the given name                                       |
-| `?:all-fresh`   | match-all-fresh    | Don't unify with captures outside the block                              |
-| `?:restartable` | match-restartable  | If the pattern doesn't match, raise a condition that can provide a value |
-| `?:re-matches`  | match-regex        | Match with a regex, binding captures                                     |
-| `?:re-seq`      | match-regex        | Multiple matches with a regex, binding captures                          |
-| `?:filter`      | match-filter       | Match only the items in the list where the predicate returns true        |
-| `??:filter`     |                    | Inline sequence version of ?:filter                                      |
-| `?:remove`      |                    | Match only the items in the list where the predicate returns false       |
-| `??:remove`     |                    | Inline sequence version of ?:remove                                      |
+| Matcher           | Implementation     | Notes                                                                    |
+|-------------------|--------------------|--------------------------------------------------------------------------|
+| `?`               | match-element      | Match a single element                                                   |
+| `??`              | match-segment      | Match 0 or more elements                                                 |
+| `??!`             |                    | Same as `??`, but greedy                                                 |
+| `?:map`           | match-map          | Match a map with specific keys                                           |
+| `?:set`           | match-*set         | Match items in a set                                                     |
+| `?:*map`/`?:map*` | match-*map         | Match each key-value pair in a map                                       |
+| `?:+map`/`?:map+` | match-+map         | Like `?:*map`, but require at least one match                            |
+| `?:as`            | match-as           | Capture an entire sub pattern if the contained pattern matches           |
+| `?:?`             | match-optional     | Match 0 or 1 instance                                                    |
+| `?:1`             | match-one          | Match exactly 1 instance                                                 |
+| `?:*`             | match-many         | Match any number of instances                                            |
+| `?:+`             | match-at-least-one | Match at least one instance                                              |
+| `?:n`             | match-n-times      | Match the given sequence exactly n times.                                |
+| `?:chain`         | match-chain        | Alternate between patterns and functions on the matched data             |
+| `??:chain`        |                    | Same as `?:chain` but capture sequence data                              |
+| `\|`              | match-or           | Match alternative patterns on the same data                              |
+| `&`               | match-and          | Match all patterns on the same data                                      |
+| `?:=`             | match-literal      | Match a literal value (needed if the form looks like a matcher pattern)  |
+| `?:not`           | match-not          | Match only if the contained pattern does not                             |
+| `?:when`          | match-when         | If the predicate, match the pattern                                      |
+| `?:if`            | match-if           | If the predicate, match the then pattern, otherwise the else pattern     |
+| `?:letrec`        | match-letrec       | Create named subpatterns that can be used later                          |
+| `$`               | match-ref          | Use a named subpattern defined in `?:letrec`                             |
+| `?:fresh`         | match-fresh        | Match a new copy of the given name                                       |
+| `?:all-fresh`     | match-all-fresh    | Don't unify with captures outside the block                              |
+| `?:restartable`   | match-restartable  | If the pattern doesn't match, raise a condition that can provide a value |
+| `?:re-matches`    | match-regex        | Match with a regex, binding captures                                     |
+| `?:re-seq`        | match-regex        | Multiple matches with a regex, binding captures                          |
+| `?:filter`        | match-filter       | Match only the items in the list where the predicate returns true        |
+| `??:filter`       |                    | Inline sequence version of ?:filter                                      |
+| `?:remove`        |                    | Match only the items in the list where the predicate returns false       |
+| `??:remove`       |                    | Inline sequence version of ?:remove                                      |
     
       
 #### A little about regex matchers

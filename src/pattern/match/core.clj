@@ -12,6 +12,8 @@
             [clojure.set :as set])
   (:import pattern.types.Env))
 
+(set! *warn-on-reflection* true)
+
 ;; match-utils
 
 (defn len
@@ -343,7 +345,7 @@
       (when (not= ::none val)
         (assoc r :value val)))))
 
-(defn extend-dict [name value type abbr dict env]
+(defn extend-dict [name value type abbr dict ^Env env]
   (if ((.tails env) name)
     (assoc dict name value)
     (let [name (var-key name env)]
@@ -353,7 +355,7 @@
 
 (defn sequence-extend-dict
   "Special version of extend-dict installed in the env when processing a sequence."
-  [name value type abbr dict env]
+  [name value type abbr dict ^Env env]
   (if ((.tails env) name)
     (assoc dict name value)
     (let [name (var-key name env)]
@@ -416,7 +418,7 @@
   "This is called when a pattern fails, but typically just returns nil. If a
   variable is marked as restartable then this provides the signalling and
   continuation mechanisms via the pure-conditioning library."
-  [type pattern dictionary env match-length data value & more-restarts]
+  [type pattern dictionary ^Env env match-length data value & more-restarts]
   (when (restartable? pattern)
     (condition (keyword (name type) (name (or (var-name pattern) (matcher-type pattern))))
                (apply restarts (cond-> {:pattern pattern

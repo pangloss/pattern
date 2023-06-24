@@ -3,6 +3,7 @@
             pattern.r3.core
             [pattern.match.core :as m :refer [matcher pattern-names var-name *disable-modes*
                                               compile-pattern matcher-prefix run-matcher]]
+            [pattern :refer [scanner]]
             [pattern.types :refer [not-meta?]]
             pattern.matchers
             [pure-conditioning :as c :refer [manage restart-with handler-cond]])
@@ -17,6 +18,7 @@
       '[?? ?? nil $$]          (<- '??$$)
       ;; an identifier-type can be hidden in a name before the first :
       '[?? ?? "->$" name]      (<- '??->$test:name)
+      '[?? ?? "!->$" name]     (<- '??!->$test:name)
       '[?? ?? "->$" x:name]    (<- '??->$test:x:name)
       '[?? ?? "->$" name]      (<- `??->$test:name)
       '[?? ?? "->$" x:name]    (<- `??->$test:x:name)
@@ -25,6 +27,8 @@
       '[? ? nil *:test:name]   (<- '?*:test:name)
       '[? ? nil ->$:test:name] (<- `?->$:test:name)
       '[? ? nil *:test:name]   (<- `?*:test:name)
+      ;; this matcher won't be greedy
+      '[?? ?? nil !*:name]     (<- '??!*:name)
       '[:list :list nil nil]   (<- '(+ ?a ?b))
       '[:value :value nil nil] (<- 1)
       '[:value :value nil nil] (<- '?)
@@ -130,12 +134,8 @@
   (is (= [[1 2] '[+ +]]
         (matcher '[(?:* ^{:min 1 :max 5} ?x ?y)] '[1 + 2 +])))
 
-  (testing "(?:n [min max] pattern)"
-    (is (= [[1 2] '[+ +]]
-          (matcher '[(?:n [1 5] ?x ?y)] '[1 + 2 +]))))
-
-  (testing "(?:n min pattern)"
-    (is (= [[1 2] '[+ +]]
+  (testing "(?:n exact pattern)"
+    (is (nil?
           (matcher '[(?:n 1 ?x ?y)] '[1 + 2 +])))
 
     (is (= [[1 2] '[+ +]]
@@ -144,9 +144,33 @@
     (is (nil?
           (matcher '[(?:n 3 ?x ?y)] '[1 + 2 +]))))
 
+  (testing "(?:n [min] pattern)"
+    (is (= [[1 2] '[+ +]]
+          (matcher '[(?:n [1] ?x ?y)] '[1 + 2 +])))
+
+    (is (= [[1 2] '[+ +]]
+          (matcher '[(?:n [2] ?x ?y)] '[1 + 2 +])))
+
+    (is (nil?
+          (matcher '[(?:n [3] ?x ?y)] '[1 + 2 +]))))
+
+  (testing "(?:n [nil max] pattern)"
+    (is (nil?
+          (matcher '[(?:n [nil 1] ?x ?y)] '[1 + 2 +])))
+
+    (is (= [[1 2] '[+ +]]
+          (matcher '[(?:n [nil 2] ?x ?y)] '[1 + 2 +])))
+
+    (is (= [[1 2] '[+ +]]
+          (matcher '[(?:n [nil 3] ?x ?y)] '[1 + 2 +]))))
+
+  (testing "(?:n [min max] pattern)"
+    (is (= [[1 2] '[+ +]]
+          (matcher '[(?:n [1 5] ?x ?y)] '[1 + 2 +]))))
+
   (testing "(?:n min-var pattern)"
-    (is (= [1 [1 2] '[+ +]]
-          (matcher '[?minvar [(?:n minvar ?x ?y)]] '[1 [1 + 2 +]])))
+    (is (nil?
+          (matcher '[?nvar [(?:n nvar ?x ?y)]] '[1 [1 + 2 +]])))
 
     (is (= [2 [1 2] '[+ +]]
           (matcher '[?minvar [(?:n minvar ?x ?y)]] '[2 [1 + 2 +]])))
@@ -448,7 +472,7 @@
                      (?:* (? x = ?a)) ;; doesn't match
                      ??rest]
             [5 3 1 5 8 1])))
-    #_ ;; FIXME: this used to work until I fixed a bug in this commit in building ?:?
+
     (is (= [5 [5 3 1 5] [8 1]]
           ;; Use the optional matcher to capture the first value in the
           ;; sequence, and the and matcher to capture it together with the rest
@@ -733,70 +757,8 @@
         ((compile-pattern '[?x (??:remove int? ?misc)])
          [2 :a 1 2 'y 3 4 'x]))))
 
-#_
-(deftest match-a-set-of-maps
-  (let [r (scan-rule combine
-            '[(?:as* coll
-                (?:1
-                  (?:map :pos ?pos)
-                  (?:* (?:map :pos (| ?pos :ws)))
-                  (?:map :pos ?pos)))]
-            [{:text (clojure.string/join (map :text coll)) :pos pos}])]
-
-    (is (= [{:text "My", :pos :word}
-            {:text " ", :pos :ws}
-            {:text "HAPPY FEET", :pos :brand-name}
-            {:text " ", :pos :ws}
-            {:text "Πάτοι Παπουτσιών Νο", :pos :word}
-            {:text "38", :pos :number}]
-          (r
-            [{:text "My", :pos :word}
-             {:text " ", :pos :ws}
-             {:text "HAPPY", :foreign true, :pos :brand-name}
-             {:text " ", :pos :ws}
-             {:text "FEET", :foreign true, :pos :brand-name}
-             {:text " ", :pos :ws}
-             {:text "Πάτοι", :pos :word}
-             {:text " ", :pos :ws}
-             {:text "Παπουτσιών", :pos :word}
-             {:text " ", :pos :ws}
-             {:text "Νο", :pos :word}
-             {:text "38", :pos :number}])))))
-#_
-(deftest match-a-set-of-maps-scanner
-  (let [r
-        (scanner {:min-len 2 :max-len 5 :extreme false :rescan false}
-          (rule combine
-            '[(?:as* coll
-                (?:1
-                  (?:map :pos ?pos)
-                  (?:* (?:map :pos (| ?pos :ws)))
-                  (?:map :pos ?pos)))]
-            [{:text (clojure.string/join (map :text coll)) :pos pos}]))]
-
-    (is (= [{:text "My", :pos :word}
-            {:text " ", :pos :ws}
-            {:text "HAPPY FEET", :pos :brand-name}
-            {:text " ", :pos :ws}
-            {:text "Πάτοι Παπουτσιών Νο", :pos :word}
-            {:text "38", :pos :number}]
-          (r
-            [{:text "My", :pos :word}
-             {:text " ", :pos :ws}
-             {:text "HAPPY", :foreign true, :pos :brand-name}
-             {:text " ", :pos :ws}
-             {:text "FEET", :foreign true, :pos :brand-name}
-             {:text " ", :pos :ws}
-             {:text "Πάτοι", :pos :word}
-             {:text " ", :pos :ws}
-             {:text "Παπουτσιών", :pos :word}
-             {:text " ", :pos :ws}
-             {:text "Νο", :pos :word}
-             {:text "38", :pos :number}])))))
-
-
 (deftest rebuild-a-rule
-  (let [r1 (pattern.match.predicator/with-predicates
+  (let [r1 (pattern/with-predicates
              {'a int?}
              (rule combine
                '[?a 1 ?b]
@@ -806,43 +768,244 @@
     (is (= [0 0 :x :x] (r1 [0 1 :x])))
 
     (testing "rewrite handler only"
-      (let [r2 (pattern.r3.core/rebuild-rule r1 nil '[b b {b a} a a])]
+      (let [r2 (pattern/rebuild-rule r1 nil '[b b {b a} a a] [] [])]
         (is (= [2 2 {2 0} 0 0] (r2 [0 1 2])))
         (is (= [:x :x {:x 0} 0 0] (r2 [0 1 :x])))))
 
     (testing "rewrite rule only"
-      (let [r3 (pattern.r3.core/rebuild-rule r1 '[?a 1 ?a:b] nil)]
+      (let [r3 (pattern/rebuild-rule r1 '[?a 1 ?a:b] nil nil nil)]
         (is (= [0 0 2 2] (r3 [0 1 2])))
-        (is (= [0 1 :x] (r3 [0 1 :x])) "not transformed")))
+        (is (= [0 1 :x] (r3 [0 1 :x])) "rule not applied")))
 
-    (testing "rewrite rule only"
-      (let [r4 (pattern.r3.core/rebuild-rule r1
+    (testing "rewrite rule and handler"
+      (let [r4 (pattern/rebuild-rule r1
                  (-> (get-in (meta r1) [:rule :pattern])
                    pop
                    ;; ensure be is int via predicate on a
                    (conj '?a:b))
-                 '(+ a b))]
-        (is (= 42 (r4 [40 1 2])))
-        (is (= [40 1 :x] (r4 [40 1 :x])) "not transformed")))))
+                 '(+ x a b)
+                 ;; inject x:
+                 ['x] [10])]
+        (is (= 52 (r4 [40 1 2])))
+        (is (= [40 1 :x] (r4 [40 1 :x])) "rule not applied")))))
+
+(deftest match-a-set-of-maps-scanner
+  (let [joiner (fn [coll] (clojure.string/join (map :text coll)))
+        r (scanner
+            (rule combine
+              '[(?:map :pos ?pos)
+                (?:* (?:map :pos (| ?pos :ws)))
+                (?:map :pos ?pos)]
+              {:text (joiner (:rule/datum %env)) :pos pos}))]
+
+    (is (= [{:text "My", :pos :word}
+            {:text " ", :pos :ws}
+            {:text "HAPPY FEET", :pos :brand-name}
+            {:text " ", :pos :ws}
+            {:text "Πάτοι Παπουτσιών Νο", :pos :word}
+            {:text "38", :pos :number}]
+          (r
+            [{:text "My", :pos :word}
+             {:text " ", :pos :ws}
+             {:text "HAPPY", :foreign true, :pos :brand-name}
+             {:text " ", :pos :ws}
+             {:text "FEET", :foreign true, :pos :brand-name}
+             {:text " ", :pos :ws}
+             {:text "Πάτοι", :pos :word}
+             {:text " ", :pos :ws}
+             {:text "Παπουτσιών", :pos :word}
+             {:text " ", :pos :ws}
+             {:text "Νο", :pos :word}
+             {:text "38", :pos :number}]))))
+
+  (let [r
+        (scanner {:linear true}
+          (rule combine
+            '[(?:as* coll
+                (?:1
+                  (?:map :pos ?pos)
+                  (?:* (?:map :pos (| ?pos :ws)))
+                  (?:map :pos ?pos)))]
+            {:text (clojure.string/join (map :text coll)) :pos pos}))]
+
+    (is (= [{:text "My", :pos :word}
+            {:text " ", :pos :ws}
+            {:text "HAPPY FEET", :pos :brand-name}
+            {:text " ", :pos :ws}
+            {:text "Πάτοι Παπουτσιών Νο", :pos :word}
+            {:text "38", :pos :number}]
+          (r
+            [{:text "My", :pos :word}
+             {:text " ", :pos :ws}
+             {:text "HAPPY", :foreign true, :pos :brand-name}
+             {:text " ", :pos :ws}
+             {:text "FEET", :foreign true, :pos :brand-name}
+             {:text " ", :pos :ws}
+             {:text "Πάτοι", :pos :word}
+             {:text " ", :pos :ws}
+             {:text "Παπουτσιών", :pos :word}
+             {:text " ", :pos :ws}
+             {:text "Νο", :pos :word}
+             {:text "38", :pos :number}])))))
 
 
 
-(comment
-  (def rl
-    (pattern/rule-list
-      r))
+(deftest scanner-variations
+  (let [r (scanner {:iterate false}
+            (rule '[?a 1 ?b 2] [{a 1} {b 2}]))]
+    (is (= [:x :y {:a 1} {:b 2} :a 1 :b 2 :z]
+          (r [:x :y :a 1 :b 2 :a 1 :b 2 :z]))))
 
-  (pattern.types/spliceable-pattern (:match (:rule (meta r))))
+  (let [rl (pattern/rule-list
+             (rule '[?a 1 ?b 9]     nil)
+             (rule '[?a 1 ??_ ?b 2] [{a 1} '... {b 2}])
+             (rule '[:x ?c 1]       [c {:x 1}]))
+        srl (scanner rl)]
+    (is (= '[1 2 3 4 {:a 1} ... {:d 2}]
+          (srl '(1 2 3 4 :a 1 :b 9 :x :c 1 :d 2)))))
 
-  (defn zip-seq [z]
-    (lazy-seq
-      (when-not (zip/end? z)
-        (cons (zip/node z)
-          (zip-seq (zip/next z))))))
+  (let [ro (pattern/in-order
+             ;; FIXME: I think this result is not good.
+             ;; This has the given ordering because each rule is doing a full scan.
+             ;; If rules were combined like in rule-list, the 3rd rule would
+             ;; apply at :x before the second rule could change :c 1 to {:c 1}.
+             (rule '[?a 1 ?b 9]     [{a 1} {b 2}])
+             (rule '[?a 1 ??_ ?b 2] [{a 1} '... {b 2}])
+             (rule '[:x ?c 1]       [c {:x 1}]))
+        sro (scanner ro)]
+    (is (= '[1 2 3 4 {:a 1} ... {:b 2} :x {:c 1} ... {:d 2}]
+          (sro '(1 2 3 4 :a 1 :b 2 :x :c 1 :d 2)))))
 
-  (defn to-splice [x]
-    (when (satisfies? pattern.types/SpliceablePattern x)
-      (pattern.types/spliceable-pattern x)))
+  (let [rx (pattern/rule-list
+             (rule '[?a 1 ?b 9]     [{a 1} {b 2}])
+             (rule '[?a 1 ??_ ?b 2] [{a 1} '... {b 2}])
+             (pattern/in-order
+               (rule '[:x ?c 1]     [c {:x 1}])
+               (rule '[:y ?c 1]     [c {:y [c 1]}])))
+        srx (scanner {:linear false} rx)]
+    (is (= '[1 2 3 4 {:a 1} {:b 2} :c {:x 1} :d]
+          (srx '(1 2 3 4 :a 1 :b 9 :x :c 1 :d)))))
 
-  (map to-splice (zip-seq (pattern.r3.combinators/rule-zipper r)))
-  (map meta (zip-seq (pattern.r3.combinators/rule-zipper r))))
+  (let [odds (scanner {:lazy true :iterate false}
+               (rule '(?? x odd?)
+                 (when (next x)
+                   (apply + x))))]
+    (is (= [2 3 1 6 5 4]
+          (odds '[2 3 1 6 5 1 3]))))
+
+  (let [odds (scanner {:lazy true :linear false}
+               (rule '(?? x odd?)
+                 (when (next x)
+                   (apply + x))))]
+    (is (= [2 4 6 5 4]
+          (odds '[2 3 1 6 5 1 3]))))
+
+  (let [odds (scanner
+               ;; I had to make the sequence greedy with ??!
+               (rule '(??! x odd?)
+                 (when (next x)
+                   (apply + x))))]
+    (is (= [2 4 6 9]
+          (odds '[2 3 1 6 5 1 3]))))
+
+  (let [ro (pattern/rule-list
+             (rule '[?a 1] nil)
+             (rule '[?a 1] :ok))
+        s (scanner ro)]
+    (is (= [5 4 3 :ok 0]
+          (s [5 4 3 2 1 0]))))
+
+  (let [ro (pattern/rule-list
+             (rule '[?a 1] nil)
+             (rule '[?a 1] :ok))
+        s (scanner ro)]
+    (is (= [5 4 3 :ok 0]
+          (s [5 4 3 2 1 0]))))
+
+  (let [ro (pattern/rule-list
+             (rule '[?a 1] (pattern/success:env {:hi 1}))
+             (rule '[?a 1] :ok))
+        s (scanner ro)]
+    (is (= [[5 4 3 2 1 0] {:hi 1}]
+          (s [5 4 3 2 1 0] {}))))
+
+  (testing "with env"
+    (let [ro (pattern/in-order
+               (rule '[?a 1] nil)
+               (rule '[?a 1] :ok))
+          s (scanner ro)]
+      (is (= [5 4 3 :ok 0]
+            (s [5 4 3 2 1 0]))))
+
+    (let [ro (pattern/in-order
+               (rule '[?a 1] (pattern/success:env {:hi 1}))
+               (rule '[?a 1] :ok))
+          s (scanner ro)]
+      (is (= [[5 4 3 :ok 0] {:hi 1}]
+            (s [5 4 3 2 1 0] {}))))))
+
+
+(deftest scanner-examples
+  ;; All of these variations do the same thing
+  (let [sum (scanner (rule '(?? i number?)
+                       (apply + i)))]
+    (is (= [:x 6 :y 22 :z 3]
+          (sum [ :x 1 2 3 :y 4 5 6 7 :z 1 2]))))
+
+
+
+  (pattern/with-predicates {'i int?}
+    (let [sum (scanner (rule '??i (apply + i)))]
+      (is (= [:x 6 :y 22 :z 3]
+            (sum [ :x 1 2 3 :y 4 5 6 7 :z 1 2])))))
+
+
+
+
+  (let [sum (scanner (rule '(?:* (? i number?))
+                       (apply + i)))]
+    (is (= [:x 6 :y 22 :z 3]
+          (sum [ :x 1 2 3 :y 4 5 6 7 :z 1 2]))))
+
+
+
+  (let [sum-points (scanner
+                     (pattern/rule-list
+                       (rule '(?:* (? i number?)) (apply + i))
+                       (rule '[:x ?x :y ?y] {:point/x x :point/y y})))]
+
+    (is (= [#:point{:x 6, :y 22} :z 3]
+          (sum-points [ :x 1 2 3 :y 4 5 6 7 :z 1 2]))))
+
+
+
+  (let [sum (scanner (rule '??x (when (every? int? x) (apply + x))))]
+    (is (= [:x 6 :y 22 :z 3]
+          (sum [ :x 1 2 3 :y 4 5 6 7 :z 1 2]))))
+
+
+
+  (let [sum (scanner (rule '(|
+                              [(? i0 int?) (? i1 int?) (? i2 int?) (? i3 int?)]
+                              [(? i0 int?) (? i1 int?) (? i2 int?)]
+                              [(? i0 int?) (? i1 int?)])
+                       (apply + (:rule/datum %env))))]
+    (is (= [:x 6 :y 22 :z 3]
+          (sum [ :x 1 2 3 :y 4 5 6 7 :z 1 2]))))
+
+
+
+  (testing "specifying lazy leaves the ?? matcher alone instead of replacing it with ??!."
+    (let [sum (scanner {:lazy true}
+                (rule '(?? i number?)
+                  (apply + i)))]
+      (is (= [:x 3 3 :y 9 13 :z 3]
+            (sum [ :x 1 2 3 :y 4 5 6 7 :z 1 2]))))
+
+    ;; Must iterate the lazy scanner to get to the fixed point:
+    (let [sum (scanner {:lazy true}
+                (rule '(?? i number?)
+                  (apply + i)))
+          sum (pattern/iterated sum)]
+      (is (= [:x 6 :y 22 :z 3]
+            (sum [ :x 1 2 3 :y 4 5 6 7 :z 1 2]))))))
