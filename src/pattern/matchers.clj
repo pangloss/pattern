@@ -47,6 +47,7 @@
           (on-failure :mismatch pattern-const dictionary env 1 data (first data)))
         (on-failure :missing pattern-const dictionary env 0 data (first data))))
     {:length (len 1)
+     :literal true
      `spliceable-pattern (fn [_] pattern-const)}))
 
 
@@ -78,44 +79,6 @@
   an anonymous matcher with a restriction function."
   [f comp-env]
   (compile-pattern* (list '? '_ f) comp-env))
-
-(defn add-lengths
-  ([] nil)
-  ([a b]
-   (if (and a b)
-     (let [na (:n a)
-           va (:v a)
-           nb (:n b)
-           vb (:v b)]
-       {:n (+ na nb) :v (or va vb)})
-     (or a b))))
-
-(defn and-lengths
-  ([] nil)
-  ([a b]
-   (if (and a b)
-     (let [na (:n a)
-           va (:v a)
-           nb (:n b)
-           vb (:v b)]
-       {:n (max na nb) :v (or va vb)})
-     (or a b))))
-
-(defn- build-child-matchers
-  "Builds in reverse so that sequence matchers know how many elements to reserve
-  after them, and their minimum required match size.
-
-  Matchers are returned in the original order."
-  [pattern comp-env]
-  (first
-    (reduce (fn [[matchers comp-env] p]
-              (if-let [m (compile-pattern* p comp-env)]
-                [(cons m matchers)
-                 (update comp-env
-                   :reserve-min-tail add-lengths (:length (meta m)))]
-                [matchers comp-env]))
-      [() (assoc comp-env :reserve-min-tail (len 0))]
-      (reverse pattern))))
 
 (defn- match-list
   "Match a list or vector. If the first symbol with in the list is ?:seq, allows
@@ -494,14 +457,6 @@
                       (~'? ~'_ ~(some-fn nil? map?))
                       seq (~'| nil ((~'?:* ~[k v]))))
                     comp-env))
-
-(defn match-*set
-  "Create a ?:set matcher than can match the items in a set."
-  [[_ item] comp-env]
-  (compile-pattern* `(~'?:chain
-                      (~'? ~'_ ~(some-fn nil? set?))
-                      seq (~'| nil ((~'?:* ~item))))
-    comp-env))
 
 (defn- has-n?
   "Try to be fast at checking whether a list or vector has at least n elements."
@@ -1243,7 +1198,6 @@
 
 (register-matcher :value match-value)
 (register-matcher :list #'match-list)
-(register-matcher :map #'match-map)
 (register-matcher '?:= match-literal {:aliases ['?:literal]})
 (register-matcher :compiled-matcher match-compiled)
 (register-matcher :compiled*-matcher match-compiled*)
@@ -1254,7 +1208,6 @@
 (register-matcher '??:map #'match-in-map)
 (register-matcher '?:+map #'match-+map {:aliases ['?:map+]})
 (register-matcher '?:*map #'match-*map {:aliases ['?:map*]})
-(register-matcher '?:set #'match-*set)
 (register-matcher '?:as #'match-as {:named? true :restriction-position 3})
 (register-matcher '?:as* #'match-as {:named? true :restriction-position 3})
 (register-matcher '?:? #'match-optional {:aliases ['?:optional]})

@@ -581,3 +581,44 @@
   [[compile-pattern]] or [[matcher]]"
   [pattern]
   (all-names (compile-pattern pattern {:ignore-predicates true})))
+
+(defn literal? [m]
+  (:literal (meta m)))
+
+(defn add-lengths
+  ([] nil)
+  ([a b]
+   (if (and a b)
+     (let [na (:n a)
+           va (:v a)
+           nb (:n b)
+           vb (:v b)]
+       {:n (+ na nb) :v (or va vb)})
+     (or a b))))
+
+(defn and-lengths
+  ([] nil)
+  ([a b]
+   (if (and a b)
+     (let [na (:n a)
+           va (:v a)
+           nb (:n b)
+           vb (:v b)]
+       {:n (max na nb) :v (or va vb)})
+     (or a b))))
+
+(defn build-child-matchers
+  "Builds in reverse so that sequence matchers know how many elements to reserve
+  after them, and their minimum required match size.
+
+  Matchers are returned in the original order."
+  [pattern comp-env]
+  (first
+    (reduce (fn [[matchers comp-env] p]
+              (if-let [m (compile-pattern* p comp-env)]
+                [(cons m matchers)
+                 (update comp-env
+                   :reserve-min-tail add-lengths (:length (meta m)))]
+                [matchers comp-env]))
+      [() (assoc comp-env :reserve-min-tail (len 0))]
+      (reverse pattern))))
