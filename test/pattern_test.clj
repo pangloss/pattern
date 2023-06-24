@@ -1009,3 +1009,37 @@
           sum (pattern/iterated sum)]
       (is (= [:x 6 :y 22 :z 3]
             (sum [ :x 1 2 3 :y 4 5 6 7 :z 1 2]))))))
+
+(deftest set-matchers
+  (is (= []
+        (matcher '[(?:set-has 20)] [#{1 10 20}])))
+
+  (is (= [3]
+        (matcher '(?:closed #{1 2 ?a}) #{1 2 3})))
+
+  ;; with set literal, matcher's ordering is unknown! Use compile-pattern
+  (is (= 5 ;; number of matchers that pull values. Will be in unknown order!
+        (count (matcher '#{?e (? b odd?) ?c ?d (? a odd?)} #{1 2 3 4 5 6 7 8}))))
+
+  (let [result ((pattern/compile-pattern '#{1 (? o0 odd?) ?c ?d ?e ?f ?g (? o1 odd?)})
+                #{1 2 3 4 5 6 7 8})
+        vals (set (vals (select-keys result [:c :d :e :f :g])))]
+    (is (= 5 (count vals)))
+    (is (nil? (vals 1)))
+    (is (odd? (:o0 result)))
+    (is (odd? (:o1 result))))
+
+  (is (= [5 7] (sort (matcher '(?:closed #{1 (? b odd?) 2 3 (? a odd?)}) #{1 2 3 5 7}))))
+  (is (nil? (matcher '(?:closed #{1 (? b odd?) 2 3 (? a odd?)}) #{1 2 3 5 7 8})))
+
+  (is (= (range 1 9) (sort (first (matcher '(?:set* (? x int?)) #{1 2 3 4 5 6 7 8})))))
+
+  (is (int? (first
+              (matcher '(?:set-has (? x int?)) #{1 2 3 4 5 6 7 8}))))
+
+  (is (nil? (matcher '(?:closed (?:set ?x (?:set 1))) #{1 2 3})))
+  (is (#{2 3} (first (matcher '(?:set ?x (?:set 1)) #{1 2 3}))))
+  (is (= [2] (matcher '(?:set ?x (?:set 1)) #{1 2})))
+  (is (nil? (matcher '(?:set ?x (?:set 1)) #{1})))
+  (is (some? '(?:closed (?:set ?x (?:open (?:set 1))))) #{1 2 3}))
+

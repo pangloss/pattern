@@ -118,13 +118,8 @@
                 (trampoline retry [] the-set)
                 (on-failure :type pattern dictionary env 1 data the-set :retry retry))))
           (on-failure :missing pattern dictionary env 0 data nil)))
-      (let [matchers [item-matcher remainder-matcher]]
-        {:var-names (distinct (mapcat (comp :var-names meta) matchers))
-         :var-modes (apply merge-with f/op (map (comp :var-modes meta) matchers))
-         :var-abbrs (apply merge-with f/op (map (comp :var-abbrs meta) matchers))
-         :var-prefixes (apply merge-with f/op (map (comp :var-prefixes meta) matchers))
-         :greedy (some (comp :greedy meta) matchers)
-         ;;:list-length list-length
+      (merge (merge-meta (map meta [item-matcher remainder-matcher]))
+        {;;:list-length list-length
          :length (len 1)
          `spliceable-pattern (fn [_] `(~'?:1 ~@pattern))}))))
 
@@ -136,21 +131,3 @@
 (register-matcher '?:set #'match-set)
 (register-matcher '?:set-intersection #'match-set-intersection)
 (register-matcher '?:*set #'match-*set {:aliases ['?:set*]})
-
-(comment
-  (matcher '[(?:has 20)] [#{1 10 20}])
-
-  (matcher '(?:closed #{1 2 ?a}) #{1 2 3})
-
-  ;; with set literal, matcher's ordering is unknown! Use compile-pattern
-  (matcher '#{?e (? b odd?) ?c ?d (? a odd?)} #{1 2 3 4 5 6 7 8})
-  ((pattern/compile-pattern '#{1 (? o0 odd?) ?c ?d ?e ?f ?g (? o1 odd?)}) #{1 2 3 4 5 6 7 8})
-  (matcher '(?:closed #{1 (? b odd?) 2 3 (? a odd?)}) #{1 2 3  5 7})
-  (matcher '(?:set* (? x int?)) #{1 2 3 4 5 6 7 8})
-  (matcher '(?:set-has (? x int?)) #{1 2 3 4 5 6 7 8})
-
-
-  (matcher '(?:set ?x (?:set 1)) #{1 2 3})
-  (matcher '(?:set ?x (?:set 1)) #{1 2})
-  (matcher '(?:set ?x (?:set 1)) #{1})
-  (matcher '(?:closed (?:set ?x (?:open (?:set 1)))) #{1 2 3}))
