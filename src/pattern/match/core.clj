@@ -631,6 +631,7 @@
 (defmethod merge-meta-key :var-prefixes [k v0 v1] (merge-with f/op v0 v1))
 (defmethod merge-meta-key :var-abbrs [k v0 v1] (merge-with f/op v0 v1))
 (defmethod merge-meta-key :var-names [k v0 v1] (vec (distinct (concat v0 v1))))
+(defmethod merge-meta-key `spliceable-pattern [k v0 v1] nil)
 
 (defn- combine-map-args [map-or-maps more]
   (let [maps (if (map? map-or-maps) [map-or-maps] map-or-maps)]
@@ -648,7 +649,3 @@
                 (reduce merge-entry (or m1 {}) (seq m2)))]
         (reduce merge2 maps))
       (first maps))))
-
-(defn merge-meta-subset [keys map-or-maps & more]
-  (let [maps (combine-map-args map-or-maps more)]
-    (merge-meta (map #(select-keys % keys) maps))))

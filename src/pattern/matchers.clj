@@ -138,7 +138,7 @@
                 (trampoline retry datum))))
           (on-failure :missing pattern dictionary env 0 data nil)))
       (merge
-        (merge-meta-subset [:var-modes :var-prefixes :var-abbrs :var-names :greedy] (map meta matchers))
+        (merge-meta (map meta matchers))
         {:list-length list-length
          :length (len 1)
          `spliceable-pattern (fn [_] `(~'?:1 ~@pattern))}))))
@@ -911,7 +911,7 @@
           result
           (on-failure :mismatch pattern dictionary env 1 data nil)))
       (merge
-        (merge-meta-subset [:var-modes :var-prefixes :var-abbrs :var-names] (map meta matchers))
+        (merge-meta (map meta matchers))
         {:length (let [lens (map (comp :length meta) matchers)]
                    (if (apply = lens)
                      (first lens)
@@ -948,7 +948,7 @@
                     ((.succeed env) dictionary (or n 0))))]
           (and-expr-matcher matchers dictionary nil)))
       (merge
-        (merge-meta-subset [:var-modes :var-prefixes :var-abbrs :var-names :greedy] (map meta matchers))
+        (merge-meta (map meta matchers))
         {:length (let [lens (map (comp :length meta) matchers)]
                    (reduce and-lengths lens))
          `spliceable-pattern (fn [_] (list* '& (map spliceable-pattern matchers)))}))))
