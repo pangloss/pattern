@@ -335,12 +335,39 @@
                                  ~(with-meta `(interleave ~ks ~vs)
                                     {::ordered true}))))))
 
-                  (rule '((?:literal ?:set) ?items)
+                  (rule '((| (?:literal ?:*set) (?:literal ?:set*)) ?items)
                     (let [items (var-name items)]
                       (if (= '_ items)
                         ;; TODO: should this be an empty set?
                         `(list (set (list)))
                         `(list (set ~items)))))
+
+                  (rule '((?:literal ?:set-intersection) ?set-literal (?:? ?->remainder))
+                    ;; NOTE: is this extra checking worthwhile? It makes the generated code much larger.
+                    ;; But if there is an error, it will help with debugging a lot.
+                    (if remainder
+                      `(list (apply into ~set-literal ~remainder))
+                      #_
+                      `(let [r# ~remainder]
+                         `(list (apply into ~set-literal r#))
+                         (if (sequential? (first r#))
+                           (throw (ex-info "Invalid set-remainder"
+                                    {:pattern '~(remove-symbol-namespaces (:rule/datum %env))
+                                     :remainder r#}))))
+                      `(list ~set-literal)))
+
+                  (rule '((| (?:literal ?:set) (?:literal ?:set-has)) ?->item (?:? ?->remainder))
+                    (if remainder
+                      `(list (conj (set (first ~remainder)) (first ~item)))
+                      #_
+                      `(let [r# ~remainder]
+                         (list (conj (set (first r#)) (first ~item)))
+                         (if (sequential? (first r#))
+                           (list (conj (set (first r#)) ~item))
+                           (throw (ex-info "Invalid set-remainder"
+                                    {:pattern '~(remove-symbol-namespaces (:rule/datum %env))
+                                     :remainder r#}))))
+                      `(list (set ~item))))
 
                   ;; if
                   (rule '((?:literal ?:if) ?pred ?->then (?:? ?->else))
@@ -352,6 +379,9 @@
                     `(let [then# ~then]
                        (when (apply ~pred (first then#))
                          (seq (apply concat then#)))))
+
+                  (rule '((| (?:literal ?:open) (?:literal ?:closed)) ?->pattern)
+                    pattern)
 
                   to-syntax-quote*]))))
 
