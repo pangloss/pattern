@@ -388,9 +388,18 @@
                   (rule '((?:literal ?:fresh) ?_ ?->pattern) pattern)
                   (rule '((?:literal ?:all-fresh) ?_ ?->pattern) pattern)
 
+                  (rule '((| (?:literal ?:filter) (?:literal ?:remove)) ?_ ?->pattern)
+                    pattern)
+                  (rule '((| (?:literal ??:filter) (?:literal ??:remove)) ?_ ?->pattern)
+                    `(apply concat ~pattern))
+
                   (rule '((?:literal ?:some) ?name ?_)
                     `(list ~name))
 
+                  (rule '((?:literal ??:some) ?name ?_)
+                    `(apply concat ~name))
+
+                  ;; TODO: ??:some variants of these ?:some rules:
                   (rule '((?:literal ?:some) ?name ?_
                           [(& (?:chain ?_ matcher-type-for-dispatch ??)
                              ??->content)])
@@ -405,10 +414,10 @@
                        (list (concat before# (vector item#) after#))))
 
                   (rule '((?:literal ?:not) ?->pattern)
-                    ;; TODO: do the semantics of this make any sense?
-                    ;; The not matcher matches if the pattern inside it does not.
-                    ;; So would it make sense to also make it pass if the inner expression
-                    ;; completely failed, like with an exception?
+                    ;; The not matcher matches if the pattern inside it does not, including
+                    ;; if the nested pattern is somehow broken. Any variable inside
+                    ;; the expression must be defined, but it doesn't need to be the correct
+                    ;; type since any problems at runtime will just translate into a false here.
                     `(list (try (not (first ~pattern))
                                 (catch Exception e#
                                   true))))
