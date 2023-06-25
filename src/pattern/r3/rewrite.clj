@@ -383,6 +383,36 @@
                   (rule '((| (?:literal ?:open) (?:literal ?:closed)) ?->pattern)
                     pattern)
 
+                  (rule '((?:literal ?:force) ?name) `(list ~name))
+
+                  (rule '((?:literal ?:fresh) ?_ ?->pattern) pattern)
+                  (rule '((?:literal ?:all-fresh) ?_ ?->pattern) pattern)
+
+                  (rule '((?:literal ?:some) ?name ?_)
+                    `(list ~name))
+
+                  (rule '((?:literal ?:some) ?name ?_
+                          [(& (?:chain ?_ matcher-type-for-dispatch ??)
+                             ??->content)])
+                    `(let [[before# item# after#] (first ~content)]
+                       (list (concat before# (vector item#) after#))))
+
+                  (rule '((?:literal ?:some) ?name ?_ [?->before (?:? ?->item) (?:? ?->after)])
+                    `(list (concat (first ~before) ~item (first ~after))))
+
+                  (rule '((?:literal ?:some) ?name ?_ ?->pattern)
+                    `(let [[before# item# after#] (first ~pattern)]
+                       (list (concat before# (vector item#) after#))))
+
+                  (rule '((?:literal ?:not) ?->pattern)
+                    ;; TODO: do the semantics of this make any sense?
+                    ;; The not matcher matches if the pattern inside it does not.
+                    ;; So would it make sense to also make it pass if the inner expression
+                    ;; completely failed, like with an exception?
+                    `(list (try (not (first ~pattern))
+                                (catch Exception e#
+                                  true))))
+
                   to-syntax-quote*]))))
 
 (def simplify-expr
