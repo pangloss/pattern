@@ -93,12 +93,21 @@
             (fn map-kv-matcher [data dictionary ^Env env]
               (if (seq data)
                 (letfn [(map-kv-item-matcher [before after dictionary]
-                          (if-let [kv (cond literal-key (find after (first literal-key))
-                                            key-var (if-let [bound (get dictionary key-var)]
-                                                      (find after (get bound :value))
-                                                      (first after))
-                                            :else (first after))]
-                            (let [after (dissoc after (key kv))]
+                          (if-let [found (cond literal-key (find after (first literal-key))
+                                               key-var (if-let [bound (get dictionary key-var)]
+                                                         (find after (get bound :value))
+                                                         (first after))
+                                               literal-value
+                                               ;; do a fast scan for a matching literal
+                                               (loop [before before after after kv (first after)]
+                                                 (when kv
+                                                   (if (= (first literal-value) (val kv))
+                                                     [before after kv]
+                                                     (let [after (dissoc after (key kv))]
+                                                       (recur (conj before kv) after (first after))))))
+                                               :else (first after))]
+                            (let [[before after kv] (if (map-entry? found) [before after found] found)
+                                  after (dissoc after (key kv))]
                               ;; if val is literal match it first, otherwise always match on key first
                               (if-let [result
                                        (matcher1 kv dictionary
