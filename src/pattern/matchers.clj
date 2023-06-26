@@ -44,10 +44,11 @@
     (with-meta
       (fn const-matcher [data dictionary ^Env env]
         (if (seq data)
-          (if (and (pred (first data)) (= (first data) pattern-const))
-            ((.succeed env) dictionary 1)
-            (on-failure :mismatch pattern-const dictionary env 1 data (first data)))
-          (on-failure :missing pattern-const dictionary env 0 data (first data))))
+          (let [value (first data)]
+            (if (and (pred value) (= value pattern-const))
+              ((.succeed env) dictionary 1)
+              (on-failure :mismatch pattern-const dictionary env 1 data value)))
+          (on-failure :missing pattern-const dictionary env 0 data nil)))
       (cond->
           {:length (len 1)
            :literal [pattern-const] ;; wrap the const so that false/nil work as literals, too.
