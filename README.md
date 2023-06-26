@@ -360,7 +360,98 @@ The following combinators are documented for now in the pattern.r3.combinators n
 | iterated | Keep applying the rule until a fixed point is reached |
 | simplifier | Like on-subexpressions which iterates at every level |
 | directed | Guide the traversal either using the pattern or from within the rule body |
+| scanner | Convert any rule combinator to scan through a list or vector |
 
+## Scanner rules
+
+If you have rules that transform sequential data, especially long ones, their
+performance can benefit from using the scanner combinator.
+
+Say you're working on data like that (which is the result of processing a string
+like `"Quantities: 5ml or 10gr"` using a natural language library):
+
+```clojure
+(def in
+  [{:text "Quantities:", :pos :word}
+   {:text " ", :pos :ws}
+   {:text "5", :pos :number}
+   {:text "ml", :pos :unit}
+   {:text " ", :pos :ws}
+   {:text "or", :pos :word}
+   {:text " ", :pos :ws}
+   {:text "10", :pos :number}
+   {:text "gr", :pos :unit}])
+```
+
+And you'd like to produce group the number and unit tokens into a new map. You
+may write a rule that looks like so:
+
+```clojure
+(def group-quantities
+  (iterated
+   (rule
+    '[??before
+      (?:as scalar (?:map :pos :number))
+      (?:? (?:map :text ?ws :pos :ws))
+      (?:as unit (?:map :pos :unit))
+      ??after]
+    (vec
+     (concat
+      before
+      [{:pos    :quantity
+        :text   (str (:text scalar) ws (:text unit))
+        :scalar scalar
+        :unit   unit}]
+      after)))))
+```
+
+Running it would yield:
+
+```clojure
+> (group-quantities in)
+[{:text "Quantities:", :pos :word}
+ {:text " ", :pos :ws}
+ {:pos :quantity,
+  :text "5ml",
+  :scalar {:text "5", :pos :number},
+  :unit {:text "ml", :pos :unit}}
+ {:text " ", :pos :ws}
+ {:text "or", :pos :word}
+ {:text " ", :pos :ws}
+ {:pos :quantity,
+  :text "10gr",
+  :scalar {:text "10", :pos :number},
+  :unit {:text "gr", :pos :unit}}]
+```
+
+The `iterated` combinator is necessary because without it the rule would match
+and transform the first pair of number and unit and leave the second
+untouched. But it also means that after the vector is transformed once, Pattern
+will restart scanning the elements from the beginning, which is of course
+wasteful.
+
+For such use cases, the rule can be rewritten with `scanner`:
+
+```clojure
+(def group-quantities
+  (p/scanner
+   (p/rule
+    group-quantities
+    '[(?:as scalar (?:map :pos :number))
+      (?:? (?:map :text ?ws :pos :ws))
+      (?:as unit (?:map :pos :unit))]
+    [{:pos    :quantity
+      :text   (str (:text scalar) ws (:text unit))
+      :scalar scalar
+      :unit   unit}])))
+```
+
+Running this rule results in identical output, but each time the rule matches,
+Pattern continues on to the rest of the vector instead of restarting from the
+first element, resulting in better performance. Also, the rule is shorter
+because you only have to provide matchers for the just the "window" of the
+sequence you're looking to transform and you don't need to reconstruct the
+original vector.
 
 ## Compilation Dialects and Tools
 
