@@ -1042,11 +1042,11 @@
   (is (int? (first
               (matcher '(?:set-has (? x int?)) #{1 2 3 4 5 6 7 8}))))
 
-  (is (nil? (matcher '(?:closed (?:set ?x (?:set 1))) #{1 2 3})))
-  (is (#{2 3} (first (matcher '(?:set ?x (?:set 1)) #{1 2 3}))))
-  (is (= [2] (matcher '(?:set ?x (?:set 1)) #{1 2})))
-  (is (nil? (matcher '(?:set ?x (?:set 1)) #{1})))
-  (is (some? '(?:closed (?:set ?x (?:open (?:set 1))))) #{1 2 3})
+  (is (nil? (matcher '(?:closed (?:set-item ?x (?:set-item 1))) #{1 2 3})))
+  (is (#{2 3} (first (matcher '(?:set-item ?x (?:set-item 1)) #{1 2 3}))))
+  (is (= [2] (matcher '(?:set-item ?x (?:set-item 1)) #{1 2})))
+  (is (nil? (matcher '(?:set-item ?x (?:set-item 1)) #{1})))
+  (is (some? '(?:closed (?:set-item ?x (?:open (?:set-item 1))))) #{1 2 3})
 
   (is (= [] (matcher '(?:closed #{1 2}) #{1 2})))
   (is (= [2] (matcher '(?:closed #{1 (?:as x 2)}) #{1 2}))))
