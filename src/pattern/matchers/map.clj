@@ -34,11 +34,11 @@
                             [(:literal (meta (compile-pattern* (key kv) comp-env)))
                              (:literal (meta (compile-pattern* (val kv) comp-env)))]))
           {} the-map)
-        patterns (keep (fn [kv] (let [[kl vl] (kv->literals kv)]
-                                 (when-not (and kl vl) kv)))
+        patterns (keep #(let [[kl vl] (kv->literals %)]
+                          (when-not (and kl vl) %))
                    the-map)
-        grouped-literals (keep (fn [kv] (let [[kl vl] (kv->literals kv)]
-                                         (when (and kl vl) (vec (concat kl vl)))))
+        grouped-literals (keep #(let [[kl vl] (kv->literals %)]
+                                  (when (and kl vl) (vec (concat kl vl))))
                            the-map)
         closed? (:closed? comp-env)
         literals (when (seq grouped-literals)
