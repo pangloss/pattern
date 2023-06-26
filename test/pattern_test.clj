@@ -1095,9 +1095,48 @@
   (let [s nil]
     (is (= [#{:a :b}] (sub [(?:set-intersection #{:a :b} ?s)])))))
 
-
 (deftest more-map-matchers
   (is (= {:a 1 :b 2 10 :k}
         ((rule '{:a 1 :b ?a (? n int?) ?c})
-         {:a 1 :b 2 :c :c :d :d :e :e :f :f :g :g :h :h :i :i :j :j 10 :k}))))
+         {:a 1 :b 2 :c :c :d :d :e :e :f :f :g :g :h :h :i :i :j :j 10 :k})))
 
+  (is (= []
+        (matcher '(?:closed (?:map-kv :a 1 (?:= {:b 2}))) {:a 1 :b 2})))
+
+  (is (nil?
+        (matcher '(?:closed (?:map-kv :a 1 (?:= {:b 2}))) {:a 1 :b 2 :c 2})))
+
+  (is (= []
+        (matcher '(?:closed (?:map-kv :a 1)) {:a 1})))
+
+  (is (nil?
+        (matcher '(?:closed (?:map-kv :a 1)) {:a 1 :b 2})))
+
+  (is (= [] (matcher '(?:map-kv :a 1) {:a 1})))
+  (is (= [] (matcher '(?:map-kv :a 1) {:a 1 :b 2})))
+
+  (is (= [:b {:a 2}] (matcher '(?:map-kv ?x 1 ?more) {:a 2 :b 1})))
+
+  (is (= [] (matcher '(?:literal {:a 1}) {:a 1})))
+
+  (is (= [] (matcher '{} {:a 1})))
+  (is (nil? (matcher '(?:closed {}) {:a 1})))
+  (is (= [] (matcher '(?:closed {}) {})))
+
+
+  (is (= [] (matcher '(?:map-intersection {:a 1 :b 2}) {:a 1 :b 2 :c 3})))
+  (is (= [] (matcher '(?:map-intersection {:a 1 :b 2} nil) {:a 1 :b 2 :c 3})))
+
+  (testing "map-intersection should not respond to being closed"
+    (is (= [] (matcher '(?:closed (?:map-intersection {:a 1 :b 2})) {:a 1 :b 2 :c 3})))
+    (is (= [] (matcher '(?:closed (?:map-intersection {:a 1 :b 2} nil)) {:a 1 :b 2 :c 3}))))
+
+  (is (= [{:c 3}]
+        (matcher '(?:map-intersection {:a 1 :b 2} ?other) {:a 1 :b 2 :c 3})))
+  (is (= [{:c 3}]
+        (matcher '(?:closed (?:map-intersection {:a 1 :b 2} ?other)) {:a 1 :b 2 :c 3})))
+
+
+  (is (= ["B" :c]
+        (matcher '{:a "A" :b ?b ?c (? _ int?)}
+          {:a "A" :b "B" :c 0}))))
