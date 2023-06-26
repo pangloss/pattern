@@ -27,7 +27,7 @@
   matchers."
   (:refer-clojure :exclude [trampoline])
   (:use pattern.match.core)
-  (:require [genera :refer [trampoline trampolining bouncing]]
+  (:require [genera :refer [trampoline trampolining bouncing defgen=]]
             [uncomplicate.fluokitten.core :as f]
             [pattern.types :refer [spliceable-pattern]]
             [pattern.match.core :as m]
@@ -1236,6 +1236,7 @@
 (register-matcher '?:all-fresh #'match-all-fresh)
 (register-matcher '?:restartable match-restartable)
 (register-matcher '?:re-matches #'match-regex) ;; no rewrite
+(defgen= matcher-type [#(instance? java.util.regex.Pattern %)] '?:re-matches)
 (register-matcher '?:re-seq #'match-regex) ;; no rewrite
 (register-matcher '?:some #'match-some {:named? true :aliases ['??:some]})
 (register-matcher '?:filter #'match-filter {:aliases ['??:filter '?:remove '??:remove]})
