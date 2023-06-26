@@ -29,17 +29,32 @@
       assoc :expanded pattern)))
 
 (defn match-map-literal [the-map comp-env]
-  (let [grouped (group-by #(:literal (meta (compile-pattern* (vec %) comp-env))) the-map)
-        patterns (grouped nil)
-        grouped-literals (dissoc grouped nil)
+  (let [kv->literals
+        (reduce (fn [m kv] (assoc m kv
+                            [(:literal (meta (compile-pattern* (key kv) comp-env)))
+                             (:literal (meta (compile-pattern* (val kv) comp-env)))]))
+          {} the-map)
+        patterns (keep (fn [kv] (let [[kl vl] (kv->literals kv)]
+                                 (when-not (and kl vl) kv)))
+                   the-map)
+        grouped-literals (keep (fn [kv] (let [[kl vl] (kv->literals kv)]
+                                         (when (and kl vl) (vec (concat kl vl)))))
+                           the-map)
         closed? (:closed? comp-env)
         literals (when (seq grouped-literals)
-                   (let [literal-map (into {} (apply concat (keys grouped-literals)))]
+                   (let [literal-map (into {} grouped-literals)]
                      (if (and closed? (not (seq patterns)))
                        (list '?:= literal-map)
                        (list '?:map-intersection literal-map))))
         patterns (when (seq patterns)
-                   (reduce (fn [m [k v]] (list '?:map-kv k v m)) nil (reverse patterns)))]
+                   (->> patterns
+                     (sort-by (fn [[k _ :as kv]]
+                                (cond (var-name k) 1  ;; may be bound
+                                      (first (kv->literals kv)) 0 ;; has a key literal
+                                      (second (kv->literals kv)) 2 ;; has a val literal
+                                      :else 3))) ;; no literal
+                     reverse
+                     (reduce (fn [m [k v]] (list '?:map-kv k v m)) nil)))]
     (compile-pattern*
       (if literals
         (if (seq patterns)

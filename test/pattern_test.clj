@@ -1165,4 +1165,19 @@
 
   (is (= ["B" :c]
         (matcher '{:a "A" :b ?b ?c (? _ int?)}
-          {:a "A" :b "B" :c 0}))))
+          {:a "A" :b "B" :c 0})))
+
+  (testing "matchers are put in optimal order"
+    (is (= '(?:map-intersection {:a 1}
+              (?:map-kv :d ?x
+                (?:map-kv ?b 2
+                  (?:map-kv (& (? _ int?) (?_ odd?)) 3
+                    (?:map-kv (& (?_ odd?) (? _ int?)) ?y
+                      nil)))))
+          (:expanded (meta (matcher '{(& (?_ odd?) (? _ int?)) ?y
+                                      (& (? _ int?) (?_ odd?)) 3
+                                      :d ?x
+                                      :a 1
+                                      ?b 2})))))))
+
+
