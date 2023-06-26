@@ -93,6 +93,7 @@
   (let [item-matcher (compile-pattern* item comp-env)
         literal (:literal (meta item-matcher))
         closed? (:closed? comp-env)
+        item-var (var-name item)
         remainder-matcher (when remainder (compile-pattern* remainder comp-env))]
         ;; TODO get the remainder length and add 1. We can check the set size
         ;; only check size before the first item
@@ -102,7 +103,12 @@
         (fn set-matcher [data dictionary ^Env env]
           (if (seq data)
             (letfn [(set-item-matcher [before after dictionary]
-                      (let [datum (first after)
+                      (let [datum (if-let [bound (when item-var (get dictionary item-var))]
+                                    (let [bound-val (get after (:value bound) ::not-found)]
+                                      (if (= ::not-found bound-val)
+                                        (first after)
+                                        bound-val))
+                                    (first after))
                             after (disj after datum)]
                         (if-let [result
                                  (item-matcher
