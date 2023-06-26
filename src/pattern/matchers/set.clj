@@ -45,9 +45,10 @@
         patterns (concat (grouped nil) (grouped false))
         grouped-literals (dissoc grouped nil false)
         literals (when (seq grouped-literals)
-                   (if (and (:closed? comp-env) (not (seq patterns)))
-                     (list '?:= the-set)
-                     (list '?:set-intersection (set (apply concat (keys grouped-literals))))))
+                   (let [literal-set (set (apply concat (keys grouped-literals)))]
+                     (if (and (:closed? comp-env) (not (seq patterns)))
+                       (list '?:= literal-set)
+                       (list '?:set-intersection literal-set))))
         patterns (when (seq patterns)
                    (reduce (fn [m p] (list '?:set p m)) nil (reverse patterns)))]
     (compile-pattern*

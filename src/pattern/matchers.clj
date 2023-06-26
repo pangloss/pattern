@@ -141,6 +141,7 @@
         (merge-meta (map meta matchers))
         {:list-length list-length
          :length (len 1)
+         :literal nil
          `spliceable-pattern (fn [_] `(~'?:1 ~@pattern))}))))
 
 (defn- match-element
@@ -365,6 +366,7 @@
                     (on-failure :unsat as-pattern dictionary env n data datum))))))))
       (merge-meta
         {:var-names [name]
+         :literal nil
          :var-modes {name (matcher-mode as-pattern)}
          `spliceable-pattern (fn [_]
                                (let [sp (spliceable-pattern m)
@@ -431,6 +433,7 @@
                     ((.succeed env) dict 1))))
               (on-failure :not-map pattern dictionary env 1 data m))))
         (assoc (merge-meta (map meta vals))
+          :literal nil
           `spliceable-pattern (fn [_] pattern)
           :length (len 1))))))
 
@@ -735,6 +738,7 @@
                       (bouncing ((.succeed env) dict taken)))))]
           (trampoline do-match matchers fns data dict nil)))
       (-> (assoc (merge-meta (map meta matchers))
+            :literal nil
             :length (:length (meta (first matchers)))
             `spliceable-pattern (fn [_]
                                   (if (= '??:chain chain-type)
@@ -800,6 +804,7 @@
         (merge-meta
           (meta result-matcher)
           {:var-names [name]})
+        :literal nil
         :length (if vlen? (var-len 1) (len 1))
         `spliceable-pattern (fn [_] (list* '??:some (rest full-pattern)))))))
 
