@@ -41,11 +41,13 @@
     comp-env))
 
 (defn match-set-literal [the-set comp-env]
-  (let [{literals true patterns false} (group-by #(boolean (literal? (compile-pattern* % comp-env))) the-set)
-        literals (when (seq literals)
+  (let [grouped (group-by #(:literal (meta (compile-pattern* % comp-env))) the-set)
+        patterns (concat (grouped nil) (grouped false))
+        grouped-literals (dissoc grouped nil false)
+        literals (when (seq grouped-literals)
                    (if (and (:closed? comp-env) (not (seq patterns)))
                      (list '?:= the-set)
-                     (list '?:set-intersection (set literals))))
+                     (list '?:set-intersection (set (apply concat (keys grouped-literals))))))
         patterns (when (seq patterns)
                    (reduce (fn [m p] (list '?:set p m)) nil (reverse patterns)))]
     (compile-pattern*
@@ -83,45 +85,47 @@
   before attempting to match its contents."
   [[_ item remainder :as pattern] comp-env]
   (let [item-matcher (compile-pattern* item comp-env)
-        literal? (:literal (meta item-matcher))
+        literal (:literal (meta item-matcher))
         closed? (:closed? comp-env)
         remainder-matcher (when remainder (compile-pattern* remainder comp-env))]
         ;; TODO get the remainder length and add 1. We can check the set size
         ;; only check size before the first item
-    (with-meta
-      (fn set-matcher [data dictionary ^Env env]
-        (if (seq data)
-          (letfn [(set-item-matcher [before after dictionary]
-                    (let [datum (first after)
-                          after (disj after datum)]
-                      (if-let [result
-                               (item-matcher
-                                 [datum]
-                                 dictionary
-                                 (assoc env :succeed
-                                   (fn match-set-succeed [new-dictionary n]
-                                     (if remainder-matcher
-                                       (let [remaining-set (into after before)]
-                                         (remainder-matcher [remaining-set] new-dictionary env))
-                                       (if (and closed? (or (seq before) (seq after)))
-                                         (on-failure :closed pattern new-dictionary env 1
-                                           (into after before) datum :retry retry)
-                                         ((.succeed env) new-dictionary 1))))))]
-                        result
-                        (retry (conj before datum) after))))
-                  (retry [scanned-set remaining-set]
-                    (if (seq remaining-set)
-                      (bouncing (set-item-matcher scanned-set remaining-set dictionary))
-                      (on-failure :mismatch pattern dictionary env 1 data remaining-set :retry retry)))]
-            (let [the-set (first data)]
-              (if (set? the-set)
-                (trampoline retry [] the-set)
-                (on-failure :type pattern dictionary env 1 data the-set :retry retry))))
-          (on-failure :missing pattern dictionary env 0 data nil)))
-      (merge (merge-meta (map meta [item-matcher remainder-matcher]))
-        {;;:list-length list-length
-         :length (len 1)
-         `spliceable-pattern (fn [_] `(~'?:1 ~@pattern))}))))
+    (if (and literal closed? (not remainder))
+      (compile-pattern* (list* '?:literal literal) comp-env)
+      (with-meta
+        (fn set-matcher [data dictionary ^Env env]
+          (if (seq data)
+            (letfn [(set-item-matcher [before after dictionary]
+                      (let [datum (first after)
+                            after (disj after datum)]
+                        (if-let [result
+                                 (item-matcher
+                                   [datum]
+                                   dictionary
+                                   (assoc env :succeed
+                                     (fn match-set-succeed [new-dictionary n]
+                                       (if remainder-matcher
+                                         (let [remaining-set (into after before)]
+                                           (remainder-matcher [remaining-set] new-dictionary env))
+                                         (if (and closed? (or (seq before) (seq after)))
+                                           (on-failure :closed pattern new-dictionary env 1
+                                             (into after before) datum :retry retry)
+                                           ((.succeed env) new-dictionary 1))))))]
+                          result
+                          (retry (conj before datum) after))))
+                    (retry [scanned-set remaining-set]
+                      (if (seq remaining-set)
+                        (bouncing (set-item-matcher scanned-set remaining-set dictionary))
+                        (on-failure :mismatch pattern dictionary env 1 data remaining-set :retry retry)))]
+              (let [the-set (first data)]
+                (if (set? the-set)
+                  (trampoline retry [] the-set)
+                  (on-failure :type pattern dictionary env 1 data the-set :retry retry))))
+            (on-failure :missing pattern dictionary env 0 data nil)))
+        (merge (merge-meta (map meta [item-matcher remainder-matcher]))
+          { ;;:list-length list-length
+           :length (len 1)
+           `spliceable-pattern (fn [_] `(~'?:1 ~@pattern))})))))
 
 (register-matcher '?:open #'match-open)
 (register-matcher '?:closed #'match-closed)

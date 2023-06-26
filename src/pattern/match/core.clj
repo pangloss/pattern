@@ -582,9 +582,6 @@
   [pattern]
   (all-names (compile-pattern pattern {:ignore-predicates true})))
 
-(defn literal? [m]
-  (:literal (meta m)))
-
 (defn add-lengths
   ([] nil)
   ([a b]
