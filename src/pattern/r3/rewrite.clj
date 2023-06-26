@@ -356,7 +356,7 @@
                                      :remainder r#}))))
                       `(list ~set-literal)))
 
-                  (rule '((| (?:literal ?:set) (?:literal ?:set-has)) ?->item (?:? ?->remainder))
+                  (rule '((| (?:literal ?:set-item) (?:literal ?:set-has)) ?->item (?:? ?->remainder))
                     (if remainder
                       `(list (conj (set (first ~remainder)) (first ~item)))
                       #_

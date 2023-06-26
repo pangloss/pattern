@@ -625,7 +625,7 @@
 
 (defmulti merge-meta-key (fn [k v0 v1] k))
 (defmethod merge-meta-key :default [k v0 v1] (cond (and v0 v1) (f/op v0 v1) v0 v0 :else v1))
-(defmethod merge-meta-key :literal [k v0 v1] (and v0 v1))
+(defmethod merge-meta-key :literal [k v0 v1] (when (= v0 v1) v0))
 (defmethod merge-meta-key :greedy [k v0 v1] (or v0 v1))
 (defmethod merge-meta-key :var-modes [k v0 v1] (merge-with f/op v0 v1))
 (defmethod merge-meta-key :var-prefixes [k v0 v1] (merge-with f/op v0 v1))

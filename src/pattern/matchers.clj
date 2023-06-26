@@ -47,7 +47,7 @@
           (on-failure :mismatch pattern-const dictionary env 1 data (first data)))
         (on-failure :missing pattern-const dictionary env 0 data (first data))))
     {:length (len 1)
-     :literal true
+     :literal [pattern-const] ;; wrap the const so that false/nil work as literals, too.
      `spliceable-pattern (fn [_] pattern-const)}))
 
 

@@ -72,7 +72,7 @@
                       seq (~'| nil ((~'?:* ~item))))
     comp-env))
 
-(defn- match-set
+(defn- match-set-item
   "Match a list or vector. If the first symbol with in the list is ?:seq, allows
   the matcher to match any type of list. Otherwise if the pattern is a vector,
   must match a vector, or if a list, must be a type of list. The matcher doesn't
@@ -128,6 +128,6 @@
 (defgen= matcher-type [set?] :set) ;; register set literal
 (register-matcher ':set #'match-set-literal) ;; register handler for set literal
 (register-matcher '?:set-has #'match-set-has)
-(register-matcher '?:set #'match-set)
+(register-matcher '?:set-item #'match-set)
 (register-matcher '?:set-intersection #'match-set-intersection)
 (register-matcher '?:*set #'match-*set {:aliases ['?:set*]})
