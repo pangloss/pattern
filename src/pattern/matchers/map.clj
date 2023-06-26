@@ -39,7 +39,7 @@
                        (list '?:= literal-map)
                        (list '?:map-intersection literal-map))))
         patterns (when (seq patterns)
-                   (reduce (fn [m [k v]] (list '?:map-item k v m)) nil (reverse patterns)))]
+                   (reduce (fn [m [k v]] (list '?:map-kv k v m)) nil (reverse patterns)))]
     (compile-pattern*
       (if literals
         (if (seq patterns)
@@ -53,8 +53,6 @@
       comp-env)))
 
 (defn- match-map-kv
-  ;; TODO: this can work in exactly the same way as ?:set-item.
-  ;; It will allow matching on the value and capturing the key.
   [[_ key-pattern value-pattern remainder :as pattern] comp-env]
   (let [key-matcher (compile-pattern* key-pattern comp-env)
         value-matcher (compile-pattern* value-pattern comp-env)
@@ -102,7 +100,8 @@
             (on-failure :missing pattern dictionary env 0 data nil)))
         (merge (merge-meta (map meta [key-matcher value-matcher remainder-matcher]))
           {:length (len 1)
-           `spliceable-pattern (fn [_] pattern)})))))
+           `spliceable-pattern (fn [_] pattern)
+           :expanded pattern})))))
 
 
 (register-matcher '?:map-kv #'match-map-kv)

@@ -418,9 +418,14 @@
   (is (= [[1] [2 3] 2]
         (matcher '(a ((?? a) (?? x)) (? b) c (?? x))
           '(a (1 2 3) 2 c 2 3))))
+
   (is (= [3 nil 4]
-        (matcher [1 2 '(| [3 5] [(? a) (?? x (on-all seq)) 4] [(? a) (? a)] [(? a) (? b even?)])]
+        (matcher [1 2 '(| [3 5]
+                         [(? a) (?? x (on-all seq)) 4]
+                         [(? a) (? a)]
+                         [(? a) (? b even?)])]
           [1 2 [3 4]])))
+
   (testing "syntax quoted"
     (is (= [[1] [2 3] 2]
           (matcher `(a ((?? a) (?? x)) (? b) c (?? x))
@@ -1089,3 +1094,10 @@
 
   (let [s nil]
     (is (= [#{:a :b}] (sub [(?:set-intersection #{:a :b} ?s)])))))
+
+
+(deftest more-map-matchers
+  (is (= {:a 1 :b 2 10 :k}
+        ((rule '{:a 1 :b ?a (? n int?) ?c})
+         {:a 1 :b 2 :c :c :d :d :e :e :f :f :g :g :h :h :i :i :j :j 10 :k}))))
+

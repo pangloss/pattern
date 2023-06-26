@@ -39,11 +39,12 @@
 (defn- match-value
   "Match a value using [[clojure.core/=]] semantics."
   [pattern-const comp-env]
-  (let [test (if (vector? pattern-const) vector? (constantly true))]
+  (let [pred (or (:literal-pred comp-env)
+               (if (vector? pattern-const) vector? (constantly true)))]
     (with-meta
       (fn const-matcher [data dictionary ^Env env]
         (if (seq data)
-          (if (and (test (first data)) (= (first data) pattern-const))
+          (if (and (pred (first data)) (= (first data) pattern-const))
             ((.succeed env) dictionary 1)
             (on-failure :mismatch pattern-const dictionary env 1 data (first data)))
           (on-failure :missing pattern-const dictionary env 0 data (first data))))
@@ -108,10 +109,9 @@
         {match-length :n variable-length? :v} list-length
         match-length (or match-length 0)]
     (if (every? (comp :literal meta) matchers)
-      (let [literal-list (vec (mapcat (comp :literal meta) matchers))]
-        (if (= list? list-pred)
-          (compile-pattern* (list '& list-pred (list '?:literal literal-list)) comp-env)
-          (compile-pattern* (list '?:literal literal-list) comp-env)))
+      (let [literal-list (cond-> (mapcat (comp :literal meta) matchers)
+                           (= vector? list-pred) vec)]
+        (compile-pattern* (list '?:literal literal-list) (assoc comp-env :literal-pred list-pred)))
       (with-meta
         (fn list-matcher [data dictionary ^Env env]
           (if (seq data)
@@ -147,12 +147,11 @@
                         (= match-length c))
                   (trampoline retry datum))))
             (on-failure :missing pattern dictionary env 0 data nil)))
-        (merge
-          (merge-meta (map meta matchers))
-          {:list-length list-length
-           :length (len 1)
-           :literal nil
-           `spliceable-pattern (fn [_] `(~'?:1 ~@pattern))})))))
+        (-> (merge-meta (map meta matchers))
+          (dissoc :literal :expanded)
+          (merge {:list-length list-length
+                  :length (len 1)
+                  `spliceable-pattern (fn [_] `(~'?:1 ~@pattern))}))))))
 
 (defn- match-element
   "Match a single element.
@@ -544,6 +543,7 @@
           true (assoc :length (:list-length md)
                  :pattern full-pattern
                  `spliceable-pattern (fn [_] full-pattern))
+          true (dissoc :literal)
           optional? (assoc-in [:length :v] true)
           optional? (assoc-in [:length :n] 0))))))
 
