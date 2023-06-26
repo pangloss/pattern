@@ -1041,5 +1041,51 @@
   (is (#{2 3} (first (matcher '(?:set ?x (?:set 1)) #{1 2 3}))))
   (is (= [2] (matcher '(?:set ?x (?:set 1)) #{1 2})))
   (is (nil? (matcher '(?:set ?x (?:set 1)) #{1})))
-  (is (some? '(?:closed (?:set ?x (?:open (?:set 1))))) #{1 2 3}))
+  (is (some? '(?:closed (?:set ?x (?:open (?:set 1))))) #{1 2 3})
 
+  (is (= [] (matcher '(?:closed #{1 2}) #{1 2})))
+  (is (= [2] (matcher '(?:closed #{1 (?:as x 2)}) #{1 2}))))
+
+
+(deftest matcher-rewrites
+  (let [x [1 2 3]]
+    (is (= [1 2 3] (sub [(??:remove int? ?x)])))
+
+    (is (= [[1 2 3]] (sub [(?:some x nil?)]))))
+
+  (let [x [[1 2 3] 4 [5 6]]]
+    (is (= [[1 2 3 4 5 6]]
+          (sub [(?:some _ nil? ?x)]))))
+
+  (let [x [[1 2 3] 4 [5 6]]]
+    (is (= [[1 2 3 4 5 6]]
+          (sub [(?:some _ nil? [??x])]))))
+
+  (let [a [1 2 3]
+        b 4
+        c [5 6]]
+    (is (= [[1 2 3 4 5 6]]
+          (sub [(?:some x nil? [?a ?b ?c])]))))
+
+  (let [a-set #{:c}
+        an-item 1]
+    (is (= #{1}
+          (sub (?:set-item ?an-item))))
+
+    ;; NOTE: this set pattern is totally wrong because the remainder must be a set.
+    ;; The not pattern catches that and turns it into false.
+    (is (= true
+          (sub (?:not (?:set-item ?an-item ?an-item))))))
+
+
+  (let [s #{:c}
+        x 1
+        y 2]
+    (is (= [#{1 2}] (sub [#{?x ?y}])))
+
+    (is (= [{1 2 2 1}] (sub [(?:closed {?x ?y ?y ?x})])))
+
+    (is (= #{1} (sub (?:set-has ?x)))))
+
+  (let [s nil]
+    (is (= [#{:a :b}] (sub [(?:set-intersection #{:a :b} ?s)])))))
