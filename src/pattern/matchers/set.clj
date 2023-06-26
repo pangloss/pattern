@@ -138,6 +138,6 @@
 (defgen= matcher-type [set?] :set) ;; register set literal
 (register-matcher ':set #'match-set-literal) ;; register handler for set literal
 (register-matcher '?:set-has #'match-set-has)
-(register-matcher '?:set-item #'match-set)
+(register-matcher '?:set-item #'match-set-item)
 (register-matcher '?:set-intersection #'match-set-intersection)
 (register-matcher '?:*set #'match-*set {:aliases ['?:set*]})

@@ -89,11 +89,11 @@
           (substitute ['(?:map* ?a ?b)] {'a 1 'b [2]}))))
   (testing "set"
     (is (= [#{1 2 3}]
-          (substitute ['(?:set ?x)] {'x [1 2 3]})))
+          (substitute ['(?:set* ?x)] {'x [1 2 3]})))
     (is (= [#{1 2 3}]
-          (substitute ['(?:set ?x)] {'x [1 2 3 3]})))
+          (substitute ['(?:set* ?x)] {'x [1 2 3 3]})))
     (is (= ['(?:set ?x)]
-          (substitute ['(?:set ?x)] {'x 1}))))
+          (substitute ['(?:set* ?x)] {'x 1}))))
   (testing "as"
     (is (= [1]
           (substitute ['(?:as x ?z)] {'x 1 'z 2})))
