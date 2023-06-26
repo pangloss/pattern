@@ -640,10 +640,11 @@
 (defn merge-meta [map-or-maps & more]
   (let [maps (combine-map-args map-or-maps more)]
     (if (next maps)
-      (letfn [(merge-entry [m e]
-                (let [k (key e) v (val e)]
-                  (assoc m k (merge-meta-key k (get m k) v))))
-              (merge2 [m1 m2]
-                (reduce merge-entry (or m1 {}) (seq m2)))]
+      (letfn [(merge2 [m1 m2]
+                (reduce
+                  (fn merge-entry [m k]
+                    (assoc m k (merge-meta-key k (get m1 k) (get m2 k))))
+                  {}
+                  (distinct (concat (keys m1) (keys m2)))))]
         (reduce merge2 maps))
       (first maps))))
