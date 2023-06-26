@@ -15,16 +15,18 @@
 (set! *warn-on-reflection* true)
 
 (defn- match-map-intersection
-  [[_ map-literal remainder] comp-env]
+  [[_ map-literal remainder :as pattern] comp-env]
   (let [map-keys (vec (keys map-literal))]
-    (compile-pattern*
-      (list* '&
-        map?
-        (fn check-map-intersection [x] (= map-literal (select-keys x map-keys)))
-        (when remainder
-          [(list '?:chain '?_ (fn dissoc-known [x] (apply dissoc x map-keys))
-             remainder)]))
-      comp-env)))
+    (vary-meta
+      (compile-pattern*
+        (list* '&
+          map?
+          (fn check-map-intersection [x] (= map-literal (select-keys x map-keys)))
+          (when remainder
+            [(list '?:chain '?_ (fn dissoc-known [x] (apply dissoc x map-keys))
+               remainder)]))
+        comp-env)
+      assoc :expanded pattern)))
 
 (defn match-map-literal [the-map comp-env]
   (let [grouped (group-by #(:literal (meta (compile-pattern* (vec %) comp-env))) the-map)

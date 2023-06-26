@@ -31,14 +31,16 @@
 
 
 (defn- match-set-intersection [[_ set-literal remainder :as pattern] comp-env]
-  (compile-pattern*
-    (list* '&
-      set?
-      (fn check-intersection [x] (set/intersection set-literal x))
-      (when remainder
-        [(list '?:chain '?_ (fn remove-known [x] (set/difference x set-literal))
-           remainder)]))
-    comp-env))
+  (vary-meta
+    (compile-pattern*
+      (list* '&
+        set?
+        (fn check-intersection [x] (set/intersection set-literal x))
+        (when remainder
+          [(list '?:chain '?_ (fn remove-known [x] (set/difference x set-literal))
+             remainder)]))
+      comp-env)
+    assoc :expanded pattern))
 
 (defn match-set-literal [the-set comp-env]
   (let [grouped (group-by #(:literal (meta (compile-pattern* % comp-env))) the-set)
