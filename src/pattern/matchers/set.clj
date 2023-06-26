@@ -42,15 +42,16 @@
 
 (defn match-set-literal [the-set comp-env]
   (let [grouped (group-by #(:literal (meta (compile-pattern* % comp-env))) the-set)
-        patterns (concat (grouped nil) (grouped false))
-        grouped-literals (dissoc grouped nil false)
+        patterns (grouped nil)
+        grouped-literals (dissoc grouped nil)
+        closed? (:closed? comp-env)
         literals (when (seq grouped-literals)
                    (let [literal-set (set (apply concat (keys grouped-literals)))]
-                     (if (and (:closed? comp-env) (not (seq patterns)))
+                     (if (and closed? (not (seq patterns)))
                        (list '?:= literal-set)
                        (list '?:set-intersection literal-set))))
         patterns (when (seq patterns)
-                   (reduce (fn [m p] (list '?:set p m)) nil (reverse patterns)))]
+                   (reduce (fn [m p] (list '?:set-item p m)) nil (reverse patterns)))]
     (compile-pattern*
       (if literals
         (if (seq patterns)
@@ -58,7 +59,9 @@
           literals)
         (if patterns
           patterns
-          (list '?:= #{})))
+          (if closed?
+            (list '?:= #{})
+            set?)))
       comp-env)))
 
 (defn match-set-has

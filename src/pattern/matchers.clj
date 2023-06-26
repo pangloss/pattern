@@ -1212,7 +1212,6 @@
 (register-matcher :plain-function #'match-plain-function) ;; no rewrite
 (register-matcher '? #'match-element {:named? true})
 (register-matcher '?? #'match-segment {:named? true})
-(register-matcher ':map #'match-map)
 (register-matcher '?:map #'match-map)
 (register-matcher '??:map #'match-in-map)
 (register-matcher '?:+map #'match-+map {:aliases ['?:map+]})

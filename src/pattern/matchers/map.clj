@@ -14,6 +14,42 @@
 
 (set! *warn-on-reflection* true)
 
+(defn- match-map-intersection
+  [[_ map-literal remainder] comp-env]
+  (let [map-keys (vec (keys map-literal))]
+    (compile-pattern*
+      (list* '&
+        map?
+        (fn check-map-intersection [x] (= map-literal (select-keys x map-keys)))
+        (when remainder
+          [(list '?:chain '?_ (fn dissoc-known [x] (apply dissoc x map-keys))
+             remainder)]))
+      comp-env)))
+
+(defn match-map-literal [the-map comp-env]
+  (let [grouped (group-by #(:literal (meta (compile-pattern* (vec %) comp-env))) the-map)
+        patterns (grouped nil)
+        grouped-literals (dissoc grouped nil)
+        closed? (:closed? comp-env)
+        literals (when (seq grouped-literals)
+                   (let [literal-map (into {} (apply concat (keys grouped-literals)))]
+                     (if (and closed? (not (seq patterns)))
+                       (list '?:= literal-map)
+                       (list '?:map-intersection literal-map))))
+        patterns (when (seq patterns)
+                   (reduce (fn [m [k v]] (list '?:map-item k v m)) nil (reverse patterns)))]
+    (compile-pattern*
+      (if literals
+        (if (seq patterns)
+          (concat literals [patterns])
+          literals)
+        (if patterns
+          patterns
+          (if closed?
+            (list '?:= {})
+            map?)))
+      comp-env)))
+
 (defn- match-map-kv
   ;; TODO: this can work in exactly the same way as ?:set-item.
   ;; It will allow matching on the value and capturing the key.
@@ -68,3 +104,6 @@
 
 
 (register-matcher '?:map-kv #'match-map-kv)
+(register-matcher '?:map-intersection #'match-map-intersection)
+(defgen= matcher-type [(every-pred map? (complement record?))] :map)
+(register-matcher :map #'match-map-literal)
