@@ -343,31 +343,24 @@
                         `(list (set ~items)))))
 
                   (rule '((?:literal ?:set-intersection) ?set-literal (?:? ?->remainder))
-                    ;; NOTE: is this extra checking worthwhile? It makes the generated code much larger.
-                    ;; But if there is an error, it will help with debugging a lot.
                     (if remainder
                       `(list (apply into ~set-literal ~remainder))
-                      #_
-                      `(let [r# ~remainder]
-                         `(list (apply into ~set-literal r#))
-                         (if (sequential? (first r#))
-                           (throw (ex-info "Invalid set-remainder"
-                                    {:pattern '~(remove-symbol-namespaces (:rule/datum %env))
-                                     :remainder r#}))))
                       `(list ~set-literal)))
+
+                  (rule '((?:literal ?:map-intersection) ?map-literal (?:? ?->remainder))
+                    (if remainder
+                      `(list (apply into ~map-literal ~remainder))
+                      `(list ~map-literal)))
 
                   (rule '((| (?:literal ?:set-item) (?:literal ?:set-has)) ?->item (?:? ?->remainder))
                     (if remainder
                       `(list (conj (set (first ~remainder)) (first ~item)))
-                      #_
-                      `(let [r# ~remainder]
-                         (list (conj (set (first r#)) (first ~item)))
-                         (if (sequential? (first r#))
-                           (list (conj (set (first r#)) ~item))
-                           (throw (ex-info "Invalid set-remainder"
-                                    {:pattern '~(remove-symbol-namespaces (:rule/datum %env))
-                                     :remainder r#}))))
                       `(list (set ~item))))
+
+                  (rule '((?:literal ?:map-kv) ?->k ?->v (?:? ?->remainder))
+                    (if remainder
+                      `(list (assoc (first ~remainder) (first ~k) (first ~v)))
+                      `(list {(first ~k) (first ~v)})))
 
                   ;; if
                   (rule '((?:literal ?:if) ?pred ?->then (?:? ?->else))

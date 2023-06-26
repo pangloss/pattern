@@ -1082,7 +1082,6 @@
     (is (= true
           (sub (?:not (?:set-item ?an-item ?an-item))))))
 
-
   (let [s #{:c}
         x 1
         y 2]
@@ -1093,7 +1092,19 @@
     (is (= #{1} (sub (?:set-has ?x)))))
 
   (let [s nil]
-    (is (= [#{:a :b}] (sub [(?:set-intersection #{:a :b} ?s)])))))
+    (is (= [#{:a :b}] (sub [(?:set-intersection #{:a :b} ?s)]))))
+
+  (let [k 10 v 20]
+    (is (= [{10 20}] (sub [(?:map-kv ?k ?v)])))
+
+    (is (= [{10 20 20 10}] (sub [(?:map-kv ?k ?v (?:map-kv ?v ?k))])))
+
+    (is (= [{10 20 20 10 30 40}] (sub [(?:map-kv ?k ?v (?:map-kv ?v ?k {30 40}))])))
+
+    (is (= [{10 20 20 10 30 40}] (sub [(?:map-intersection {10 20 30 40} (?:map-kv ?v ?k))])))
+
+    (is (thrown? java.lang.RuntimeException (sub [(?:map-intersection {10 ?v 30 40})])))))
+      "map-intersection does not try to resolve the map it's given. It's treated as a literal."
 
 (deftest more-map-matchers
   (is (= {:a 1 :b 2 10 :k}
