@@ -342,15 +342,15 @@
                         `(list (set (list)))
                         `(list (set ~items)))))
 
-                  (rule '((?:literal ?:set-intersection) ?set-literal (?:? ?->remainder))
+                  (rule '((?:literal ?:set-intersection) ?->set-literal (?:? ?->remainder))
                     (if remainder
-                      `(list (apply into ~set-literal ~remainder))
-                      `(list ~set-literal)))
+                      `(list (apply into (first ~set-literal) ~remainder))
+                      set-literal))
 
-                  (rule '((?:literal ?:map-intersection) ?map-literal (?:? ?->remainder))
+                  (rule '((?:literal ?:map-intersection) ?->map-literal (?:? ?->remainder))
                     (if remainder
-                      `(list (apply into ~map-literal ~remainder))
-                      `(list ~map-literal)))
+                      `(list (apply into (first ~map-literal) ~remainder))
+                      map-literal))
 
                   (rule '((| (?:literal ?:set-item) (?:literal ?:set-has)) ?->item (?:? ?->remainder))
                     (if remainder

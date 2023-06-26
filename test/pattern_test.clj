@@ -1103,8 +1103,8 @@
 
     (is (= [{10 20 20 10 30 40}] (sub [(?:map-intersection {10 20 30 40} (?:map-kv ?v ?k))])))
 
-    (is (thrown? java.lang.RuntimeException (sub [(?:map-intersection {10 ?v 30 40})])))))
-      "map-intersection does not try to resolve the map it's given. It's treated as a literal."
+    (is (= [{10 20 30 40}]
+          (sub [(?:map-intersection {10 ?v 30 40})])))))
 
 (deftest more-map-matchers
   (is (= {:a 1 :b 2 10 :k}
@@ -1119,6 +1119,21 @@
 
   (is (= []
         (matcher '(?:closed (?:map-kv :a 1)) {:a 1})))
+
+  (is (= [:a]
+        (matcher '[?a (?:closed (?:map-kv ?a 1))] [:a {:a 1}])))
+
+  (is (= nil
+        (matcher '[?a (?:closed (?:map-kv ?a 1))] [:x {:a 1}])))
+
+  (is (= [:a]
+        (matcher '[?a (?:map-kv ?a 1)] [:a {:a 1}])))
+
+  (is (= nil
+        (matcher '[?a (?:map-kv ?a 1)] [:x {:a 1}])))
+
+  (is (= [:a]
+        (matcher '(?:closed (?:map-kv ?a 1)) {:a 1})))
 
   (is (nil?
         (matcher '(?:closed (?:map-kv :a 1)) {:a 1 :b 2})))
