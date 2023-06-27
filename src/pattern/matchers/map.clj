@@ -85,57 +85,103 @@
                       k (if bound (:value bound) (key kv))]
                   (key-matcher [k] dictionary env)))
               (->key [kv dictionary env] (key-matcher [(key kv)] dictionary env))
-              (->val [kv dictionary env] (value-matcher [(val kv)] dictionary env))]
+              (->val [kv dictionary env] (value-matcher [(val kv)] dictionary env))
+              (on-direct-lookup [kv the-map dictionary ^Env env]
+                (if-let [result
+                         (value-matcher [(val kv)] dictionary
+                           (assoc env :succeed
+                             (fn match2-succeed [new-dictionary n]
+                               (let [remaining-map (dissoc the-map (key kv))]
+                                 (if remainder-matcher
+                                   (remainder-matcher [remaining-map] new-dictionary env)
+                                   (if (and closed? (seq remaining-map))
+                                     (on-failure :closed pattern new-dictionary env 1
+                                       remaining-map kv)
+                                     ((.succeed env) new-dictionary 1)))))))]
+                  result
+                  (on-failure :no-val-match pattern dictionary env 1
+                    the-map (or (first literal-key) (:value (get dictionary key-var))))))
+              (scan-lookup-step [kv before after dictionary ^Env env matcher1 matcher2 retry]
+                (let [after (dissoc after (key kv))]
+                  ;; if val is literal match it first, otherwise always match on key first
+                  (if-let [result
+                           (matcher1 kv dictionary
+                             (assoc env :succeed
+                               (fn match1-succeed [new-dictionary n]
+                                 (matcher2 kv new-dictionary
+                                   (assoc env :succeed
+                                     (fn match2-succeed [new-dictionary n]
+                                       (if remainder-matcher
+                                         (remainder-matcher [(into after before)] new-dictionary env)
+                                         (if (and closed? (or (seq before) (seq after)))
+                                           (on-failure :closed pattern new-dictionary env 1
+                                             (into after before) kv :retry retry)
+                                           ((.succeed env) new-dictionary 1)))))))))]
+                    result
+                    (retry (conj before kv) after))))]
         (let [[matcher1 matcher2] (if (and literal-value (not key-var))
                                     [->val ->key]
                                     [->key ->val])]
           (with-meta
-            (fn map-kv-matcher [data dictionary ^Env env]
-              (if (seq data)
-                (letfn [(map-kv-item-matcher [before after dictionary]
-                          (if-let [found (cond literal-key (find after (first literal-key))
-                                               key-var (if-let [bound (get dictionary key-var)]
-                                                         (find after (get bound :value))
-                                                         (first after))
-                                               literal-value
-                                               ;; do a fast scan for a matching literal
-                                               (loop [before before after after kv (first after)]
-                                                 (when kv
-                                                   (if (= (first literal-value) (val kv))
-                                                     [before after kv]
-                                                     (let [after (dissoc after (key kv))]
-                                                       (recur (conj before kv) after (first after))))))
-                                               :else (first after))]
-                            (let [[before after kv] (if (map-entry? found) [before after found] found)
-                                  after (dissoc after (key kv))]
-                              ;; if val is literal match it first, otherwise always match on key first
-                              (if-let [result
-                                       (matcher1 kv dictionary
-                                         (assoc env :succeed
-                                           (fn match1-succeed [new-dictionary n]
-                                             (matcher2 kv new-dictionary
-                                               (assoc env :succeed
-                                                 (fn match2-succeed [new-dictionary n]
-                                                   (if remainder-matcher
-                                                     (let [remaining-map (into after before)]
-                                                       (remainder-matcher [remaining-map] new-dictionary env))
-                                                     (if (and closed? (or (seq before) (seq after)))
-                                                       (on-failure :closed pattern new-dictionary env 1
-                                                         (into after before) kv :retry retry)
-                                                       ((.succeed env) new-dictionary 1)))))))))]
-                                result
-                                (retry (conj before kv) after)))
-                            (on-failure :not-found pattern dictionary env 1
-                              (into after before) (or (first literal-key) (:value (get dictionary key-var))) :retry retry)))
-                        (retry [scanned-map remaining-map]
-                          (if (seq remaining-map)
-                            (bouncing (map-kv-item-matcher scanned-map remaining-map dictionary))
-                            (on-failure :mismatch pattern dictionary env 1 data remaining-map :retry retry)))]
-                  (let [the-map (first data)]
-                    (if (and (map? the-map) (not (record? the-map)))
-                      (trampoline retry [] the-map)
-                      (on-failure :type pattern dictionary env 1 data the-map :retry retry))))
-                (on-failure :missing pattern dictionary env 0 data nil)))
+            (cond literal-key
+                  (fn map-kv-matcher [data dictionary ^Env env]
+                    (if (seq data)
+                      (letfn [(map-key-matcher [the-map]
+                                (if-let [kv (find the-map (first literal-key))]
+                                  (on-direct-lookup kv the-map dictionary env)
+                                  (on-failure :not-found pattern dictionary env 1
+                                    the-map (or (first literal-key) (:value (get dictionary key-var))))))]
+                        (let [the-map (first data)]
+                          (if (and (map? the-map) (not (record? the-map)))
+                            (if (seq the-map)
+                              (map-key-matcher the-map)
+                              (on-failure :mismatch pattern dictionary env 1 data the-map))
+                            (on-failure :type pattern dictionary env 1 data the-map))))
+                      (on-failure :missing pattern dictionary env 0 data nil)))
+                  key-var
+                  (fn map-kv-matcher [data dictionary ^Env env]
+                    (if (seq data)
+                      (letfn [(map-kv-item-lookup [the-map]
+                                (if-let [bound (get dictionary key-var)]
+                                  (if-let [kv (find the-map (get bound :value))]
+                                    (on-direct-lookup kv the-map dictionary env)
+                                    (on-failure :not-found pattern dictionary env 1 the-map (:value bound) :retry retry))
+                                  (trampoline retry [] the-map)))
+                              (map-kv-item-matcher [before after dictionary]
+                                (scan-lookup-step (first after) before after dictionary env matcher1 matcher2 retry))
+                              (retry [scanned-map remaining-map]
+                                (if (seq remaining-map)
+                                  (bouncing (map-kv-item-matcher scanned-map remaining-map dictionary))
+                                  (on-failure :mismatch pattern dictionary env 1 data remaining-map :retry retry)))]
+                        (let [the-map (first data)]
+                          (if (and (map? the-map) (not (record? the-map)))
+                            (map-kv-item-lookup the-map)
+                            (on-failure :type pattern dictionary env 1 data the-map :retry retry))))
+                      (on-failure :missing pattern dictionary env 0 data nil)))
+                  :else
+                  (fn map-kv-matcher [data dictionary ^Env env]
+                    (if (seq data)
+                      (letfn [(map-kv-item-matcher [before after dictionary]
+                                (let [kv (if literal-value
+                                           ;; do a fast scan for a matching literal
+                                           (loop [before before after after kv (first after)]
+                                             (when kv
+                                               (if (= (first literal-value) (val kv))
+                                                 [before after kv]
+                                                 (let [after (dissoc after (key kv))]
+                                                   (recur (conj before kv) after (first after))))))
+                                           [before after (first after)])
+                                      [before after kv] (if (map-entry? kv) [before after kv] kv)]
+                                  (scan-lookup-step kv before after dictionary env matcher1 matcher2 retry)))
+                              (retry [scanned-map remaining-map]
+                                (if (seq remaining-map)
+                                  (bouncing (map-kv-item-matcher scanned-map remaining-map dictionary))
+                                  (on-failure :mismatch pattern dictionary env 1 data remaining-map :retry retry)))]
+                        (let [the-map (first data)]
+                          (if (and (map? the-map) (not (record? the-map)))
+                            (trampoline retry [] the-map)
+                            (on-failure :type pattern dictionary env 1 data the-map :retry retry))))
+                      (on-failure :missing pattern dictionary env 0 data nil))))
             (merge (merge-meta (map meta [key-matcher value-matcher remainder-matcher]))
               {:length (len 1)
                `spliceable-pattern (fn [_] pattern)
