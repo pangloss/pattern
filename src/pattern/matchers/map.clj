@@ -30,9 +30,10 @@
 
 (defn match-map-literal [the-map comp-env]
   (let [kv->literals
-        (reduce (fn [m kv] (assoc m kv
-                            [(:literal (meta (compile-pattern* (key kv) comp-env)))
-                             (:literal (meta (compile-pattern* (val kv) comp-env)))]))
+        (reduce (fn [m [k v :as kv]]
+                  (assoc m kv
+                    [(:literal (meta (compile-pattern* k comp-env)))
+                     (:literal (meta (compile-pattern* v comp-env)))]))
           {} the-map)
         patterns (keep #(let [[kl vl] (kv->literals %)]
                           (when-not (and kl vl) %))
@@ -67,6 +68,30 @@
             map?)))
       comp-env)))
 
+(defn match-map
+  "Match map datastructures. For instance to match {:from 1 :to 10}:
+
+      (?:map :from ?f :to ?t)
+
+  These would both work identically because the matcher will do some simple
+  organization of the terms to try to maximize efficiency:
+
+     (?:map :addr ?addr ?addr ?info)
+     (?:map ?addr ?info :addr ?addr)
+
+  If the pattern contains multiple keys meant to match the same key of the map,
+  it will never match because after a key is matched, it is removed from the
+  map matched by the next key/value matcher pair. Use `&` and `|` in either key
+  or value position to apply multiple patterns to a single data key or value.
+
+  This matcher does not fail if there are extra keys in the map it's matching
+  against unless you wrap them in ?:closed. To rule out specific keys, you can
+  use ?:not matchers or predicates.  For exact map matches, just use a literal
+  map directly in the matcher."
+  [[_ & kv-pairs :as pattern] comp-env]
+  (vary-meta (match-map-literal (partition 2 kv-pairs) comp-env)
+    assoc :pattern pattern))
+
 (defn- match-map-kv
   [[_ key-pattern value-pattern remainder :as pattern] comp-env]
   (let [key-matcher (compile-pattern* key-pattern comp-env)
@@ -86,6 +111,7 @@
                   (key-matcher [k] dictionary env)))
               (->key [kv dictionary env] (key-matcher [(key kv)] dictionary env))
               (->val [kv dictionary env] (value-matcher [(val kv)] dictionary env))
+
               (on-direct-lookup [kv the-map dictionary ^Env env]
                 (if-let [result
                          (value-matcher [(val kv)] dictionary
@@ -101,6 +127,7 @@
                   result
                   (on-failure :no-val-match pattern dictionary env 1
                     the-map (or (first literal-key) (:value (get dictionary key-var))))))
+
               (scan-lookup-step [kv before after dictionary ^Env env matcher1 matcher2 retry]
                 (if kv
                   (let [after (dissoc after (key kv))]
@@ -126,7 +153,8 @@
                                     [->key ->val])]
           (with-meta
             (cond literal-key
-                  (fn map-kv-matcher [data dictionary ^Env env]
+                  ;; fast path for the most common variant
+                  (fn direct-lookup-matcher [data dictionary ^Env env]
                     (if (seq data)
                       (letfn [(map-key-matcher [the-map]
                                 (if-let [kv (find the-map (first literal-key))]
@@ -140,13 +168,17 @@
                               (on-failure :mismatch pattern dictionary env 1 data the-map))
                             (on-failure :type pattern dictionary env 1 data the-map))))
                       (on-failure :missing pattern dictionary env 0 data nil)))
+
                   key-var
-                  (fn map-kv-matcher [data dictionary ^Env env]
+                  (fn bound-lookup-matcher [data dictionary ^Env env]
                     (if (seq data)
                       (letfn [(map-kv-item-lookup [the-map]
                                 (if-let [bound (get dictionary key-var)]
                                   (if-let [kv (find the-map (get bound :value))]
-                                    (on-direct-lookup kv the-map dictionary env)
+                                    (key-matcher [(key kv)] dictionary
+                                      (assoc env :succeed
+                                        (fn key-succeed [new-dictionary n]
+                                          (on-direct-lookup kv the-map new-dictionary env))))
                                     (on-failure :not-found pattern dictionary env 1 the-map (:value bound) :retry retry))
                                   (trampoline retry [] the-map)))
                               (map-kv-item-matcher [before after dictionary]
@@ -160,12 +192,13 @@
                             (map-kv-item-lookup the-map)
                             (on-failure :type pattern dictionary env 1 data the-map :retry retry))))
                       (on-failure :missing pattern dictionary env 0 data nil)))
+
                   :else
-                  (fn map-kv-matcher [data dictionary ^Env env]
+                  (fn map-search-matcher [data dictionary ^Env env]
                     (if (seq data)
                       (letfn [(map-kv-item-matcher [before after dictionary]
                                 (let [kv (if literal-value
-                                           ;; do a fast scan for a matching literal
+                                           ;; specialized fast scan for a matching literal
                                            (loop [before before after after kv (first after)]
                                              (when kv
                                                (if (= (first literal-value) (val kv))
@@ -194,3 +227,4 @@
 (register-matcher '?:map-intersection #'match-map-intersection)
 (defgen= matcher-type [(every-pred map? (complement record?))] :map)
 (register-matcher :map #'match-map-literal)
+(register-matcher '?:map #'match-map)

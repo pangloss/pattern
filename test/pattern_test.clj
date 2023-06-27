@@ -527,10 +527,11 @@
   (is (nil?
        (matcher `(?:map :struct [?a {:x :y}])
                 {:struct [99 {:x :zzz}]})))
-  (is (= [5 5 20]
+  (is (nil?
          (matcher `(?:map :from ?from :from ?x :to ?to)
                   {:from 5 :to 20}))
-      "Multiple matches against a given key are fine.")
+      "Multiple matchers for a given key will not match.")
+
   (is (= [] (matcher `{:a 1 :b 2} {:a 1 :b 2})))
   (is (= [2] (matcher '{:a 1 :b ?a} {:a 1 :b 2}))
       "Patterns are matched within literal maps now!")
