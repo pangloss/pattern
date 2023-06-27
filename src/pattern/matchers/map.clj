@@ -102,23 +102,25 @@
                   (on-failure :no-val-match pattern dictionary env 1
                     the-map (or (first literal-key) (:value (get dictionary key-var))))))
               (scan-lookup-step [kv before after dictionary ^Env env matcher1 matcher2 retry]
-                (let [after (dissoc after (key kv))]
-                  ;; if val is literal match it first, otherwise always match on key first
-                  (if-let [result
-                           (matcher1 kv dictionary
-                             (assoc env :succeed
-                               (fn match1-succeed [new-dictionary n]
-                                 (matcher2 kv new-dictionary
-                                   (assoc env :succeed
-                                     (fn match2-succeed [new-dictionary n]
-                                       (if remainder-matcher
-                                         (remainder-matcher [(into after before)] new-dictionary env)
-                                         (if (and closed? (or (seq before) (seq after)))
-                                           (on-failure :closed pattern new-dictionary env 1
-                                             (into after before) kv :retry retry)
-                                           ((.succeed env) new-dictionary 1)))))))))]
-                    result
-                    (retry (conj before kv) after))))]
+                (if kv
+                  (let [after (dissoc after (key kv))]
+                    ;; if val is literal match it first, otherwise always match on key first
+                    (if-let [result
+                             (matcher1 kv dictionary
+                               (assoc env :succeed
+                                 (fn match1-succeed [new-dictionary n]
+                                   (matcher2 kv new-dictionary
+                                     (assoc env :succeed
+                                       (fn match2-succeed [new-dictionary n]
+                                         (if remainder-matcher
+                                           (remainder-matcher [(into after before)] new-dictionary env)
+                                           (if (and closed? (or (seq before) (seq after)))
+                                             (on-failure :closed pattern new-dictionary env 1
+                                               (into after before) kv :retry retry)
+                                             ((.succeed env) new-dictionary 1)))))))))]
+                      result
+                      (retry (conj before kv) after)))
+                  (on-failure :not-found pattern dictionary env 1 (into after before) nil :retry retry)))]
         (let [[matcher1 matcher2] (if (and literal-value (not key-var))
                                     [->val ->key]
                                     [->key ->val])]
