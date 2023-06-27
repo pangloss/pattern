@@ -97,7 +97,8 @@
        (swap! named-matcher-type? conj matcher-type))
      (when restriction-position
        (swap! pattern.match.core/restriction-position assoc matcher-type restriction-position))
-     (defmethod* compile-pattern* matcher-type matcher-impl))))
+     ;; I do not understand why this annotation is necessary:
+     (defmethod* ^clojure.lang.MultiFn compile-pattern* matcher-type matcher-impl))))
 
 (defn unregister-matcher [matcher-type]
   (letfn [(remove [sym alias]
@@ -457,7 +458,7 @@
     (meta f)))
 
 (defmethod compile-pattern* :default [pattern comp-env]
-  (throw (ex-info "Unknown matcher type" {:pattern pattern})))
+  (throw (ex-info "Unknown matcher for pattern" {:pattern pattern})))
 
 (defn new-env
   [succeed]
@@ -579,3 +580,70 @@
   [[compile-pattern]] or [[matcher]]"
   [pattern]
   (all-names (compile-pattern pattern {:ignore-predicates true})))
+
+(defn add-lengths
+  ([] nil)
+  ([a b]
+   (if (and a b)
+     (let [na (:n a)
+           va (:v a)
+           nb (:n b)
+           vb (:v b)]
+       {:n (+ na nb) :v (or va vb)})
+     (or a b))))
+
+(defn and-lengths
+  ([] nil)
+  ([a b]
+   (if (and a b)
+     (let [na (:n a)
+           va (:v a)
+           nb (:n b)
+           vb (:v b)]
+       {:n (max na nb) :v (or va vb)})
+     (or a b))))
+
+(defn build-child-matchers
+  "Builds in reverse so that sequence matchers know how many elements to reserve
+  after them, and their minimum required match size.
+
+  Matchers are returned in the original order."
+  [pattern comp-env]
+  (first
+    (reduce (fn [[matchers comp-env] p]
+              (if-let [m (compile-pattern* p comp-env)]
+                [(cons m matchers)
+                 (update comp-env
+                   :reserve-min-tail add-lengths (:length (meta m)))]
+                [matchers comp-env]))
+      [() (assoc comp-env :reserve-min-tail (len 0))]
+      (reverse pattern))))
+
+(defmulti merge-meta-key (fn [k v0 v1] k))
+(defmethod merge-meta-key :default [k v0 v1] (cond (and v0 v1) (f/op v0 v1) v0 v0 :else v1))
+(defmethod merge-meta-key :literal [k v0 v1] (when (= v0 v1) v0))
+(defmethod merge-meta-key :greedy [k v0 v1] (or v0 v1))
+(defmethod merge-meta-key :expanded [k v0 v1] nil)
+(defmethod merge-meta-key :var-modes [k v0 v1] (merge-with f/op v0 v1))
+(defmethod merge-meta-key :var-prefixes [k v0 v1] (merge-with f/op v0 v1))
+(defmethod merge-meta-key :var-abbrs [k v0 v1] (merge-with f/op v0 v1))
+(defmethod merge-meta-key :var-names [k v0 v1] (vec (distinct (concat v0 v1))))
+(defmethod merge-meta-key `spliceable-pattern [k v0 v1] nil)
+
+(defn- combine-map-args [map-or-maps more]
+  (let [maps (if (map? map-or-maps) [map-or-maps] map-or-maps)]
+    (if (seq more)
+      (concat maps more)
+      maps)))
+
+(defn merge-meta [map-or-maps & more]
+  (let [maps (combine-map-args map-or-maps more)]
+    (if (next maps)
+      (letfn [(merge2 [m1 m2]
+                (reduce
+                  (fn merge-entry [m k]
+                    (assoc m k (merge-meta-key k (get m1 k) (get m2 k))))
+                  {}
+                  (distinct (concat (keys m1) (keys m2)))))]
+        (reduce merge2 maps))
+      (first maps))))

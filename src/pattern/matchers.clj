@@ -27,7 +27,7 @@
   matchers."
   (:refer-clojure :exclude [trampoline])
   (:use pattern.match.core)
-  (:require [genera :refer [trampoline trampolining bouncing]]
+  (:require [genera :refer [trampoline trampolining bouncing defgen=]]
             [uncomplicate.fluokitten.core :as f]
             [pattern.types :refer [spliceable-pattern]]
             [pattern.match.core :as m]
@@ -78,44 +78,6 @@
   an anonymous matcher with a restriction function."
   [f comp-env]
   (compile-pattern* (list '? '_ f) comp-env))
-
-(defn add-lengths
-  ([] nil)
-  ([a b]
-   (if (and a b)
-     (let [na (:n a)
-           va (:v a)
-           nb (:n b)
-           vb (:v b)]
-       {:n (+ na nb) :v (or va vb)})
-     (or a b))))
-
-(defn and-lengths
-  ([] nil)
-  ([a b]
-   (if (and a b)
-     (let [na (:n a)
-           va (:v a)
-           nb (:n b)
-           vb (:v b)]
-       {:n (max na nb) :v (or va vb)})
-     (or a b))))
-
-(defn- build-child-matchers
-  "Builds in reverse so that sequence matchers know how many elements to reserve
-  after them, and their minimum required match size.
-
-  Matchers are returned in the original order."
-  [pattern comp-env]
-  (first
-    (reduce (fn [[matchers comp-env] p]
-              (if-let [m (compile-pattern* p comp-env)]
-                [(cons m matchers)
-                 (update comp-env
-                   :reserve-min-tail add-lengths (:length (meta m)))]
-                [matchers comp-env]))
-      [() (assoc comp-env :reserve-min-tail (len 0))]
-      (reverse pattern))))
 
 (defn- match-list
   "Match a list or vector. If the first symbol with in the list is ?:seq, allows
@@ -174,14 +136,11 @@
                       (= match-length c))
                 (trampoline retry datum))))
           (on-failure :missing pattern dictionary env 0 data nil)))
-      {:var-names (distinct (mapcat (comp :var-names meta) matchers))
-       :var-modes (apply merge-with f/op (map (comp :var-modes meta) matchers))
-       :var-abbrs (apply merge-with f/op (map (comp :var-abbrs meta) matchers))
-       :var-prefixes (apply merge-with f/op (map (comp :var-prefixes meta) matchers))
-       :greedy (some (comp :greedy meta) matchers)
-       :list-length list-length
-       :length (len 1)
-       `spliceable-pattern (fn [_] `(~'?:1 ~@pattern))})))
+      (-> (merge-meta (map meta matchers))
+        (dissoc :literal :expanded)
+        (merge {:list-length list-length
+                :length (len 1)
+                `spliceable-pattern (fn [_] `(~'?:1 ~@pattern))})))))
 
 (defn- match-element
   "Match a single element.
@@ -403,8 +362,9 @@
                         (on-failure :mismatch as-pattern dictionary env n data datum))
                       ((.succeed env) ((.store env) name datum '?:as nil dict env) n))
                     (on-failure :unsat as-pattern dictionary env n data datum))))))))
-      (merge-with f/op
+      (merge-meta
         {:var-names [name]
+         :literal nil
          :var-modes {name (matcher-mode as-pattern)}
          `spliceable-pattern (fn [_]
                                (let [sp (spliceable-pattern m)
@@ -470,7 +430,7 @@
                       (on-failure :key pattern dict env 1 data m))
                     ((.succeed env) dict 1))))
               (on-failure :not-map pattern dictionary env 1 data m))))
-        (assoc (apply merge-with f/op (map meta vals))
+        (assoc (merge-meta (map meta vals))
           `spliceable-pattern (fn [_] pattern)
           :length (len 1))))))
 
@@ -579,6 +539,7 @@
           true (assoc :length (:list-length md)
                  :pattern full-pattern
                  `spliceable-pattern (fn [_] full-pattern))
+          true (dissoc :literal)
           optional? (assoc-in [:length :v] true)
           optional? (assoc-in [:length :n] 0))))))
 
@@ -782,7 +743,8 @@
                     (when taken
                       (bouncing ((.succeed env) dict taken)))))]
           (trampoline do-match matchers fns data dict nil)))
-      (-> (assoc (apply merge-with f/op (map meta matchers))
+      (-> (assoc (merge-meta (map meta matchers))
+            :literal nil
             :length (:length (meta (first matchers)))
             `spliceable-pattern (fn [_]
                                   (if (= '??:chain chain-type)
@@ -845,9 +807,10 @@
               (on-failure :not-sequential name dictionary env 1 data datum)))
           (on-failure :missing name dictionary env 0 data nil)))
       (assoc
-        (merge-with f/op
+        (merge-meta
           (meta result-matcher)
           {:var-names [name]})
+        :literal nil
         :length (if vlen? (var-len 1) (len 1))
         `spliceable-pattern (fn [_] (list* '??:some (rest full-pattern)))))))
 
@@ -954,18 +917,16 @@
                  (loop [matchers matchers]
                    (if (seq matchers)
                      (or ((first matchers) data dictionary env)
-                         (recur (rest matchers)))))]
+                       (recur (rest matchers)))))]
           result
           (on-failure :mismatch pattern dictionary env 1 data nil)))
-      {:var-names (distinct (mapcat (comp :var-names meta) matchers))
-       :var-modes    (apply merge-with f/op (map (comp :var-modes meta) matchers))
-       :var-prefixes (apply merge-with f/op (map (comp :var-prefixes meta) matchers))
-       :var-abbrs    (apply merge-with f/op (map (comp :var-abbrs meta) matchers))
-       :length (let [lens (map (comp :length meta) matchers)]
-                 (if (apply = lens)
-                   (first lens)
-                   (var-len (apply min (map :n lens)))))
-       `spliceable-pattern (fn [_] (list* '| (map spliceable-pattern matchers)))})))
+      (merge
+        (merge-meta (map meta matchers))
+        {:length (let [lens (map (comp :length meta) matchers)]
+                   (if (apply = lens)
+                     (first lens)
+                     (var-len (apply min (map :n lens)))))
+         `spliceable-pattern (fn [_] (list* '| (map spliceable-pattern matchers)))}))))
 
 
 (defn- match-and
@@ -996,13 +957,11 @@
                       (on-failure :mismatch pattern dictionary env n data nil))
                     ((.succeed env) dictionary (or n 0))))]
           (and-expr-matcher matchers dictionary nil)))
-      {:var-names (distinct (mapcat (comp :var-names meta) matchers))
-       :var-modes    (apply merge-with f/op (map (comp :var-modes meta) matchers))
-       :var-prefixes (apply merge-with f/op (map (comp :var-prefixes meta) matchers))
-       :var-abbrs    (apply merge-with f/op (map (comp :var-abbrs meta) matchers))
-       :length (let [lens (map (comp :length meta) matchers)]
-                 (reduce and-lengths lens))
-       `spliceable-pattern (fn [_] (list* '& (map spliceable-pattern matchers)))})))
+      (merge
+        (merge-meta (map meta matchers))
+        {:length (let [lens (map (comp :length meta) matchers)]
+                   (reduce and-lengths lens))
+         `spliceable-pattern (fn [_] (list* '& (map spliceable-pattern matchers)))}))))
 
 
 (defn- match-not
@@ -1046,7 +1005,7 @@
       (| (& pred-pattern conseq) alt)"
   [[_ pred conseq alt] comp-env]
   (let [pred (resolve-fn
-              pred #(throw (ex-info "Predicate did not resolve to a function" {:pred pred})))
+               pred #(throw (ex-info "Predicate did not resolve to a function" {:pred pred})))
         conseq (compile-pattern* conseq comp-env)
         alt (when alt (compile-pattern* alt comp-env))]
     (with-meta
@@ -1055,9 +1014,9 @@
           (conseq data dict env)
           (when alt (alt data dict env))))
       (if alt
-        (assoc-in (merge-with f/op (meta conseq) (meta alt))
-                  [:length :n] (min (:n (:length (meta conseq)))
-                                    (:n (:length (meta alt)) 0)))
+        (assoc-in (merge-meta (meta conseq) (meta alt))
+          [:length :n] (min (:n (:length (meta conseq)))
+                         (:n (:length (meta alt)) 0)))
         (meta conseq)))))
 
 

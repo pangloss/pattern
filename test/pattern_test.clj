@@ -418,9 +418,14 @@
   (is (= [[1] [2 3] 2]
         (matcher '(a ((?? a) (?? x)) (? b) c (?? x))
           '(a (1 2 3) 2 c 2 3))))
+
   (is (= [3 nil 4]
-        (matcher [1 2 '(| [3 5] [(? a) (?? x (on-all seq)) 4] [(? a) (? a)] [(? a) (? b even?)])]
+        (matcher [1 2 '(| [3 5]
+                         [(? a) (?? x (on-all seq)) 4]
+                         [(? a) (? a)]
+                         [(? a) (? b even?)])]
           [1 2 [3 4]])))
+
   (testing "syntax quoted"
     (is (= [[1] [2 3] 2]
           (matcher `(a ((?? a) (?? x)) (? b) c (?? x))
@@ -593,17 +598,17 @@
 
 (deftest test-matcher-prefix
   (is (= {'x ["t" "u"] 'y ["blog"]}
-         (:var-prefixes (meta (compile-pattern '[?->t:x ?<-u:x [[?blog:y]]])))))
+        (:var-prefixes (meta (compile-pattern '[?->t:x ?<-u:x [[?blog:y]]])))))
 
   (is (= {:x 1 :y 3}
-         ((compile-pattern '[?->t:x ?<-u:x [[?blog:y]]])
-          [1 1 [[3]]])))
+        ((compile-pattern '[?->t:x ?<-u:x [[?blog:y]]])
+         [1 1 [[3]]])))
 
   (is (= "99abc" (matcher-prefix '?->99abc:def)))
   (is (= 'def
-         (var-name '(?-> abc:def))))
+        (var-name '(?-> abc:def))))
   (is (= "abc"
-         (matcher-prefix '(?-> abc:def)))))
+        (matcher-prefix '(?-> abc:def)))))
 
 (deftest test-regex-matchers
   (is (= {:p "abcdef" :a "cd" :b "f"}

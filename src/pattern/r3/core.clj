@@ -106,7 +106,7 @@
              (tree-seq list? seq body))))
 
 (defn rule-fn-args [args env-args]
-  (vec (concat ['%env] (take-nth 2 (extract-env-args env-args)) args)))
+  (vec (concat args (take-nth 2 (extract-env-args env-args)) ['%env])))
 
 (defmacro rule-fn-body
   ([args env-args handler-body]
