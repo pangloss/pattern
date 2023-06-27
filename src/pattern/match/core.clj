@@ -97,7 +97,8 @@
        (swap! named-matcher-type? conj matcher-type))
      (when restriction-position
        (swap! pattern.match.core/restriction-position assoc matcher-type restriction-position))
-     (defmethod* compile-pattern* matcher-type matcher-impl))))
+     ;; I do not understand why this annotation is necessary:
+     (defmethod* ^clojure.lang.MultiFn compile-pattern* matcher-type matcher-impl))))
 
 (defn unregister-matcher [matcher-type]
   (letfn [(remove [sym alias]
