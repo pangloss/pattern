@@ -389,20 +389,20 @@ may write a rule that looks like so:
 ```clojure
 (def group-quantities
   (iterated
-   (rule
-    '[??before
-      (?:as scalar (?:map :pos :number))
-      (?:? (?:map :text ?ws :pos :ws))
-      (?:as unit (?:map :pos :unit))
-      ??after]
-    (vec
-     (concat
-      before
-      [{:pos    :quantity
-        :text   (str (:text scalar) ws (:text unit))
-        :scalar scalar
-        :unit   unit}]
-      after)))))
+   (rule group-quantities
+     '[??before
+       (?:as scalar (?:map :pos :number))
+       (?:? (?:map :text ?ws :pos :ws))
+       (?:as unit (?:map :pos :unit))
+       ??after]
+     (vec
+      (concat
+       before
+       [{:pos    :quantity
+         :text   (str (:text scalar) ws (:text unit))
+         :scalar scalar
+         :unit   unit}]
+       after)))))
 ```
 
 Running it would yield:
@@ -434,16 +434,15 @@ For such use cases, the rule can be rewritten with `scanner`:
 
 ```clojure
 (def group-quantities
-  (p/scanner
-   (p/rule
-    group-quantities
-    '[(?:as scalar (?:map :pos :number))
-      (?:? (?:map :text ?ws :pos :ws))
-      (?:as unit (?:map :pos :unit))]
-    [{:pos    :quantity
-      :text   (str (:text scalar) ws (:text unit))
-      :scalar scalar
-      :unit   unit}])))
+  (scanner
+   (rule group-quantities
+     '[(?:as scalar (?:map :pos :number))
+       (?:? (?:map :text ?ws :pos :ws))
+       (?:as unit (?:map :pos :unit))]
+     [{:pos    :quantity
+       :text   (str (:text scalar) ws (:text unit))
+       :scalar scalar
+       :unit   unit}])))
 ```
 
 Running this rule results in identical output, but each time the rule matches,
