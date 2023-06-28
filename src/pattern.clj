@@ -1,6 +1,6 @@
 (ns pattern
-  (:require pattern.matchers
-            pattern.match.core
+  (:require pattern.match.core
+            pattern.matchers
             pattern.substitute
             pattern.r3.core
             pattern.r3.rule
@@ -9,6 +9,7 @@
             pattern.r3.combinators
             pattern.r3.rewrite
             pattern.matchers.set
+            pattern.matchers.map
             pattern.nanopass.dialect
             pattern.nanopass.pass
             pattern.match.predicator

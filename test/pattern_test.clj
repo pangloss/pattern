@@ -527,14 +527,15 @@
   (is (nil?
        (matcher `(?:map :struct [?a {:x :y}])
                 {:struct [99 {:x :zzz}]})))
-  (is (= [5 5 20]
+  (is (nil?
          (matcher `(?:map :from ?from :from ?x :to ?to)
                   {:from 5 :to 20}))
-      "Multiple matches against a given key are fine.")
+      "Multiple matchers for a given key will not match.")
+
   (is (= [] (matcher `{:a 1 :b 2} {:a 1 :b 2})))
-  (is (nil? (matcher '{:a 1 :b ?a} {:a 1 :b 2}))
-      "Patterns are not matched within literal maps")
-  (is (= [] (matcher '{:a 1 :b ?a} {:a 1 :b '?a}))
+  (is (= [2] (matcher '{:a 1 :b ?a} {:a 1 :b 2}))
+      "Patterns are matched within literal maps now!")
+  (is (= ['?a] (matcher '{:a 1 :b ?a} {:a 1 :b '?a}))
       "Patterns are not matched within literal maps. A matcher will be treated as a literal value.")
   (is (= [[:a :b]] (matcher '(?:chain ?_ keys ?k) {:a 1 :b 2}))
       "Use chain to do other types of map matches")
@@ -1092,4 +1093,92 @@
     (is (= #{1} (sub (?:set-has ?x)))))
 
   (let [s nil]
-    (is (= [#{:a :b}] (sub [(?:set-intersection #{:a :b} ?s)])))))
+    (is (= [#{:a :b}] (sub [(?:set-intersection #{:a :b} ?s)]))))
+
+  (let [k 10 v 20]
+    (is (= [{10 20}] (sub [(?:map-kv ?k ?v)])))
+
+    (is (= [{10 20 20 10}] (sub [(?:map-kv ?k ?v (?:map-kv ?v ?k))])))
+
+    (is (= [{10 20 20 10 30 40}] (sub [(?:map-kv ?k ?v (?:map-kv ?v ?k {30 40}))])))
+
+    (is (= [{10 20 20 10 30 40}] (sub [(?:map-intersection {10 20 30 40} (?:map-kv ?v ?k))])))
+
+    (is (= [{10 20 30 40}]
+          (sub [(?:map-intersection {10 ?v 30 40})])))))
+
+(deftest more-map-matchers
+  (is (= {:a 1 :b 2 10 :k}
+        ((rule '{:a 1 :b ?a (? n int?) ?c})
+         {:a 1 :b 2 :c :c :d :d :e :e :f :f :g :g :h :h :i :i :j :j 10 :k})))
+
+  (is (= []
+        (matcher '(?:closed (?:map-kv :a 1 (?:= {:b 2}))) {:a 1 :b 2})))
+
+  (is (nil?
+        (matcher '(?:closed (?:map-kv :a 1 (?:= {:b 2}))) {:a 1 :b 2 :c 2})))
+
+  (is (= []
+        (matcher '(?:closed (?:map-kv :a 1)) {:a 1})))
+
+  (is (= [:a]
+        (matcher '[?a (?:closed (?:map-kv ?a 1))] [:a {:a 1}])))
+
+  (is (= nil
+        (matcher '[?a (?:closed (?:map-kv ?a 1))] [:x {:a 1}])))
+
+  (is (= [:a]
+        (matcher '[?a (?:map-kv ?a 1)] [:a {:a 1}])))
+
+  (is (= nil
+        (matcher '[?a (?:map-kv ?a 1)] [:x {:a 1}])))
+
+  (is (= [:a]
+        (matcher '(?:closed (?:map-kv ?a 1)) {:a 1})))
+
+  (is (nil?
+        (matcher '(?:closed (?:map-kv :a 1)) {:a 1 :b 2})))
+
+  (is (= [] (matcher '(?:map-kv :a 1) {:a 1})))
+  (is (= [] (matcher '(?:map-kv :a 1) {:a 1 :b 2})))
+
+  (is (= [:b {:a 2}] (matcher '(?:map-kv ?x 1 ?more) {:a 2 :b 1})))
+
+  (is (= [] (matcher '(?:literal {:a 1}) {:a 1})))
+
+  (is (= [] (matcher '{} {:a 1})))
+  (is (nil? (matcher '(?:closed {}) {:a 1})))
+  (is (= [] (matcher '(?:closed {}) {})))
+
+
+  (is (= [] (matcher '(?:map-intersection {:a 1 :b 2}) {:a 1 :b 2 :c 3})))
+  (is (= [] (matcher '(?:map-intersection {:a 1 :b 2} nil) {:a 1 :b 2 :c 3})))
+
+  (testing "map-intersection should not respond to being closed"
+    (is (= [] (matcher '(?:closed (?:map-intersection {:a 1 :b 2})) {:a 1 :b 2 :c 3})))
+    (is (= [] (matcher '(?:closed (?:map-intersection {:a 1 :b 2} nil)) {:a 1 :b 2 :c 3}))))
+
+  (is (= [{:c 3}]
+        (matcher '(?:map-intersection {:a 1 :b 2} ?other) {:a 1 :b 2 :c 3})))
+  (is (= [{:c 3}]
+        (matcher '(?:closed (?:map-intersection {:a 1 :b 2} ?other)) {:a 1 :b 2 :c 3})))
+
+
+  (is (= ["B" :c]
+        (matcher '{:a "A" :b ?b ?c (? _ int?)}
+          {:a "A" :b "B" :c 0})))
+
+  (testing "matchers are put in optimal order"
+    (is (= '(?:map-intersection {:a 1}
+              (?:map-kv :d ?x
+                (?:map-kv ?b 2
+                  (?:map-kv (& (? _ int?) (?_ odd?)) 3
+                    (?:map-kv (& (?_ odd?) (? _ int?)) ?y
+                      nil)))))
+          (:expanded (meta (matcher '{(& (?_ odd?) (? _ int?)) ?y
+                                      (& (? _ int?) (?_ odd?)) 3
+                                      :d ?x
+                                      :a 1
+                                      ?b 2})))))))
+
+

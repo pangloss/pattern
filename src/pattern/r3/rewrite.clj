@@ -347,10 +347,20 @@
                       `(list (apply into (first ~set-literal) ~remainder))
                       set-literal))
 
+                  (rule '((?:literal ?:map-intersection) ?->map-literal (?:? ?->remainder))
+                    (if remainder
+                      `(list (apply into (first ~map-literal) ~remainder))
+                      map-literal))
+
                   (rule '((| (?:literal ?:set-item) (?:literal ?:set-has)) ?->item (?:? ?->remainder))
                     (if remainder
                       `(list (conj (set (first ~remainder)) (first ~item)))
                       `(list (set ~item))))
+
+                  (rule '((?:literal ?:map-kv) ?->k ?->v (?:? ?->remainder))
+                    (if remainder
+                      `(list (assoc (first ~remainder) (first ~k) (first ~v)))
+                      `(list {(first ~k) (first ~v)})))
 
                   ;; if
                   (rule '((?:literal ?:if) ?pred ?->then (?:? ?->else))
