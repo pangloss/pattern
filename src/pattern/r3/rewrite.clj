@@ -353,6 +353,45 @@
                        (when (apply ~pred (first then#))
                          (seq (apply concat then#)))))
 
+                  (rule '((?:literal ?:force) ?name) `(list ~name))
+
+                  (rule '((?:literal ?:fresh) ?_ ?->pattern) pattern)
+                  (rule '((?:literal ?:all-fresh) ?_ ?->pattern) pattern)
+
+                  (rule '((| (?:literal ?:filter) (?:literal ?:remove)) ?_ ?->pattern)
+                    pattern)
+                  (rule '((| (?:literal ??:filter) (?:literal ??:remove)) ?_ ?->pattern)
+                    `(apply concat ~pattern))
+
+                  (rule '((?:literal ?:some) ?name ?_)
+                    `(list ~name))
+
+                  (rule '((?:literal ??:some) ?name ?_)
+                    `(apply concat ~name))
+
+                  ;; TODO: ??:some variants of these ?:some rules:
+                  (rule '((?:literal ?:some) ?name ?_
+                          [(& (?:chain ?_ matcher-type-for-dispatch ??)
+                             ??->content)])
+                    `(let [[before# item# after#] (first ~content)]
+                       (list (concat before# (vector item#) after#))))
+
+                  (rule '((?:literal ?:some) ?name ?_ [?->before (?:? ?->item) (?:? ?->after)])
+                    `(list (concat (first ~before) ~item (first ~after))))
+
+                  (rule '((?:literal ?:some) ?name ?_ ?->pattern)
+                    `(let [[before# item# after#] (first ~pattern)]
+                       (list (concat before# (vector item#) after#))))
+
+                  (rule '((?:literal ?:not) ?->pattern)
+                    ;; The not matcher matches if the pattern inside it does not, including
+                    ;; if the nested pattern is somehow broken. Any variable inside
+                    ;; the expression must be defined, but it doesn't need to be the correct
+                    ;; type since any problems at runtime will just translate into a false here.
+                    `(list (try (not (first ~pattern))
+                                (catch Exception e#
+                                  true))))
+
                   to-syntax-quote*]))))
 
 (def simplify-expr
