@@ -885,8 +885,9 @@
   or you may just capture the entire result:
 
       (?:re-matches #\"(.*)@(.*)\\.(com|org)\" ?matches)"
-  [[op regex capture-pattern :as pattern] comp-env]
-  (let [m (compile-pattern* capture-pattern comp-env)
+  [pattern comp-env]
+  (let [[op regex capture-pattern] (if (seq? pattern) pattern ['?:re-matches pattern '?_])
+        m (compile-pattern* capture-pattern comp-env)
         f (condp = op
             '?:re-matches re-matches
             '?:re-seq re-seq)]
@@ -1210,9 +1211,9 @@
 (register-matcher :value match-value)
 (register-matcher :list #'match-list)
 (register-matcher '?:= match-literal {:aliases ['?:literal]})
-(register-matcher :compiled-matcher match-compiled)
-(register-matcher :compiled*-matcher match-compiled*)
-(register-matcher :plain-function #'match-plain-function)
+(register-matcher :compiled-matcher match-compiled) ;; no rewrite
+(register-matcher :compiled*-matcher match-compiled*) ;; no rewrite
+(register-matcher :plain-function #'match-plain-function) ;; no rewrite
 (register-matcher '? #'match-element {:named? true})
 (register-matcher '?? #'match-segment {:named? true})
 (register-matcher '?:map #'match-map)
@@ -1227,19 +1228,20 @@
 (register-matcher '?:* #'match-many {:aliases ['?:many]})
 (register-matcher '?:+ #'match-at-least-one {:aliases ['?:at-least-one]})
 (register-matcher '?:n #'match-n-times {:aliases []})
-(register-matcher '?:chain #'match-chain {:aliases ['??:chain]})
+(register-matcher '?:chain #'match-chain {:aliases ['??:chain]}) ;; no rewrite
 (register-matcher '?:force #'force-match)
 (register-matcher '| #'match-or {:aliases ['?:or]})
 (register-matcher '& #'match-and {:aliases ['?:and]})
 (register-matcher '?:not #'match-not)
 (register-matcher '?:if #'match-if)
 (register-matcher '?:when #'match-when)
-(register-matcher '?:letrec #'match-letrec)
-(register-matcher '?:ref #'match-ref {:named? true})
+(register-matcher '?:letrec #'match-letrec) ;; no rewrite
+(register-matcher '?:ref #'match-ref {:named? true}) ;; no rewrite
 (register-matcher '?:fresh #'match-fresh)
 (register-matcher '?:all-fresh #'match-all-fresh)
 (register-matcher '?:restartable match-restartable)
-(register-matcher '?:re-matches #'match-regex)
-(register-matcher '?:re-seq #'match-regex)
+(register-matcher '?:re-matches #'match-regex) ;; no rewrite
+(defgen= matcher-type [#(instance? java.util.regex.Pattern %)] '?:re-matches)
+(register-matcher '?:re-seq #'match-regex) ;; no rewrite
 (register-matcher '?:some #'match-some {:named? true :aliases ['??:some]})
 (register-matcher '?:filter #'match-filter {:aliases ['??:filter '?:remove '??:remove]})
