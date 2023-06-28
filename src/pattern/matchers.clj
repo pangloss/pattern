@@ -39,16 +39,24 @@
 (defn- match-value
   "Match a value using [[clojure.core/=]] semantics."
   [pattern-const comp-env]
-  (with-meta
-    (fn const-matcher [data dictionary ^Env env]
-      (if (seq data)
-        (if (= (first data) pattern-const)
-          ((.succeed env) dictionary 1)
-          (on-failure :mismatch pattern-const dictionary env 1 data (first data)))
-        (on-failure :missing pattern-const dictionary env 0 data (first data))))
-    {:length (len 1)
-     `spliceable-pattern (fn [_] pattern-const)}))
-
+  (let [pred (or (:literal-pred comp-env)
+               (if (vector? pattern-const) vector? (constantly true)))]
+    (with-meta
+      (fn const-matcher [data dictionary ^Env env]
+        (if (seq data)
+          (let [value (first data)]
+            (if (and (pred value) (= value pattern-const))
+              ((.succeed env) dictionary 1)
+              (on-failure :mismatch pattern-const dictionary env 1 data value)))
+          (on-failure :missing pattern-const dictionary env 0 data nil)))
+      (cond->
+          {:length (len 1)
+           :literal [pattern-const] ;; wrap the const so that false/nil work as literals, too.
+           `spliceable-pattern (fn [_]
+                                 (if (sequential? pattern-const)
+                                   (list* '?:1 pattern-const)
+                                   pattern-const))}
+        (sequential? pattern-const) (assoc :list-length (len (count pattern-const)))))))
 
 (defn- match-literal
   "This is a way to match an escaped value, so for instance something
