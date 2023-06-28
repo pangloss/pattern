@@ -463,14 +463,6 @@
                       seq (~'| nil ((~'?:* ~[k v]))))
                     comp-env))
 
-(defn match-*set
-  "Create a ?:set matcher than can match the items in a set."
-  [[_ item] comp-env]
-  (compile-pattern* `(~'?:chain
-                      (~'? ~'_ ~(some-fn nil? set?))
-                      seq (~'| nil ((~'?:* ~item))))
-    comp-env))
-
 (defn- has-n?
   "Try to be fast at checking whether a list or vector has at least n elements."
   [n data]
@@ -1220,7 +1212,6 @@
 (register-matcher '??:map #'match-in-map)
 (register-matcher '?:+map #'match-+map {:aliases ['?:map+]})
 (register-matcher '?:*map #'match-*map {:aliases ['?:map*]})
-(register-matcher '?:set #'match-*set)
 (register-matcher '?:as #'match-as {:named? true :restriction-position 3})
 (register-matcher '?:as* #'match-as {:named? true :restriction-position 3})
 (register-matcher '?:? #'match-optional {:aliases ['?:optional]})

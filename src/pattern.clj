@@ -8,6 +8,7 @@
             pattern.r3.post-process
             pattern.r3.combinators
             pattern.r3.rewrite
+            pattern.matchers.set
             pattern.nanopass.dialect
             pattern.nanopass.pass
             pattern.match.predicator

@@ -553,7 +553,7 @@
 
 (deftest set-matcher
   (is (= [[:b :a]]
-        (matcher '(?:set ?k) #{:a :b}))))
+        (matcher '(?:set* ?k) #{:a :b}))))
 
 
 (deftest anon-matchers
@@ -1014,3 +1014,82 @@
           sum (pattern/iterated sum)]
       (is (= [:x 6 :y 22 :z 3]
             (sum [ :x 1 2 3 :y 4 5 6 7 :z 1 2]))))))
+
+(deftest set-matchers
+  (is (= []
+        (matcher '[(?:set-has 20)] [#{1 10 20}])))
+
+  (is (= [3]
+        (matcher '(?:closed #{1 2 ?a}) #{1 2 3})))
+
+  ;; with set literal, matcher's ordering is unknown! Use compile-pattern
+  (is (= 5 ;; number of matchers that pull values. Will be in unknown order!
+        (count (matcher '#{?e (? b odd?) ?c ?d (? a odd?)} #{1 2 3 4 5 6 7 8}))))
+
+  (let [result ((pattern/compile-pattern '#{1 (? o0 odd?) ?c ?d ?e ?f ?g (? o1 odd?)})
+                #{1 2 3 4 5 6 7 8})
+        vals (set (vals (select-keys result [:c :d :e :f :g])))]
+    (is (= 5 (count vals)))
+    (is (nil? (vals 1)))
+    (is (odd? (:o0 result)))
+    (is (odd? (:o1 result))))
+
+  (is (= [5 7] (sort (matcher '(?:closed #{1 (? b odd?) 2 3 (? a odd?)}) #{1 2 3 5 7}))))
+  (is (nil? (matcher '(?:closed #{1 (? b odd?) 2 3 (? a odd?)}) #{1 2 3 5 7 8})))
+
+  (is (= (range 1 9) (sort (first (matcher '(?:set* (? x int?)) #{1 2 3 4 5 6 7 8})))))
+
+  (is (int? (first
+              (matcher '(?:set-has (? x int?)) #{1 2 3 4 5 6 7 8}))))
+
+  (is (nil? (matcher '(?:closed (?:set-item ?x (?:set-item 1))) #{1 2 3})))
+  (is (#{2 3} (first (matcher '(?:set-item ?x (?:set-item 1)) #{1 2 3}))))
+  (is (= [2] (matcher '(?:set-item ?x (?:set-item 1)) #{1 2})))
+  (is (nil? (matcher '(?:set-item ?x (?:set-item 1)) #{1})))
+  (is (some? '(?:closed (?:set-item ?x (?:open (?:set-item 1))))) #{1 2 3})
+
+  (is (= [] (matcher '(?:closed #{1 2}) #{1 2})))
+  (is (= [2] (matcher '(?:closed #{1 (?:as x 2)}) #{1 2}))))
+
+
+(deftest matcher-rewrites
+  (let [x [1 2 3]]
+    (is (= [1 2 3] (sub [(??:remove int? ?x)])))
+
+    (is (= [[1 2 3]] (sub [(?:some x nil?)]))))
+
+  (let [x [[1 2 3] 4 [5 6]]]
+    (is (= [[1 2 3 4 5 6]]
+          (sub [(?:some _ nil? ?x)]))))
+
+  (let [x [[1 2 3] 4 [5 6]]]
+    (is (= [[1 2 3 4 5 6]]
+          (sub [(?:some _ nil? [??x])]))))
+
+  (let [a [1 2 3]
+        b 4
+        c [5 6]]
+    (is (= [[1 2 3 4 5 6]]
+          (sub [(?:some x nil? [?a ?b ?c])]))))
+
+  (let [a-set #{:c}
+        an-item 1]
+    (is (= #{1}
+          (sub (?:set-item ?an-item))))
+
+    ;; NOTE: this set pattern is totally wrong because the remainder must be a set.
+    ;; The not pattern catches that and turns it into false.
+    (is (= true
+          (sub (?:not (?:set-item ?an-item ?an-item))))))
+
+  (let [s #{:c}
+        x 1
+        y 2]
+    (is (= [#{1 2}] (sub [#{?x ?y}])))
+
+    (is (= [{1 2 2 1}] (sub [(?:closed {?x ?y ?y ?x})])))
+
+    (is (= #{1} (sub (?:set-has ?x)))))
+
+  (let [s nil]
+    (is (= [#{:a :b}] (sub [(?:set-intersection #{:a :b} ?s)])))))

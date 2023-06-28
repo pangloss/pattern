@@ -335,12 +335,22 @@
                                  ~(with-meta `(interleave ~ks ~vs)
                                     {::ordered true}))))))
 
-                  (rule '((?:literal ?:set) ?items)
+                  (rule '((| (?:literal ?:*set) (?:literal ?:set*)) ?items)
                     (let [items (var-name items)]
                       (if (= '_ items)
                         ;; TODO: should this be an empty set?
                         `(list (set (list)))
                         `(list (set ~items)))))
+
+                  (rule '((?:literal ?:set-intersection) ?->set-literal (?:? ?->remainder))
+                    (if remainder
+                      `(list (apply into (first ~set-literal) ~remainder))
+                      set-literal))
+
+                  (rule '((| (?:literal ?:set-item) (?:literal ?:set-has)) ?->item (?:? ?->remainder))
+                    (if remainder
+                      `(list (conj (set (first ~remainder)) (first ~item)))
+                      `(list (set ~item))))
 
                   ;; if
                   (rule '((?:literal ?:if) ?pred ?->then (?:? ?->else))
@@ -352,6 +362,9 @@
                     `(let [then# ~then]
                        (when (apply ~pred (first then#))
                          (seq (apply concat then#)))))
+
+                  (rule '((| (?:literal ?:open) (?:literal ?:closed)) ?->pattern)
+                    pattern)
 
                   (rule '((?:literal ?:force) ?name) `(list ~name))
 
