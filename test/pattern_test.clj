@@ -634,7 +634,12 @@
                            :ns (?:chain ?_ str ?_ reverse (\a \b ?c) (apply str) ?ns))]
                   '[abc/def
                     {:name def
-                     :ns cba}]))))
+                     :ns cba}])))
+  (is (nil? (matcher #"." "abc")))
+  (is (= [] (matcher #"..." "abc")))
+  (is (nil? (matcher #"." [])))
+  (is (nil? (matcher #"." 'x)))
+  (is (= [] (matcher '(?:chain ?_ name #".") 'x))))
 
 (deftest test-sequence-with-optional-matches
   (is (= '{:x 1 ;; this also tests sequences with non-sequential matches
