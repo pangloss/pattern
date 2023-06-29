@@ -109,46 +109,50 @@
         list-length (reduce add-lengths (map (comp :length meta) matchers))
         {match-length :n variable-length? :v} list-length
         match-length (or match-length 0)]
-    (with-meta
-      (fn list-matcher [data dictionary ^Env env]
-        (if (seq data)
-          (letfn [(list-item-matcher [datum data-list matchers dictionary]
-                    (if (seq matchers)
-                      (if-let [result
-                               ((first matchers)
-                                data-list
-                                dictionary
-                                ;; This construct would have to be carefully redesigned for trampoline
-                                ;; (at least on sequence matches).
-                                (assoc env :succeed
-                                  (fn match-list-succeed [new-dictionary n]
-                                    (if (> n (count data-list))
-                                      (throw (ex-info "Matcher ate too much" {:n n}))
-                                      (list-item-matcher datum (drop n data-list) (next matchers) new-dictionary)))))]
-                        result
-                        (on-failure :mismatch pattern dictionary env 1 data datum
-                          :retry retry))
-                      (if (empty? data-list)
-                        ((.succeed env) dictionary 1)
-                        (on-failure :too-long pattern dictionary env 1 data datum
-                          :retry retry))))
-                  (retry [data-list]
-                    (if (list-pred data-list)
-                      (bouncing (list-item-matcher data-list data-list matchers dictionary))
-                      (on-failure :type pattern dictionary env 1 data data-list
-                        :retry retry)))]
-            (let [datum (first data)
-                  c (when (sequential? datum) (count datum))]
-              (when (if (and c variable-length?)
-                      (<= match-length c)
-                      (= match-length c))
-                (trampoline retry datum))))
-          (on-failure :missing pattern dictionary env 0 data nil)))
-      (-> (merge-meta (map meta matchers))
-        (dissoc :literal :expanded)
-        (merge {:list-length list-length
-                :length (len 1)
-                `spliceable-pattern (fn [_] `(~'?:1 ~@pattern))})))))
+    (if (every? (comp :literal meta) matchers)
+      (let [literal-list (cond-> (mapcat (comp :literal meta) matchers)
+                           (= vector? list-pred) vec)]
+        (compile-pattern* (list '?:literal literal-list) (assoc comp-env :literal-pred list-pred)))
+      (with-meta
+        (fn list-matcher [data dictionary ^Env env]
+          (if (seq data)
+            (letfn [(list-item-matcher [datum data-list matchers dictionary]
+                      (if (seq matchers)
+                        (if-let [result
+                                 ((first matchers)
+                                  data-list
+                                  dictionary
+                                  ;; This construct would have to be carefully redesigned for trampoline
+                                  ;; (at least on sequence matches).
+                                  (assoc env :succeed
+                                    (fn match-list-succeed [new-dictionary n]
+                                      (if (> n (count data-list))
+                                        (throw (ex-info "Matcher ate too much" {:n n}))
+                                        (list-item-matcher datum (drop n data-list) (next matchers) new-dictionary)))))]
+                          result
+                          (on-failure :mismatch pattern dictionary env 1 data datum
+                            :retry retry))
+                        (if (empty? data-list)
+                          ((.succeed env) dictionary 1)
+                          (on-failure :too-long pattern dictionary env 1 data datum
+                            :retry retry))))
+                    (retry [data-list]
+                      (if (list-pred data-list)
+                        (bouncing (list-item-matcher data-list data-list matchers dictionary))
+                        (on-failure :type pattern dictionary env 1 data data-list
+                          :retry retry)))]
+              (let [datum (first data)
+                    c (when (sequential? datum) (count datum))]
+                (when (if (and c variable-length?)
+                        (<= match-length c)
+                        (= match-length c))
+                  (trampoline retry datum))))
+            (on-failure :missing pattern dictionary env 0 data nil)))
+        (-> (merge-meta (map meta matchers))
+          (dissoc :literal :expanded)
+          (merge {:list-length list-length
+                  :length (len 1)
+                  `spliceable-pattern (fn [_] `(~'?:1 ~@pattern))}))))))
 
 (defn- match-element
   "Match a single element.
