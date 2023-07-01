@@ -1189,6 +1189,8 @@
                                       (& (? _ int?) (?_ odd?)) 3
                                       :d ?x
                                       :a 1
-                                      ?b 2})))))))
+                                      ?b 2}))))))
 
-
+  (is (= [] (matcher '[(??:map :a 1)] [:a 1])))
+  (is (nil? (matcher '[(??:map ?a 1 ?b 1)] [:a 1 :b 1 :c])))
+  (is (= [:a :b] (matcher '[(??:map ?a 1 ?b 1)] [:a 1 :b 1 :c 1]))))

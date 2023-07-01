@@ -229,9 +229,36 @@
                `spliceable-pattern (fn [_] pattern)
                :expanded pattern})))))))
 
+(defn- into-map [x]
+  (apply array-map x))
+
+(defn- even-length? [x]
+  (even? (count x)))
+
+(defn match-in-map [[_ & kvs] comp-env]
+  (compile-pattern* `(~'??:chain (~'?? ~'_ (~'on-all even-length?)) into-map (~'?:map ~@kvs))
+    comp-env))
+
+(defn match-+map
+  "Create a ?:+map matcher than can match a key/value pair at least once."
+  [[_ k v] comp-env]
+  (compile-pattern* `(~'?:chain ~'?_ seq ((~'?:* ~[k v])))
+                    comp-env))
+
+(defn match-*map
+  "Create a ?:*map matcher than can match a key/value pair multiple times."
+  [[_ k v] comp-env]
+  (compile-pattern* `(~'?:chain
+                      (~'? ~'_ ~(some-fn nil? map?))
+                      seq (~'| nil ((~'?:* ~[k v]))))
+                    comp-env))
+
 
 (register-matcher '?:map-kv #'match-map-kv)
 (register-matcher '?:map-intersection #'match-map-intersection)
 (defgen= matcher-type [(every-pred map? (complement record?))] :map)
 (register-matcher :map #'match-map-literal)
 (register-matcher '?:map #'match-map)
+(register-matcher '??:map #'match-in-map)
+(register-matcher '?:+map #'match-+map {:aliases ['?:map+]})
+(register-matcher '?:*map #'match-*map {:aliases ['?:map*]})

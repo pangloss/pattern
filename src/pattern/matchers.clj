@@ -385,27 +385,6 @@
                                  (list* t name sp restriction?)))}
         (meta m)))))
 
-(defn into-map [x]
-  (apply hash-map x))
-
-(defn match-in-map [[_ & kvs] comp-env]
-  (compile-pattern* `(~'??:chain ~'??_ into-map (~'?:map ~@kvs))
-                    comp-env))
-
-(defn match-+map
-  "Create a ?:+map matcher than can match a key/value pair at least once."
-  [[_ k v] comp-env]
-  (compile-pattern* `(~'?:chain ~'?_ seq ((~'?:* ~[k v])))
-                    comp-env))
-
-(defn match-*map
-  "Create a ?:*map matcher than can match a key/value pair multiple times."
-  [[_ k v] comp-env]
-  (compile-pattern* `(~'?:chain
-                      (~'? ~'_ ~(some-fn nil? map?))
-                      seq (~'| nil ((~'?:* ~[k v]))))
-                    comp-env))
-
 (defn- has-n?
   "Try to be fast at checking whether a list or vector has at least n elements."
   [n data]
@@ -1151,9 +1130,6 @@
 (register-matcher :plain-function #'match-plain-function) ;; no rewrite
 (register-matcher '? #'match-element {:named? true})
 (register-matcher '?? #'match-segment {:named? true})
-(register-matcher '??:map #'match-in-map)
-(register-matcher '?:+map #'match-+map {:aliases ['?:map+]})
-(register-matcher '?:*map #'match-*map {:aliases ['?:map*]})
 (register-matcher '?:as #'match-as {:named? true :restriction-position 3})
 (register-matcher '?:as* #'match-as {:named? true :restriction-position 3})
 (register-matcher '?:? #'match-optional {:aliases ['?:optional]})
