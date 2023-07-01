@@ -1147,6 +1147,11 @@
   (is (= [] (matcher '(?:map-kv :a 1) {:a 1})))
   (is (= [] (matcher '(?:map-kv :a 1) {:a 1 :b 2})))
 
+  (is (= [] (matcher '[(?:map)] [{}])))
+  (is (= [] (matcher '[(?:map)] [{:a 1}])))
+  (is (= [] (matcher '[(?:closed (?:map))] [{}])))
+  (is (nil? (matcher '[(?:closed (?:map))] [{:a 1}])))
+
   (is (= [:b {:a 2}] (matcher '(?:map-kv ?x 1 ?more) {:a 2 :b 1})))
 
   (is (= [] (matcher '(?:literal {:a 1}) {:a 1})))

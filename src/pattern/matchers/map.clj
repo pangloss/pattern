@@ -92,7 +92,10 @@
   (let [form (->> kv-pairs
                (partition 2)
                reverse
-               (reduce (fn [m [k v]] (list '?:map-kv k v m)) nil))]
+               (reduce (fn [m [k v]] (list '?:map-kv k v m)) nil))
+        form (or form (if (:closed? comp-env)
+                        '(?:literal {})
+                        '(?:map-intersection {})))]
     (vary-meta (compile-pattern* form comp-env)
       assoc :pattern pattern)))
 
