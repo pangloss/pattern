@@ -246,3 +246,26 @@
     (outer (with-meta (reduce (fn [r x] (conj r (inner x))) form form) (meta form)))
     (coll? form) (outer (with-meta (into (empty form) (map inner form)) (meta form)))
     :else (outer form)))
+
+(defmacro time->>
+  "A simple macro for timing a sequence of operations to see where the time is going."
+  [data & forms]
+  (if (seq forms)
+    (let [[form & more] forms]
+      `(do
+         (prn '~form)
+         (let [result# (time (->> ~data ~form))]
+           (time->> result# ~@more))))
+    data))
+
+
+(defmacro time->
+  "A simple macro for timing a sequence of operations to see where the time is going."
+  [data & forms]
+  (if (seq forms)
+    (let [[form & more] forms]
+      `(do
+         (prn '~form)
+         (let [result# (time (-> ~data ~form))]
+           (time-> result# ~@more))))
+    data))

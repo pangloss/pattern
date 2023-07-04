@@ -418,9 +418,14 @@
   (is (= [[1] [2 3] 2]
         (matcher '(a ((?? a) (?? x)) (? b) c (?? x))
           '(a (1 2 3) 2 c 2 3))))
+
   (is (= [3 nil 4]
-        (matcher [1 2 '(| [3 5] [(? a) (?? x (on-all seq)) 4] [(? a) (? a)] [(? a) (? b even?)])]
+        (matcher [1 2 '(| [3 5]
+                         [(? a) (?? x (on-all seq)) 4]
+                         [(? a) (? a)]
+                         [(? a) (? b even?)])]
           [1 2 [3 4]])))
+
   (testing "syntax quoted"
     (is (= [[1] [2 3] 2]
           (matcher `(a ((?? a) (?? x)) (? b) c (?? x))
@@ -522,14 +527,15 @@
   (is (nil?
        (matcher `(?:map :struct [?a {:x :y}])
                 {:struct [99 {:x :zzz}]})))
-  (is (= [5 5 20]
+  (is (nil?
          (matcher `(?:map :from ?from :from ?x :to ?to)
                   {:from 5 :to 20}))
-      "Multiple matches against a given key are fine.")
+      "Multiple matchers for a given key will not match.")
+
   (is (= [] (matcher `{:a 1 :b 2} {:a 1 :b 2})))
-  (is (nil? (matcher '{:a 1 :b ?a} {:a 1 :b 2}))
-      "Patterns are not matched within literal maps")
-  (is (= [] (matcher '{:a 1 :b ?a} {:a 1 :b '?a}))
+  (is (= [2] (matcher '{:a 1 :b ?a} {:a 1 :b 2}))
+      "Patterns are matched within literal maps now!")
+  (is (= ['?a] (matcher '{:a 1 :b ?a} {:a 1 :b '?a}))
       "Patterns are not matched within literal maps. A matcher will be treated as a literal value.")
   (is (= [[:a :b]] (matcher '(?:chain ?_ keys ?k) {:a 1 :b 2}))
       "Use chain to do other types of map matches")
@@ -548,7 +554,7 @@
 
 (deftest set-matcher
   (is (= [[:b :a]]
-        (matcher '(?:set ?k) #{:a :b}))))
+        (matcher '(?:set* ?k) #{:a :b}))))
 
 
 (deftest anon-matchers
@@ -593,17 +599,17 @@
 
 (deftest test-matcher-prefix
   (is (= {'x ["t" "u"] 'y ["blog"]}
-         (:var-prefixes (meta (compile-pattern '[?->t:x ?<-u:x [[?blog:y]]])))))
+        (:var-prefixes (meta (compile-pattern '[?->t:x ?<-u:x [[?blog:y]]])))))
 
   (is (= {:x 1 :y 3}
-         ((compile-pattern '[?->t:x ?<-u:x [[?blog:y]]])
-          [1 1 [[3]]])))
+        ((compile-pattern '[?->t:x ?<-u:x [[?blog:y]]])
+         [1 1 [[3]]])))
 
   (is (= "99abc" (matcher-prefix '?->99abc:def)))
   (is (= 'def
-         (var-name '(?-> abc:def))))
+        (var-name '(?-> abc:def))))
   (is (= "abc"
-         (matcher-prefix '(?-> abc:def)))))
+        (matcher-prefix '(?-> abc:def)))))
 
 (deftest test-regex-matchers
   (is (= {:p "abcdef" :a "cd" :b "f"}
@@ -628,7 +634,12 @@
                            :ns (?:chain ?_ str ?_ reverse (\a \b ?c) (apply str) ?ns))]
                   '[abc/def
                     {:name def
-                     :ns cba}]))))
+                     :ns cba}])))
+  (is (nil? (matcher #"." "abc")))
+  (is (= [] (matcher #"..." "abc")))
+  (is (nil? (matcher #"." [])))
+  (is (nil? (matcher #"." 'x)))
+  (is (= [] (matcher '(?:chain ?_ name #".") 'x))))
 
 (deftest test-sequence-with-optional-matches
   (is (= '{:x 1 ;; this also tests sequences with non-sequential matches
@@ -1009,3 +1020,177 @@
           sum (pattern/iterated sum)]
       (is (= [:x 6 :y 22 :z 3]
             (sum [ :x 1 2 3 :y 4 5 6 7 :z 1 2]))))))
+
+(deftest set-matchers
+  (is (= []
+        (matcher '[(?:set-has 20)] [#{1 10 20}])))
+
+  (is (= [3]
+        (matcher '(?:closed #{1 2 ?a}) #{1 2 3})))
+
+  ;; with set literal, matcher's ordering is unknown! Use compile-pattern
+  (is (= 5 ;; number of matchers that pull values. Will be in unknown order!
+        (count (matcher '#{?e (? b odd?) ?c ?d (? a odd?)} #{1 2 3 4 5 6 7 8}))))
+
+  (let [result ((pattern/compile-pattern '#{1 (? o0 odd?) ?c ?d ?e ?f ?g (? o1 odd?)})
+                #{1 2 3 4 5 6 7 8})
+        vals (set (vals (select-keys result [:c :d :e :f :g])))]
+    (is (= 5 (count vals)))
+    (is (nil? (vals 1)))
+    (is (odd? (:o0 result)))
+    (is (odd? (:o1 result))))
+
+  (is (= [5 7] (sort (matcher '(?:closed #{1 (? b odd?) 2 3 (? a odd?)}) #{1 2 3 5 7}))))
+  (is (nil? (matcher '(?:closed #{1 (? b odd?) 2 3 (? a odd?)}) #{1 2 3 5 7 8})))
+
+  (is (= (range 1 9) (sort (first (matcher '(?:set* (? x int?)) #{1 2 3 4 5 6 7 8})))))
+
+  (is (int? (first
+              (matcher '(?:set-has (? x int?)) #{1 2 3 4 5 6 7 8}))))
+
+  (is (nil? (matcher '(?:closed (?:set-item ?x (?:set-item 1))) #{1 2 3})))
+  (is (#{2 3} (first (matcher '(?:set-item ?x (?:set-item 1)) #{1 2 3}))))
+  (is (= [2] (matcher '(?:set-item ?x (?:set-item 1)) #{1 2})))
+  (is (nil? (matcher '(?:set-item ?x (?:set-item 1)) #{1})))
+  (is (some? '(?:closed (?:set-item ?x (?:open (?:set-item 1))))) #{1 2 3})
+
+  (is (= [] (matcher '(?:closed #{1 2}) #{1 2})))
+  (is (= [2] (matcher '(?:closed #{1 (?:as x 2)}) #{1 2}))))
+
+
+(deftest matcher-rewrites
+  (let [x [1 2 3]]
+    (is (= [1 2 3] (sub [(??:remove int? ?x)])))
+
+    (is (= [[1 2 3]] (sub [(?:some x nil?)]))))
+
+  (let [x [[1 2 3] 4 [5 6]]]
+    (is (= [[1 2 3 4 5 6]]
+          (sub [(?:some _ nil? ?x)]))))
+
+  (let [x [[1 2 3] 4 [5 6]]]
+    (is (= [[1 2 3 4 5 6]]
+          (sub [(?:some _ nil? [??x])]))))
+
+  (let [a [1 2 3]
+        b 4
+        c [5 6]]
+    (is (= [[1 2 3 4 5 6]]
+          (sub [(?:some x nil? [?a ?b ?c])]))))
+
+  (let [a-set #{:c}
+        an-item 1]
+    (is (= #{1}
+          (sub (?:set-item ?an-item))))
+
+    ;; NOTE: this set pattern is totally wrong because the remainder must be a set.
+    ;; The not pattern catches that and turns it into false.
+    (is (= true
+          (sub (?:not (?:set-item ?an-item ?an-item))))))
+
+  (let [s #{:c}
+        x 1
+        y 2]
+    (is (= [#{1 2}] (sub [#{?x ?y}])))
+
+    (is (= [{1 2 2 1}] (sub [(?:closed {?x ?y ?y ?x})])))
+
+    (is (= #{1} (sub (?:set-has ?x)))))
+
+  (let [s nil]
+    (is (= [#{:a :b}] (sub [(?:set-intersection #{:a :b} ?s)]))))
+
+  (let [k 10 v 20]
+    (is (= [{10 20}] (sub [(?:map-kv ?k ?v)])))
+
+    (is (= [{10 20 20 10}] (sub [(?:map-kv ?k ?v (?:map-kv ?v ?k))])))
+
+    (is (= [{10 20 20 10 30 40}] (sub [(?:map-kv ?k ?v (?:map-kv ?v ?k {30 40}))])))
+
+    (is (= [{10 20 20 10 30 40}] (sub [(?:map-intersection {10 20 30 40} (?:map-kv ?v ?k))])))
+
+    (is (= [{10 20 30 40}]
+          (sub [(?:map-intersection {10 ?v 30 40})])))))
+
+(deftest more-map-matchers
+  (is (= {:a 1 :b 2 10 :k}
+        ((rule '{:a 1 :b ?a (? n int?) ?c})
+         {:a 1 :b 2 :c :c :d :d :e :e :f :f :g :g :h :h :i :i :j :j 10 :k})))
+
+  (is (= []
+        (matcher '(?:closed (?:map-kv :a 1 (?:= {:b 2}))) {:a 1 :b 2})))
+
+  (is (nil?
+        (matcher '(?:closed (?:map-kv :a 1 (?:= {:b 2}))) {:a 1 :b 2 :c 2})))
+
+  (is (= []
+        (matcher '(?:closed (?:map-kv :a 1)) {:a 1})))
+
+  (is (= [:a]
+        (matcher '[?a (?:closed (?:map-kv ?a 1))] [:a {:a 1}])))
+
+  (is (= nil
+        (matcher '[?a (?:closed (?:map-kv ?a 1))] [:x {:a 1}])))
+
+  (is (= [:a]
+        (matcher '[?a (?:map-kv ?a 1)] [:a {:a 1}])))
+
+  (is (= nil
+        (matcher '[?a (?:map-kv ?a 1)] [:x {:a 1}])))
+
+  (is (= [:a]
+        (matcher '(?:closed (?:map-kv ?a 1)) {:a 1})))
+
+  (is (nil?
+        (matcher '(?:closed (?:map-kv :a 1)) {:a 1 :b 2})))
+
+  (is (= [] (matcher '(?:map-kv :a 1) {:a 1})))
+  (is (= [] (matcher '(?:map-kv :a 1) {:a 1 :b 2})))
+
+  (is (= [] (matcher '[(?:map)] [{}])))
+  (is (= [] (matcher '[(?:map)] [{:a 1}])))
+  (is (= [] (matcher '[(?:closed (?:map))] [{}])))
+  (is (nil? (matcher '[(?:closed (?:map))] [{:a 1}])))
+
+  (is (= [:b {:a 2}] (matcher '(?:map-kv ?x 1 ?more) {:a 2 :b 1})))
+
+  (is (= [] (matcher '(?:literal {:a 1}) {:a 1})))
+
+  (is (= [] (matcher '{} {:a 1})))
+  (is (nil? (matcher '(?:closed {}) {:a 1})))
+  (is (= [] (matcher '(?:closed {}) {})))
+
+
+  (is (= [] (matcher '(?:map-intersection {:a 1 :b 2}) {:a 1 :b 2 :c 3})))
+  (is (= [] (matcher '(?:map-intersection {:a 1 :b 2} nil) {:a 1 :b 2 :c 3})))
+
+  (testing "map-intersection should not respond to being closed"
+    (is (= [] (matcher '(?:closed (?:map-intersection {:a 1 :b 2})) {:a 1 :b 2 :c 3})))
+    (is (= [] (matcher '(?:closed (?:map-intersection {:a 1 :b 2} nil)) {:a 1 :b 2 :c 3}))))
+
+  (is (= [{:c 3}]
+        (matcher '(?:map-intersection {:a 1 :b 2} ?other) {:a 1 :b 2 :c 3})))
+  (is (= [{:c 3}]
+        (matcher '(?:closed (?:map-intersection {:a 1 :b 2} ?other)) {:a 1 :b 2 :c 3})))
+
+
+  (is (= ["B" :c]
+        (matcher '{:a "A" :b ?b ?c (? _ int?)}
+          {:a "A" :b "B" :c 0})))
+
+  (testing "matchers are put in optimal order"
+    (is (= '(?:map-intersection {:a 1}
+              (?:map-kv :d ?x
+                (?:map-kv ?b 2
+                  (?:map-kv (& (? _ int?) (?_ odd?)) 3
+                    (?:map-kv (& (?_ odd?) (? _ int?)) ?y
+                      nil)))))
+          (:expanded (meta (matcher '{(& (?_ odd?) (? _ int?)) ?y
+                                      (& (? _ int?) (?_ odd?)) 3
+                                      :d ?x
+                                      :a 1
+                                      ?b 2}))))))
+
+  (is (= [] (matcher '[(??:map :a 1)] [:a 1])))
+  (is (nil? (matcher '[(??:map ?a 1 ?b 1)] [:a 1 :b 1 :c])))
+  (is (= [:a :b] (matcher '[(??:map ?a 1 ?b 1)] [:a 1 :b 1 :c 1]))))

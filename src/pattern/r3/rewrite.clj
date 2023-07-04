@@ -335,12 +335,32 @@
                                  ~(with-meta `(interleave ~ks ~vs)
                                     {::ordered true}))))))
 
-                  (rule '((?:literal ?:set) ?items)
+                  (rule '((| (?:literal ?:*set) (?:literal ?:set*)) ?items)
                     (let [items (var-name items)]
                       (if (= '_ items)
                         ;; TODO: should this be an empty set?
                         `(list (set (list)))
                         `(list (set ~items)))))
+
+                  (rule '((?:literal ?:set-intersection) ?->set-literal (?:? ?->remainder))
+                    (if remainder
+                      `(list (apply into (first ~set-literal) ~remainder))
+                      set-literal))
+
+                  (rule '((?:literal ?:map-intersection) ?->map-literal (?:? ?->remainder))
+                    (if remainder
+                      `(list (apply into (first ~map-literal) ~remainder))
+                      map-literal))
+
+                  (rule '((| (?:literal ?:set-item) (?:literal ?:set-has)) ?->item (?:? ?->remainder))
+                    (if remainder
+                      `(list (conj (set (first ~remainder)) (first ~item)))
+                      `(list (set ~item))))
+
+                  (rule '((?:literal ?:map-kv) ?->k ?->v (?:? ?->remainder))
+                    (if remainder
+                      `(list (assoc (first ~remainder) (first ~k) (first ~v)))
+                      `(list {(first ~k) (first ~v)})))
 
                   ;; if
                   (rule '((?:literal ?:if) ?pred ?->then (?:? ?->else))
@@ -352,6 +372,48 @@
                     `(let [then# ~then]
                        (when (apply ~pred (first then#))
                          (seq (apply concat then#)))))
+
+                  (rule '((| (?:literal ?:open) (?:literal ?:closed)) ?->pattern)
+                    pattern)
+
+                  (rule '((?:literal ?:force) ?name) `(list ~name))
+
+                  (rule '((?:literal ?:fresh) ?_ ?->pattern) pattern)
+                  (rule '((?:literal ?:all-fresh) ?_ ?->pattern) pattern)
+
+                  (rule '((| (?:literal ?:filter) (?:literal ?:remove)) ?_ ?->pattern)
+                    pattern)
+                  (rule '((| (?:literal ??:filter) (?:literal ??:remove)) ?_ ?->pattern)
+                    `(apply concat ~pattern))
+
+                  (rule '((?:literal ?:some) ?name ?_)
+                    `(list ~name))
+
+                  (rule '((?:literal ??:some) ?name ?_)
+                    `(apply concat ~name))
+
+                  ;; TODO: ??:some variants of these ?:some rules:
+                  (rule '((?:literal ?:some) ?name ?_
+                          [(& (?:chain ?_ matcher-type-for-dispatch ??)
+                             ??->content)])
+                    `(let [[before# item# after#] (first ~content)]
+                       (list (concat before# (vector item#) after#))))
+
+                  (rule '((?:literal ?:some) ?name ?_ [?->before (?:? ?->item) (?:? ?->after)])
+                    `(list (concat (first ~before) ~item (first ~after))))
+
+                  (rule '((?:literal ?:some) ?name ?_ ?->pattern)
+                    `(let [[before# item# after#] (first ~pattern)]
+                       (list (concat before# (vector item#) after#))))
+
+                  (rule '((?:literal ?:not) ?->pattern)
+                    ;; The not matcher matches if the pattern inside it does not, including
+                    ;; if the nested pattern is somehow broken. Any variable inside
+                    ;; the expression must be defined, but it doesn't need to be the correct
+                    ;; type since any problems at runtime will just translate into a false here.
+                    `(list (try (not (first ~pattern))
+                                (catch Exception e#
+                                  true))))
 
                   to-syntax-quote*]))))
 

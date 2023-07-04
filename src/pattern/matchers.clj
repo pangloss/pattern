@@ -27,7 +27,7 @@
   matchers."
   (:refer-clojure :exclude [trampoline])
   (:use pattern.match.core)
-  (:require [genera :refer [trampoline trampolining bouncing]]
+  (:require [genera :refer [trampoline trampolining bouncing defgen=]]
             [uncomplicate.fluokitten.core :as f]
             [pattern.types :refer [spliceable-pattern]]
             [pattern.match.core :as m]
@@ -39,16 +39,24 @@
 (defn- match-value
   "Match a value using [[clojure.core/=]] semantics."
   [pattern-const comp-env]
-  (with-meta
-    (fn const-matcher [data dictionary ^Env env]
-      (if (seq data)
-        (if (= (first data) pattern-const)
-          ((.succeed env) dictionary 1)
-          (on-failure :mismatch pattern-const dictionary env 1 data (first data)))
-        (on-failure :missing pattern-const dictionary env 0 data (first data))))
-    {:length (len 1)
-     `spliceable-pattern (fn [_] pattern-const)}))
-
+  (let [pred (or (:literal-pred comp-env)
+               (if (vector? pattern-const) vector? (constantly true)))]
+    (with-meta
+      (fn const-matcher [data dictionary ^Env env]
+        (if (seq data)
+          (let [value (first data)]
+            (if (and (pred value) (= value pattern-const))
+              ((.succeed env) dictionary 1)
+              (on-failure :mismatch pattern-const dictionary env 1 data value)))
+          (on-failure :missing pattern-const dictionary env 0 data nil)))
+      (cond->
+          {:length (len 1)
+           :literal [pattern-const] ;; wrap the const so that false/nil work as literals, too.
+           `spliceable-pattern (fn [_]
+                                 (if (sequential? pattern-const)
+                                   (list* '?:1 pattern-const)
+                                   pattern-const))}
+        (sequential? pattern-const) (assoc :list-length (len (count pattern-const)))))))
 
 (defn- match-literal
   "This is a way to match an escaped value, so for instance something
@@ -79,44 +87,6 @@
   [f comp-env]
   (compile-pattern* (list '? '_ f) comp-env))
 
-(defn add-lengths
-  ([] nil)
-  ([a b]
-   (if (and a b)
-     (let [na (:n a)
-           va (:v a)
-           nb (:n b)
-           vb (:v b)]
-       {:n (+ na nb) :v (or va vb)})
-     (or a b))))
-
-(defn and-lengths
-  ([] nil)
-  ([a b]
-   (if (and a b)
-     (let [na (:n a)
-           va (:v a)
-           nb (:n b)
-           vb (:v b)]
-       {:n (max na nb) :v (or va vb)})
-     (or a b))))
-
-(defn- build-child-matchers
-  "Builds in reverse so that sequence matchers know how many elements to reserve
-  after them, and their minimum required match size.
-
-  Matchers are returned in the original order."
-  [pattern comp-env]
-  (first
-    (reduce (fn [[matchers comp-env] p]
-              (if-let [m (compile-pattern* p comp-env)]
-                [(cons m matchers)
-                 (update comp-env
-                   :reserve-min-tail add-lengths (:length (meta m)))]
-                [matchers comp-env]))
-      [() (assoc comp-env :reserve-min-tail (len 0))]
-      (reverse pattern))))
-
 (defn- match-list
   "Match a list or vector. If the first symbol with in the list is ?:seq, allows
   the matcher to match any type of list. Otherwise if the pattern is a vector,
@@ -139,49 +109,50 @@
         list-length (reduce add-lengths (map (comp :length meta) matchers))
         {match-length :n variable-length? :v} list-length
         match-length (or match-length 0)]
-    (with-meta
-      (fn list-matcher [data dictionary ^Env env]
-        (if (seq data)
-          (letfn [(list-item-matcher [datum data-list matchers dictionary]
-                    (if (seq matchers)
-                      (if-let [result
-                               ((first matchers)
-                                data-list
-                                dictionary
-                                ;; This construct would have to be carefully redesigned for trampoline
-                                ;; (at least on sequence matches).
-                                (assoc env :succeed
-                                  (fn match-list-succeed [new-dictionary n]
-                                    (if (> n (count data-list))
-                                      (throw (ex-info "Matcher ate too much" {:n n}))
-                                      (list-item-matcher datum (drop n data-list) (next matchers) new-dictionary)))))]
-                        result
-                        (on-failure :mismatch pattern dictionary env 1 data datum
-                          :retry retry))
-                      (if (empty? data-list)
-                        ((.succeed env) dictionary 1)
-                        (on-failure :too-long pattern dictionary env 1 data datum
-                          :retry retry))))
-                  (retry [data-list]
-                    (if (list-pred data-list)
-                      (bouncing (list-item-matcher data-list data-list matchers dictionary))
-                      (on-failure :type pattern dictionary env 1 data data-list
-                        :retry retry)))]
-            (let [datum (first data)
-                  c (when (sequential? datum) (count datum))]
-              (when (if (and c variable-length?)
-                      (<= match-length c)
-                      (= match-length c))
-                (trampoline retry datum))))
-          (on-failure :missing pattern dictionary env 0 data nil)))
-      {:var-names (distinct (mapcat (comp :var-names meta) matchers))
-       :var-modes (apply merge-with f/op (map (comp :var-modes meta) matchers))
-       :var-abbrs (apply merge-with f/op (map (comp :var-abbrs meta) matchers))
-       :var-prefixes (apply merge-with f/op (map (comp :var-prefixes meta) matchers))
-       :greedy (some (comp :greedy meta) matchers)
-       :list-length list-length
-       :length (len 1)
-       `spliceable-pattern (fn [_] `(~'?:1 ~@pattern))})))
+    (if (every? (comp :literal meta) matchers)
+      (let [literal-list (cond-> (mapcat (comp :literal meta) matchers)
+                           (= vector? list-pred) vec)]
+        (compile-pattern* (list '?:literal literal-list) (assoc comp-env :literal-pred list-pred)))
+      (with-meta
+        (fn list-matcher [data dictionary ^Env env]
+          (if (seq data)
+            (letfn [(list-item-matcher [datum data-list matchers dictionary]
+                      (if (seq matchers)
+                        (if-let [result
+                                 ((first matchers)
+                                  data-list
+                                  dictionary
+                                  ;; This construct would have to be carefully redesigned for trampoline
+                                  ;; (at least on sequence matches).
+                                  (assoc env :succeed
+                                    (fn match-list-succeed [new-dictionary n]
+                                      (if (> n (count data-list))
+                                        (throw (ex-info "Matcher ate too much" {:n n}))
+                                        (list-item-matcher datum (drop n data-list) (next matchers) new-dictionary)))))]
+                          result
+                          (on-failure :mismatch pattern dictionary env 1 data datum
+                            :retry retry))
+                        (if (empty? data-list)
+                          ((.succeed env) dictionary 1)
+                          (on-failure :too-long pattern dictionary env 1 data datum
+                            :retry retry))))
+                    (retry [data-list]
+                      (if (list-pred data-list)
+                        (bouncing (list-item-matcher data-list data-list matchers dictionary))
+                        (on-failure :type pattern dictionary env 1 data data-list
+                          :retry retry)))]
+              (let [datum (first data)
+                    c (when (sequential? datum) (count datum))]
+                (when (if (and c variable-length?)
+                        (<= match-length c)
+                        (= match-length c))
+                  (trampoline retry datum))))
+            (on-failure :missing pattern dictionary env 0 data nil)))
+        (-> (merge-meta (map meta matchers))
+          (dissoc :literal :expanded)
+          (merge {:list-length list-length
+                  :length (len 1)
+                  `spliceable-pattern (fn [_] `(~'?:1 ~@pattern))}))))))
 
 (defn- match-element
   "Match a single element.
@@ -403,8 +374,9 @@
                         (on-failure :mismatch as-pattern dictionary env n data datum))
                       ((.succeed env) ((.store env) name datum '?:as nil dict env) n))
                     (on-failure :unsat as-pattern dictionary env n data datum))))))))
-      (merge-with f/op
+      (merge-meta
         {:var-names [name]
+         :literal nil
          :var-modes {name (matcher-mode as-pattern)}
          `spliceable-pattern (fn [_]
                                (let [sp (spliceable-pattern m)
@@ -412,96 +384,6 @@
                                      t (if (= (len 1) (:length (meta sp*))) '?:as '?:as*)]
                                  (list* t name sp restriction?)))}
         (meta m)))))
-
-
-(defn- match-map
-  "Match map datastructures. For instance to match {:from 1 :to 10}:
-
-      (?:map :from ?f :to ?t)
-
-  Map keys can be matched as literal values or as a simple named matcher where the
-  bound name will already be bound to the key value before this matcher is encountered.
-
-  For bound key lookups, this matcher does not currently perform a search, and does
-  nothing with the matcher beyond use its bound value! (All of this is TODO). Any
-  pattern or predicate in the key position will be ignored.
-
-  This could work:
-     (?:map :addr ?addr ?addr ?info)
-  But this will not unless ?addr is bound before this statement is matched:
-     (?:map ?addr ?info :addr ?addr)
-
-  These matchers do not fail if there are extra keys. To rule out specific keys,
-  you can use ?:not matchers or predicates. For exact map matches, just use a
-  literal map directly in the matcher. To do matching against keys, use ?:chain.
-
-  This does not use {:a ?x :b ?y} syntax for the matcher because key order may
-  not be stable and it is important for the rule engine which uses matcher keys
-  to generate function signatures."
-  [[_ & kv-pairs :as pattern] comp-env]
-  (let [kv-pairs (if (map? pattern) (apply concat (seq pattern)) kv-pairs)]
-    (assert (even? (count kv-pairs))
-      "Map matcher must have an even number of key-matcher pair arguments.")
-    (let [keys (vec (take-nth 2 kv-pairs))
-          key-var-names (into [] (map var-name) keys)
-          vals (mapv #(compile-pattern* % comp-env)
-                 (take-nth 2 (rest kv-pairs)))]
-      (with-meta
-        (fn map-matcher [data dictionary ^Env env]
-          (let [m (first data)]
-            (if (map? m)
-              (let [inner-env (assoc env :succeed (fn [dict n] dict))]
-                (loop [dict dictionary
-                       [k :as keys] keys
-                       [kvn :as key-var-names] key-var-names
-                       [v :as vals] vals]
-                  (if (seq keys)
-                    (if-let [kv (if kvn
-                                  ;; TODO: expand this to search the keyspace if
-                                  ;; the key is not already bound.
-                                  (if-let [binding ((.lookup env) kvn dict env)]
-                                    (find m (:value binding))
-                                    (throw (ex-info "Map pattern with unbound key binding"
-                                             {:key k :key-var-name kvn :pattern pattern})))
-                                  (find m k))]
-                      (if-let [dict (v (list (val kv)) dict inner-env)]
-                        (recur dict (rest keys) (rest key-var-names) (rest vals))
-                        (on-failure :value pattern dict env 1 data m))
-                      (on-failure :key pattern dict env 1 data m))
-                    ((.succeed env) dict 1))))
-              (on-failure :not-map pattern dictionary env 1 data m))))
-        (assoc (apply merge-with f/op (map meta vals))
-          `spliceable-pattern (fn [_] pattern)
-          :length (len 1))))))
-
-(defn into-map [x]
-  (apply hash-map x))
-
-(defn match-in-map [[_ & kvs] comp-env]
-  (compile-pattern* `(~'??:chain ~'??_ into-map (~'?:map ~@kvs))
-                    comp-env))
-
-(defn match-+map
-  "Create a ?:+map matcher than can match a key/value pair at least once."
-  [[_ k v] comp-env]
-  (compile-pattern* `(~'?:chain ~'?_ seq ((~'?:* ~[k v])))
-                    comp-env))
-
-(defn match-*map
-  "Create a ?:*map matcher than can match a key/value pair multiple times."
-  [[_ k v] comp-env]
-  (compile-pattern* `(~'?:chain
-                      (~'? ~'_ ~(some-fn nil? map?))
-                      seq (~'| nil ((~'?:* ~[k v]))))
-                    comp-env))
-
-(defn match-*set
-  "Create a ?:set matcher than can match the items in a set."
-  [[_ item] comp-env]
-  (compile-pattern* `(~'?:chain
-                      (~'? ~'_ ~(some-fn nil? set?))
-                      seq (~'| nil ((~'?:* ~item))))
-    comp-env))
 
 (defn- has-n?
   "Try to be fast at checking whether a list or vector has at least n elements."
@@ -579,6 +461,7 @@
           true (assoc :length (:list-length md)
                  :pattern full-pattern
                  `spliceable-pattern (fn [_] full-pattern))
+          true (dissoc :literal)
           optional? (assoc-in [:length :v] true)
           optional? (assoc-in [:length :n] 0))))))
 
@@ -782,7 +665,8 @@
                     (when taken
                       (bouncing ((.succeed env) dict taken)))))]
           (trampoline do-match matchers fns data dict nil)))
-      (-> (assoc (apply merge-with f/op (map meta matchers))
+      (-> (assoc (merge-meta (map meta matchers))
+            :literal nil
             :length (:length (meta (first matchers)))
             `spliceable-pattern (fn [_]
                                   (if (= '??:chain chain-type)
@@ -845,9 +729,10 @@
               (on-failure :not-sequential name dictionary env 1 data datum)))
           (on-failure :missing name dictionary env 0 data nil)))
       (assoc
-        (merge-with f/op
+        (merge-meta
           (meta result-matcher)
           {:var-names [name]})
+        :literal nil
         :length (if vlen? (var-len 1) (len 1))
         `spliceable-pattern (fn [_] (list* '??:some (rest full-pattern)))))))
 
@@ -914,8 +799,9 @@
   or you may just capture the entire result:
 
       (?:re-matches #\"(.*)@(.*)\\.(com|org)\" ?matches)"
-  [[op regex capture-pattern :as pattern] comp-env]
-  (let [m (compile-pattern* capture-pattern comp-env)
+  [pattern comp-env]
+  (let [[op regex capture-pattern] (if (seq? pattern) pattern ['?:re-matches pattern '?_])
+        m (compile-pattern* capture-pattern comp-env)
         f (condp = op
             '?:re-matches re-matches
             '?:re-seq re-seq)]
@@ -954,18 +840,16 @@
                  (loop [matchers matchers]
                    (if (seq matchers)
                      (or ((first matchers) data dictionary env)
-                         (recur (rest matchers)))))]
+                       (recur (rest matchers)))))]
           result
           (on-failure :mismatch pattern dictionary env 1 data nil)))
-      {:var-names (distinct (mapcat (comp :var-names meta) matchers))
-       :var-modes    (apply merge-with f/op (map (comp :var-modes meta) matchers))
-       :var-prefixes (apply merge-with f/op (map (comp :var-prefixes meta) matchers))
-       :var-abbrs    (apply merge-with f/op (map (comp :var-abbrs meta) matchers))
-       :length (let [lens (map (comp :length meta) matchers)]
-                 (if (apply = lens)
-                   (first lens)
-                   (var-len (apply min (map :n lens)))))
-       `spliceable-pattern (fn [_] (list* '| (map spliceable-pattern matchers)))})))
+      (merge
+        (merge-meta (map meta matchers))
+        {:length (let [lens (map (comp :length meta) matchers)]
+                   (if (apply = lens)
+                     (first lens)
+                     (var-len (apply min (map :n lens)))))
+         `spliceable-pattern (fn [_] (list* '| (map spliceable-pattern matchers)))}))))
 
 
 (defn- match-and
@@ -996,13 +880,11 @@
                       (on-failure :mismatch pattern dictionary env n data nil))
                     ((.succeed env) dictionary (or n 0))))]
           (and-expr-matcher matchers dictionary nil)))
-      {:var-names (distinct (mapcat (comp :var-names meta) matchers))
-       :var-modes    (apply merge-with f/op (map (comp :var-modes meta) matchers))
-       :var-prefixes (apply merge-with f/op (map (comp :var-prefixes meta) matchers))
-       :var-abbrs    (apply merge-with f/op (map (comp :var-abbrs meta) matchers))
-       :length (let [lens (map (comp :length meta) matchers)]
-                 (reduce and-lengths lens))
-       `spliceable-pattern (fn [_] (list* '& (map spliceable-pattern matchers)))})))
+      (merge
+        (merge-meta (map meta matchers))
+        {:length (let [lens (map (comp :length meta) matchers)]
+                   (reduce and-lengths lens))
+         `spliceable-pattern (fn [_] (list* '& (map spliceable-pattern matchers)))}))))
 
 
 (defn- match-not
@@ -1046,7 +928,7 @@
       (| (& pred-pattern conseq) alt)"
   [[_ pred conseq alt] comp-env]
   (let [pred (resolve-fn
-              pred #(throw (ex-info "Predicate did not resolve to a function" {:pred pred})))
+               pred #(throw (ex-info "Predicate did not resolve to a function" {:pred pred})))
         conseq (compile-pattern* conseq comp-env)
         alt (when alt (compile-pattern* alt comp-env))]
     (with-meta
@@ -1055,9 +937,9 @@
           (conseq data dict env)
           (when alt (alt data dict env))))
       (if alt
-        (assoc-in (merge-with f/op (meta conseq) (meta alt))
-                  [:length :n] (min (:n (:length (meta conseq)))
-                                    (:n (:length (meta alt)) 0)))
+        (assoc-in (merge-meta (meta conseq) (meta alt))
+          [:length :n] (min (:n (:length (meta conseq)))
+                         (:n (:length (meta alt)) 0)))
         (meta conseq)))))
 
 
@@ -1243,16 +1125,11 @@
 (register-matcher :value match-value)
 (register-matcher :list #'match-list)
 (register-matcher '?:= match-literal {:aliases ['?:literal]})
-(register-matcher :compiled-matcher match-compiled)
-(register-matcher :compiled*-matcher match-compiled*)
-(register-matcher :plain-function #'match-plain-function)
+(register-matcher :compiled-matcher match-compiled) ;; no rewrite
+(register-matcher :compiled*-matcher match-compiled*) ;; no rewrite
+(register-matcher :plain-function #'match-plain-function) ;; no rewrite
 (register-matcher '? #'match-element {:named? true})
 (register-matcher '?? #'match-segment {:named? true})
-(register-matcher '?:map #'match-map)
-(register-matcher '??:map #'match-in-map)
-(register-matcher '?:+map #'match-+map {:aliases ['?:map+]})
-(register-matcher '?:*map #'match-*map {:aliases ['?:map*]})
-(register-matcher '?:set #'match-*set)
 (register-matcher '?:as #'match-as {:named? true :restriction-position 3})
 (register-matcher '?:as* #'match-as {:named? true :restriction-position 3})
 (register-matcher '?:? #'match-optional {:aliases ['?:optional]})
@@ -1260,19 +1137,20 @@
 (register-matcher '?:* #'match-many {:aliases ['?:many]})
 (register-matcher '?:+ #'match-at-least-one {:aliases ['?:at-least-one]})
 (register-matcher '?:n #'match-n-times {:aliases []})
-(register-matcher '?:chain #'match-chain {:aliases ['??:chain]})
+(register-matcher '?:chain #'match-chain {:aliases ['??:chain]}) ;; no rewrite
 (register-matcher '?:force #'force-match)
 (register-matcher '| #'match-or {:aliases ['?:or]})
 (register-matcher '& #'match-and {:aliases ['?:and]})
 (register-matcher '?:not #'match-not)
 (register-matcher '?:if #'match-if)
 (register-matcher '?:when #'match-when)
-(register-matcher '?:letrec #'match-letrec)
-(register-matcher '?:ref #'match-ref {:named? true})
+(register-matcher '?:letrec #'match-letrec) ;; no rewrite
+(register-matcher '?:ref #'match-ref {:named? true}) ;; no rewrite
 (register-matcher '?:fresh #'match-fresh)
 (register-matcher '?:all-fresh #'match-all-fresh)
 (register-matcher '?:restartable match-restartable)
-(register-matcher '?:re-matches #'match-regex)
-(register-matcher '?:re-seq #'match-regex)
+(register-matcher '?:re-matches #'match-regex) ;; no rewrite
+(defgen= matcher-type [#(instance? java.util.regex.Pattern %)] '?:re-matches)
+(register-matcher '?:re-seq #'match-regex) ;; no rewrite
 (register-matcher '?:some #'match-some {:named? true :aliases ['??:some]})
 (register-matcher '?:filter #'match-filter {:aliases ['??:filter '?:remove '??:remove]})
