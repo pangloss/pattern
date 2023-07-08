@@ -1155,7 +1155,9 @@
   (is (= [] (matcher '(?:map-kv :a 1) {:a 1 :b 2})))
 
   (is (= [] (matcher '[(?:map)] [{}])))
+  (is (= [] (matcher '[(?:map=)] [{}])))
   (is (= [] (matcher '[(?:map)] [{:a 1}])))
+  (is (= [] (matcher '[(?:map=)] [{:a 1}])))
   (is (= [] (matcher '[(?:closed (?:map))] [{}])))
   (is (nil? (matcher '[(?:closed (?:map))] [{:a 1}])))
 
@@ -1199,5 +1201,16 @@
                                       ?b 2}))))))
 
   (is (= [] (matcher '[(??:map :a 1)] [:a 1])))
+  (is (= [] (matcher '[(??:map= :a 1)] [:a 1])))
   (is (nil? (matcher '[(??:map ?a 1 ?b 1)] [:a 1 :b 1 :c])))
-  (is (= [:a :b] (matcher '[(??:map ?a 1 ?b 1)] [:a 1 :b 1 :c 1]))))
+  (is (= [:a :b] (matcher '[(??:map ?a 1 ?b 1)] [:a 1 :b 1 :c 1])))
+
+  (is (= [] (matcher '[(??:map :a)] [:a 1])))
+  (is (= [] (matcher '[(??:map :a ?_)] [:a 1])))
+  (is (= [] (matcher '[(??:map= :a ?_)] [:a 1])))
+  (is (= [] (matcher '[(??:map= :a)] [:a 1])))
+
+  (is (nil? (matcher '[(??:map :a)] [:a])))
+  (is (nil? (matcher '[(??:map :a ?_)] [:a])))
+  (is (nil? (matcher '[(??:map= :a ?_)] [:a])))
+  (is (nil? (matcher '[(??:map= :a)] [:a]))))
