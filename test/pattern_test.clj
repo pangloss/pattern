@@ -552,11 +552,6 @@
   (is (nil?
         (matcher '(?:+map ?k ?v) {}))))
 
-(deftest set-matcher
-  (is (= [[:b :a]]
-        (matcher '(?:set* ?k) #{:a :b}))))
-
-
 (deftest anon-matchers
   (is (= '(1)
         (matcher '[?x (?) (?)] [1 2 3])))
@@ -1022,6 +1017,18 @@
             (sum [ :x 1 2 3 :y 4 5 6 7 :z 1 2]))))))
 
 (deftest set-matchers
+  (is (= [[:b :a]]
+        (matcher '(?:set* ?k) #{:a :b})))
+
+  (is (nil? (matcher '[#{:a :b}] [#{}])))
+  (is (nil? (matcher '[#{:a :b}] [#{:a}])))
+  (is (nil? (matcher '[#{?_ (? _)}] [#{:a}])))
+  (is (= [] (matcher '[#{?_ (? _)}] [#{:a :b}])))
+
+  (is (= [[:c]] (matcher '[(??:set :a :b) ??x] [#{} :b :a :c])))
+  (is (= [[:c]] (matcher '[(??:set= :a :b) ??x] [:b :a :c])))
+  (is (nil? (matcher '[#{:a :b} ??x] [#{} :b :a :c])))
+
   (is (= []
         (matcher '[(?:set-has 20)] [#{1 10 20}])))
 

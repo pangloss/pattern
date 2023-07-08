@@ -35,7 +35,7 @@
     (compile-pattern*
       (list* '&
         set?
-        (fn check-intersection [x] (set/intersection set-literal x))
+        (fn check-intersection [x] (= set-literal (set/intersection set-literal x)))
         (when remainder
           [(list '?:chain '?_ (fn remove-known [x] (set/difference x set-literal))
              remainder)]))
@@ -65,6 +65,18 @@
             (list '?:= #{})
             set?)))
       comp-env)))
+
+
+(defn match-set [[t & items :as pattern] comp-env]
+  (let [closed? ('#{?:set= ??:set=} t)
+        flat? (re-find #"^\?\?:" (str t))
+        comp-env (cond-> comp-env closed? (assoc :closed? true))]
+    (vary-meta
+      (if flat?
+        (compile-pattern* (list '??:chain '??_ 'set (set items)) comp-env)
+        (compile-pattern* (set items) comp-env))
+      assoc :pattern pattern)))
+
 
 (defn match-set-has
   "Create a ?:set-has matcher than can match an item in a set."
@@ -143,6 +155,7 @@
 (register-matcher '?:closed #'match-closed)
 (defgen= matcher-type [set?] :set) ;; register set literal
 (register-matcher ':set #'match-set-literal) ;; register handler for set literal
+(register-matcher '?:set #'match-set {:aliases '[??:set ?:set= ??:set=]})
 (register-matcher '?:set-has #'match-set-has)
 (register-matcher '?:set-item #'match-set-item)
 (register-matcher '?:set-intersection #'match-set-intersection)
