@@ -559,11 +559,6 @@
         (with-meta form# ~metadata)
         form#))))
 
-;; TODO: If the regular sub and subm methods all retained namespace, would that
-;; break anything? I think the behaviour may be leftover from the earliest
-;; versions of this functionality which tried to build off of stock
-;; backtick-quoted data, which was loaded with namespaces everywhere.
-
 (defn eval-spliced
   "Experimental. Uses [[spliced]] to transform regular lists, then uses eval to
   resolve spliced data. Doesn't resolve any data in the local scope."
