@@ -1102,6 +1102,13 @@
         x 1
         y 2]
     (is (= [#{1 2}] (sub [#{?x ?y}])))
+    (is (= [#{1 2}] (sub [(?:set ?x ?y)])))
+    (is (= [#{1 2}] (sub [(?:set= ?x ?y)])))
+    (is (= [#{}] (sub [(?:set)])))
+    (is (= [#{}] (sub [(?:set=)])))
+    (is (= [] (sub [(??:set)])))
+    (is (= [1 2] (sub [(??:set ?x ?y)])))
+    (is (= [1 2] (sub [(??:set= ?x ?y)])))
 
     (is (= [{1 2 2 1}] (sub [(?:closed {?x ?y ?y ?x})])))
 
@@ -1120,7 +1127,25 @@
     (is (= [{10 20 20 10 30 40}] (sub [(?:map-intersection {10 20 30 40} (?:map-kv ?v ?k))])))
 
     (is (= [{10 20 30 40}]
-          (sub [(?:map-intersection {10 ?v 30 40})])))))
+          (sub [(?:map-intersection {10 ?v 30 40})])))
+
+    (is (= [{10 20 20 10 30 40}] (sub [(?:map ?k ?v ?v ?k 30 40)])))
+    (is (= [{10 20 20 10 30 40}] (sub [(?:map= ?k ?v ?v ?k 30 40)])))
+    (is (= [{}] (sub [(?:map)])))
+    (is (= [{}] (sub [(?:map=)])))
+    (is (= [{10 nil}] (sub [(?:map ?k)])))
+    (is (= [{10 nil}] (sub [(?:map= ?k)]))))
+
+  (let [item :x
+        coll [:a :b]
+        list '(:a :b)]
+    (is (= '[(:x)] (sub [(?:item ?item)])))
+    (is (= [[:a :b :x]] (sub [(?:item ?item ?coll)])))
+    (is (= '[(:x :a :b)] (sub [(?:item ?item ?list)])))
+
+    (is (= '[:x] (sub [(??:item ?item)])))
+    (is (= [:a :b :x] (sub [(??:item ?item ?coll)])))
+    (is (= '[:x :a :b] (sub [(??:item ?item ?list)])))))
 
 (deftest more-map-matchers
   (is (= {:a 1 :b 2 10 :k}
