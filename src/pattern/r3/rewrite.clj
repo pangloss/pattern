@@ -317,13 +317,15 @@
                       `(expand-or (list '~t '~t) (list (list ~name) ~(descend (list value))))))
 
                   ;; map
-                  (rule '((?:literal ?:map) (?:* ?->k ?->v))
-                    `(list (apply array-map
-                             ~(with-meta `(seq (concat ~@(interleave k v)))
-                                {::ordered true}))))
+                  (rule '((? _ #{?:map ?:map=}) (?:* ?->k ?->v) (?:? ?->extra-k))
+                    (let [k (cond-> k extra-k (conj extra-k))
+                          v (cond-> v extra-k (conj `(list nil)))]
+                      `(list (apply array-map
+                               ~(with-meta `(seq (concat ~@(interleave k v)))
+                                  {::ordered true})))))
 
                   ;; exploded map
-                  (rule '((?:literal ??:map) (?:* ?->k ?->v))
+                  (rule '((? _ #{??:map ??:map=}) (?:* ?->k ?->v))
                     `(seq (concat ~@(interleave k v))))
 
                   (rule '((| (?:literal ?:*map) (?:literal ?:map*) (?:literal ?:+map) (?:literal ?:map+)) ?ks ?vs)
@@ -356,6 +358,22 @@
                     (if remainder
                       `(list (conj (set (first ~remainder)) (first ~item)))
                       `(list (set ~item))))
+
+                  (rule '((? _ #{?:set ?:set=}) ??->item*)
+                    `(list (set (apply concat ~item*))))
+
+                  (rule '((? _ #{??:set ??:set=}) ??->item*)
+                    `(apply concat ~item*))
+
+                  (rule '((?:literal ?:item) ?->item (?:? ?->remainder))
+                    (if remainder
+                      `(list (conj (first ~remainder) (first ~item)))
+                      `(list ~item)))
+
+                  (rule '((?:literal ??:item) ?->item (?:? ?->remainder))
+                    (if remainder
+                      `(conj (first ~remainder) (first ~item))
+                      item))
 
                   (rule '((?:literal ?:map-kv) ?->k ?->v (?:? ?->remainder))
                     (if remainder
@@ -540,11 +558,6 @@
       (if (instance? clojure.lang.IObj form#)
         (with-meta form# ~metadata)
         form#))))
-
-;; TODO: If the regular sub and subm methods all retained namespace, would that
-;; break anything? I think the behaviour may be leftover from the earliest
-;; versions of this functionality which tried to build off of stock
-;; backtick-quoted data, which was loaded with namespaces everywhere.
 
 (defn eval-spliced
   "Experimental. Uses [[spliced]] to transform regular lists, then uses eval to

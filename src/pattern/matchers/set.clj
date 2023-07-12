@@ -35,7 +35,7 @@
     (compile-pattern*
       (list* '&
         set?
-        (fn check-intersection [x] (set/intersection set-literal x))
+        (fn check-intersection [x] (= set-literal (set/intersection set-literal x)))
         (when remainder
           [(list '?:chain '?_ (fn remove-known [x] (set/difference x set-literal))
              remainder)]))
@@ -66,6 +66,18 @@
             set?)))
       comp-env)))
 
+
+(defn match-set [[t & items :as pattern] comp-env]
+  (let [closed? ('#{?:set= ??:set=} t)
+        flat? (re-find #"^\?\?:" (str t))
+        comp-env (cond-> comp-env closed? (assoc :closed? true))]
+    (vary-meta
+      (if flat?
+        (compile-pattern* (list '??:chain '??_ 'set (set items)) comp-env)
+        (compile-pattern* (set items) comp-env))
+      assoc :pattern pattern)))
+
+
 (defn match-set-has
   "Create a ?:set-has matcher than can match an item in a set."
   [[_ item] comp-env]
@@ -89,14 +101,34 @@
   If the pattern is variable but the minimum length is longer than the list
   length, no matches will be attempted. Otherwise the pattern length must match
   before attempting to match its contents."
-  [[_ item remainder :as pattern] comp-env]
+  [[t item remainder :as pattern] comp-env]
   (let [item-matcher (compile-pattern* item comp-env)
         literal (:literal (meta item-matcher))
+        no-check-set? (or (#{'?:item '??:item} t) (= false (:check-set? comp-env)))
         closed? (:closed? comp-env)
         item-var (var-name item)
-        remainder-matcher (when remainder (compile-pattern* remainder comp-env))]
-        ;; TODO get the remainder length and add 1. We can check the set size
-        ;; only check size before the first item
+        remainder-matcher (when remainder (compile-pattern* remainder comp-env))
+        remove-item (if no-check-set?
+                      (fn [coll item]
+                        (if (= item (first coll))
+                          (rest coll)
+                          (concat (take-while #(not= item %) coll) (next (drop-while #(not= item %) coll)))))
+                      disj)
+        find-item (if no-check-set?
+                    (fn [coll item not-found]
+                      (some #(when (or (= % item) (= % not-found)) %)
+                        (concat coll [not-found])))
+                    get)
+        flat? (= '??:item t)
+        extract (if flat? identity first)
+        recombine (if no-check-set?
+                    (fn [data after before]
+                      (if (vector? (extract data))
+                        (into [] (concat before after))
+                        (concat before after)))
+                    (fn [orig after before] (into after before)))]
+    ;; TODO get the remainder length and add 1. We can check the set size
+    ;; only check size before the first item
     (if (and literal closed? (not remainder))
       (compile-pattern* (list* '?:literal literal) comp-env)
       (with-meta
@@ -104,46 +136,54 @@
           (if (seq data)
             (letfn [(set-item-matcher [before after dictionary]
                       (let [datum (if-let [bound (when item-var (get dictionary item-var))]
-                                    (let [bound-val (get after (:value bound) ::not-found)]
-                                      (if (= ::not-found bound-val)
-                                        (first after)
-                                        bound-val))
-                                    (first after))
-                            after (disj after datum)]
-                        (if-let [result
-                                 (item-matcher
-                                   [datum]
-                                   dictionary
-                                   (assoc env :succeed
-                                     (fn match-set-succeed [new-dictionary n]
-                                       (if remainder-matcher
-                                         (let [remaining-set (into after before)]
-                                           (remainder-matcher [remaining-set] new-dictionary env))
-                                         (if (and closed? (or (seq before) (seq after)))
-                                           (on-failure :closed pattern new-dictionary env 1
-                                             (into after before) datum :retry retry)
-                                           ((.succeed env) new-dictionary 1))))))]
-                          result
-                          (retry (conj before datum) after))))
+                                    (find-item after (:value bound) ::not-found)
+                                    (first after))]
+                        (if (= ::not-found datum)
+                          (on-failure :not-found pattern dictionary env 1 (extract data)
+                            (:value (get dictionary item-var)) :retry retry)
+                          (let [after (remove-item after datum)]
+                            (if-let [result
+                                     (item-matcher
+                                       [datum]
+                                       dictionary
+                                       (assoc env :succeed
+                                         (fn match-set-succeed [new-dictionary n]
+                                           (if remainder-matcher
+                                             (let [remaining-set (recombine data after before)]
+                                               (remainder-matcher [remaining-set] new-dictionary
+                                                 (if flat?
+                                                   (assoc env :succeed
+                                                     (fn flat-succeed [new-dictionary n]
+                                                       ((.succeed env) new-dictionary
+                                                        (count (extract data)))))
+                                                   env)))
+                                             (if (and closed? (or (seq before) (seq after)))
+                                               (on-failure :closed pattern new-dictionary env 1
+                                                 (extract data) datum :retry retry)
+                                               ((.succeed env) new-dictionary
+                                                (if flat? (count (extract data)) 1)))))))]
+                              result
+                              (retry (conj before datum) after))))))
                     (retry [scanned-set remaining-set]
                       (if (seq remaining-set)
                         (bouncing (set-item-matcher scanned-set remaining-set dictionary))
                         (on-failure :mismatch pattern dictionary env 1 data remaining-set :retry retry)))]
-              (let [the-set (first data)]
-                (if (set? the-set)
+              (let [the-set (extract data)]
+                (if (or (set? the-set) no-check-set?)
                   (trampoline retry [] the-set)
                   (on-failure :type pattern dictionary env 1 data the-set :retry retry))))
             (on-failure :missing pattern dictionary env 0 data nil)))
         (merge (merge-meta (map meta [item-matcher remainder-matcher]))
-          { ;;:list-length list-length
-           :length (len 1)
+          {;;:list-length list-length
+           :length (if flat? (var-len 1) (len 1))
            `spliceable-pattern (fn [_] `(~'?:1 ~@pattern))})))))
 
 (register-matcher '?:open #'match-open)
 (register-matcher '?:closed #'match-closed)
 (defgen= matcher-type [set?] :set) ;; register set literal
 (register-matcher ':set #'match-set-literal) ;; register handler for set literal
+(register-matcher '?:set #'match-set {:aliases '[??:set ?:set= ??:set=]})
 (register-matcher '?:set-has #'match-set-has)
-(register-matcher '?:set-item #'match-set-item)
+(register-matcher '?:set-item #'match-set-item {:aliases '[?:item ??:item]})
 (register-matcher '?:set-intersection #'match-set-intersection)
 (register-matcher '?:*set #'match-*set {:aliases ['?:set*]})

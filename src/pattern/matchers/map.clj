@@ -88,8 +88,11 @@
   against unless you wrap them in ?:closed. To rule out specific keys, you can
   use ?:not matchers or predicates.  For exact map matches, just use a literal
   map directly in the matcher."
-  [[_ & kv-pairs :as pattern] comp-env]
-  (let [form (->> kv-pairs
+  [[t & kv-pairs :as pattern] comp-env]
+  (let [kv-pairs (cond-> kv-pairs
+                   (odd? (count kv-pairs)) (concat ['?_]))
+        comp-env (cond-> comp-env (= '?:map= t) (assoc :closed true))
+        form (->> kv-pairs
                (partition 2)
                reverse
                (reduce (fn [m [k v]] (list '?:map-kv k v m)) nil))
@@ -235,15 +238,25 @@
 (defn- even-length? [x]
   (even? (count x)))
 
-(defn match-in-map [[_ & kvs] comp-env]
-  (compile-pattern* `(~'??:chain (~'?? ~'_ (~'on-all even-length?)) into-map (~'?:map ~@kvs))
-    comp-env))
+(defn match-in-map [[t & kvs] comp-env]
+  (let [kvs (cond-> kvs (odd? (count kvs)) (concat ['?_]))]
+    (vary-meta
+      (if (= '??:map= t)
+        (vary-meta
+          (compile-pattern*
+            `(~'??:chain ~'??_ into-map (~'?:map ~@kvs))
+            comp-env)
+          update :length assoc :v false)
+        (compile-pattern*
+          `(~'??:chain (~'?? ~'_ (~'on-all even-length?)) into-map (~'?:map ~@kvs))
+          comp-env))
+      update :length assoc :n (count kvs))))
 
 (defn match-+map
   "Create a ?:+map matcher than can match a key/value pair at least once."
   [[_ k v] comp-env]
   (compile-pattern* `(~'?:chain ~'?_ seq ((~'?:* ~[k v])))
-                    comp-env))
+    comp-env))
 
 (defn match-*map
   "Create a ?:*map matcher than can match a key/value pair multiple times."
@@ -258,7 +271,7 @@
 (register-matcher '?:map-intersection #'match-map-intersection)
 (defgen= matcher-type [(every-pred map? (complement record?))] :map)
 (register-matcher :map #'match-map-literal)
-(register-matcher '?:map #'match-map)
-(register-matcher '??:map #'match-in-map)
+(register-matcher '?:map #'match-map {:aliases '[?:map=]})
+(register-matcher '??:map #'match-in-map {:aliases '[??:map=]})
 (register-matcher '?:+map #'match-+map {:aliases ['?:map+]})
 (register-matcher '?:*map #'match-*map {:aliases ['?:map*]})

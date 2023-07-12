@@ -552,11 +552,6 @@
   (is (nil?
         (matcher '(?:+map ?k ?v) {}))))
 
-(deftest set-matcher
-  (is (= [[:b :a]]
-        (matcher '(?:set* ?k) #{:a :b}))))
-
-
 (deftest anon-matchers
   (is (= '(1)
         (matcher '[?x (?) (?)] [1 2 3])))
@@ -1022,6 +1017,18 @@
             (sum [ :x 1 2 3 :y 4 5 6 7 :z 1 2]))))))
 
 (deftest set-matchers
+  (is (= [[:b :a]]
+        (matcher '(?:set* ?k) #{:a :b})))
+
+  (is (nil? (matcher '[#{:a :b}] [#{}])))
+  (is (nil? (matcher '[#{:a :b}] [#{:a}])))
+  (is (nil? (matcher '[#{?_ (? _)}] [#{:a}])))
+  (is (= [] (matcher '[#{?_ (? _)}] [#{:a :b}])))
+
+  (is (= [[:c]] (matcher '[(??:set :a :b) ??x] [#{} :b :a :c])))
+  (is (= [[:c]] (matcher '[(??:set= :a :b) ??x] [:b :a :c])))
+  (is (nil? (matcher '[#{:a :b} ??x] [#{} :b :a :c])))
+
   (is (= []
         (matcher '[(?:set-has 20)] [#{1 10 20}])))
 
@@ -1051,6 +1058,9 @@
   (is (nil? (matcher '(?:closed (?:set-item ?x (?:set-item 1))) #{1 2 3})))
   (is (#{2 3} (first (matcher '(?:set-item ?x (?:set-item 1)) #{1 2 3}))))
   (is (= [2] (matcher '(?:set-item ?x (?:set-item 1)) #{1 2})))
+  (is (nil? (matcher '[?x (?:set-item ?x (?:set-item 1))] [1 #{1 2}])))
+  (is (= [2] (matcher '[?x (?:set-item ?x (?:set-item 1))] [2 #{1 2}])))
+  (is (nil? (matcher '[?x (?:set-item ?x (?:set-item 1))] [3 #{1 2}])))
   (is (nil? (matcher '(?:set-item ?x (?:set-item 1)) #{1})))
   (is (some? '(?:closed (?:set-item ?x (?:open (?:set-item 1))))) #{1 2 3})
 
@@ -1092,6 +1102,13 @@
         x 1
         y 2]
     (is (= [#{1 2}] (sub [#{?x ?y}])))
+    (is (= [#{1 2}] (sub [(?:set ?x ?y)])))
+    (is (= [#{1 2}] (sub [(?:set= ?x ?y)])))
+    (is (= [#{}] (sub [(?:set)])))
+    (is (= [#{}] (sub [(?:set=)])))
+    (is (= [] (sub [(??:set)])))
+    (is (= [1 2] (sub [(??:set ?x ?y)])))
+    (is (= [1 2] (sub [(??:set= ?x ?y)])))
 
     (is (= [{1 2 2 1}] (sub [(?:closed {?x ?y ?y ?x})])))
 
@@ -1110,7 +1127,25 @@
     (is (= [{10 20 20 10 30 40}] (sub [(?:map-intersection {10 20 30 40} (?:map-kv ?v ?k))])))
 
     (is (= [{10 20 30 40}]
-          (sub [(?:map-intersection {10 ?v 30 40})])))))
+          (sub [(?:map-intersection {10 ?v 30 40})])))
+
+    (is (= [{10 20 20 10 30 40}] (sub [(?:map ?k ?v ?v ?k 30 40)])))
+    (is (= [{10 20 20 10 30 40}] (sub [(?:map= ?k ?v ?v ?k 30 40)])))
+    (is (= [{}] (sub [(?:map)])))
+    (is (= [{}] (sub [(?:map=)])))
+    (is (= [{10 nil}] (sub [(?:map ?k)])))
+    (is (= [{10 nil}] (sub [(?:map= ?k)]))))
+
+  (let [item :x
+        coll [:a :b]
+        list '(:a :b)]
+    (is (= '[(:x)] (sub [(?:item ?item)])))
+    (is (= [[:a :b :x]] (sub [(?:item ?item ?coll)])))
+    (is (= '[(:x :a :b)] (sub [(?:item ?item ?list)])))
+
+    (is (= '[:x] (sub [(??:item ?item)])))
+    (is (= [:a :b :x] (sub [(??:item ?item ?coll)])))
+    (is (= '[:x :a :b] (sub [(??:item ?item ?list)])))))
 
 (deftest more-map-matchers
   (is (= {:a 1 :b 2 10 :k}
@@ -1148,7 +1183,9 @@
   (is (= [] (matcher '(?:map-kv :a 1) {:a 1 :b 2})))
 
   (is (= [] (matcher '[(?:map)] [{}])))
+  (is (= [] (matcher '[(?:map=)] [{}])))
   (is (= [] (matcher '[(?:map)] [{:a 1}])))
+  (is (= [] (matcher '[(?:map=)] [{:a 1}])))
   (is (= [] (matcher '[(?:closed (?:map))] [{}])))
   (is (nil? (matcher '[(?:closed (?:map))] [{:a 1}])))
 
@@ -1192,5 +1229,31 @@
                                       ?b 2}))))))
 
   (is (= [] (matcher '[(??:map :a 1)] [:a 1])))
+  (is (= [] (matcher '[(??:map= :a 1)] [:a 1])))
   (is (nil? (matcher '[(??:map ?a 1 ?b 1)] [:a 1 :b 1 :c])))
-  (is (= [:a :b] (matcher '[(??:map ?a 1 ?b 1)] [:a 1 :b 1 :c 1]))))
+  (is (= [:a :b] (matcher '[(??:map ?a 1 ?b 1)] [:a 1 :b 1 :c 1])))
+
+  (is (= [] (matcher '[(??:map :a)] [:a 1])))
+  (is (= [] (matcher '[(??:map :a ?_)] [:a 1])))
+  (is (= [] (matcher '[(??:map= :a ?_)] [:a 1])))
+  (is (= [] (matcher '[(??:map= :a)] [:a 1])))
+
+  (is (nil? (matcher '[(??:map :a)] [:a])))
+  (is (nil? (matcher '[(??:map :a ?_)] [:a])))
+  (is (nil? (matcher '[(??:map= :a ?_)] [:a])))
+  (is (nil? (matcher '[(??:map= :a)] [:a]))))
+
+(deftest test-item
+  (is (= '[2 (:a :b 1 :c)] (matcher '(?:item (? i = 2) (? other seq?)) '(:a :b 1 2 :c))))
+  (is (= '[1 [:a :b 2 :c]] (matcher '(?:item (? i int?) (? other vector?)) '[:a :b 1 2 :c])))
+  (is (= '[1 [:a :b 2 :c]] (matcher '[(??:item (? i int?) ?other)] '[:a :b 1 2 :c])))
+
+  (is (= '[2] (matcher '(?:item (? i = 2)) '(:a :b 1 2 :c))))
+  (is (= '[1] (matcher '(?:item (? i int?)) '[:a :b 1 2 :c])))
+  (is (= '[1] (matcher '[(??:item (? i int?))] '[:a :b 1 2 :c])))
+
+  (is (= '[2] (matcher '[?i (?:item (? i))] '[2 (:a :b 1 2 :c)])))
+  (is (nil? (matcher '[?i (?:item (? i int?) ?x)] '[3 [:a :b 1 2 :c]])))
+
+  (is (= [1 [:a :b 2 :c]] (matcher '[?i (??:item (? i int?) ?x)] '[1 :a :b 1 2 :c])))
+  (is (nil? (matcher '[?i (??:item (? i int?) ?x)] '[3 :a :b 1 2 :c]))))
