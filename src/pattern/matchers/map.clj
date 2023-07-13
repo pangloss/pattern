@@ -20,8 +20,8 @@
     (vary-meta
       (compile-pattern*
         (list* '&
-          map?
-          (fn check-map-intersection [x] (= map-literal (select-keys x map-keys)))
+          '(? _ map?)
+          (list '? '_ (fn check-map-intersection [x] (= map-literal (select-keys x map-keys))))
           (when remainder
             [(list '?:chain '?_ (fn dissoc-known [x] (apply dissoc x map-keys))
                remainder)]))
@@ -64,8 +64,8 @@
         (if patterns
           patterns
           (if closed?
-            (list '?:= {})
-            map?)))
+            '(?:= {})
+            '(? _ map?))))
       comp-env)))
 
 (defn match-map
