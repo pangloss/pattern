@@ -1257,3 +1257,31 @@
 
   (is (= [1 [:a :b 2 :c]] (matcher '[?i (??:item (? i int?) ?x)] '[1 :a :b 1 2 :c])))
   (is (nil? (matcher '[?i (??:item (? i int?) ?x)] '[3 :a :b 1 2 :c]))))
+
+
+(deftest arbitrary-structures-match-themselves
+  (is (= ()
+        (matcher
+          [:a 'b {1 2 3 4} #{5 {[6 7] inc}}]
+          [:a 'b {1 2 3 4} #{5 {[6 7] inc}}])))
+
+  (is (= '(7)
+        (matcher
+          [:a 'b {1 2 3 4} #{5 {[6 '?a] inc}}]
+          [:a 'b {1 2 3 4} #{5 {[6 7]   inc}}])))
+
+  (is (nil?
+        (matcher
+          [:a 'b {1 2 3 4} #{5 {[6 7] inc}}]
+          [:a 'b {1 2 3 4} #{5 {[6 7] identity}}])))
+
+  (is (= ()
+        (matcher
+          [:a 'b {1 2 3 4}     #{5 {[6 7] inc}}]
+          [:a 'b {1 2 3 4 5 6} #{5 {[6 7] inc 7 8} 9 10}]))
+    "maps and sets are open!")
+
+  (is (nil?
+        (matcher
+          [:a 'b {1 2 3 4 5 6} #{5 {[6 7] inc 7 8} 9 10}]
+          [:a 'b {1 2 3 4}     #{5 {[6 7] inc}}]))))

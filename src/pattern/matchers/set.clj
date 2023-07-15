@@ -34,8 +34,8 @@
   (vary-meta
     (compile-pattern*
       (list* '&
-        set?
-        (fn check-intersection [x] (= set-literal (set/intersection set-literal x)))
+        '(? _ set?)
+        (list '? '_ (fn check-intersection [x] (= set-literal (set/intersection set-literal x))))
         (when remainder
           [(list '?:chain '?_ (fn remove-known [x] (set/difference x set-literal))
              remainder)]))
@@ -81,7 +81,7 @@
 (defn match-set-has
   "Create a ?:set-has matcher than can match an item in a set."
   [[_ item] comp-env]
-  (compile-pattern* (list '?:chain set? seq (list '??_ item '??_)) comp-env))
+  (compile-pattern* (list '?:chain '(? _ set?) seq (list '??_ item '??_)) comp-env))
 
 
 (defn match-*set
