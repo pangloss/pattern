@@ -51,8 +51,8 @@
   (atom
     (into #{}
       (concat
-        '[fn* fn comp some-fn every-pred partial]
-        `[fn comp some-fn every-pred partial]))))
+        '[fn* fn comp some-fn every-pred partial complement]
+        `[fn comp some-fn every-pred partial complement]))))
 
 (defn matcher-type-for-dispatch
   "The same as matcher-type, but with aliases resolved."
