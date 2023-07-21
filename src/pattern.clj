@@ -20,7 +20,8 @@
 (import-vars (pattern.match.core
               matcher
               compile-pattern
-              pattern-names)
+              pattern-names
+              match?)
              (pattern.util
               listy?)
              (pattern.substitute
