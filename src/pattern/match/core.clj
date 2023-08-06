@@ -48,11 +48,16 @@
 (def ^:dynamic enable-restart-pattern? #{})
 
 (def resolver-eval-whitelist
-  (atom
-    (into #{}
-      (concat
-        '[fn* fn comp some-fn every-pred partial complement]
-        `[fn comp some-fn every-pred partial complement]))))
+  "If the first symbol in the form in a matcher predicate can be resolved to a
+  var in this list, then that form will be eval'd.
+
+  For example: (? x (every-pred float? pos?)) will eval the predicate by default
+  because #'every-pred is in this list by default.
+
+  A special case is 'fn* which can't be resolved but may be eval'd, so it is
+  present as a symbol here."
+  (atom #{#'fn #'comp #'some-fn #'every-pred #'partial #'complement
+          'fn*}))
 
 (defn matcher-type-for-dispatch
   "The same as matcher-type, but with aliases resolved."
@@ -272,7 +277,7 @@
   (let [f (cond (symbol? form) (resolve form)
                 (listy? form)
                 (cond
-                  (@resolver-eval-whitelist (first form))
+                  (@resolver-eval-whitelist (or (resolve (first form)) (first form)))
                   (let [f (eval form)]
                     (when (ifn? f) f))
                   (= 2 (count form))
