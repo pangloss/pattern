@@ -1285,3 +1285,24 @@
         (matcher
           [:a 'b {1 2 3 4 5 6} #{5 {[6 7] inc 7 8} 9 10}]
           [:a 'b {1 2 3 4}     #{5 {[6 7] inc}}]))))
+
+(deftest maybe-item
+  (is (= '(x [a b c d])
+        (matcher '(?:maybe-item (& x ?x) ?etc)
+          '[a b c x d])))
+
+  (is (= {:x nil :y '[a b c d]}
+        ((compile-pattern '(?:maybe-item (& b ?x) (& ?y [a b c d])))
+         '[a b c d])))
+
+  (is (= '{:x b :y [a c d]}
+        ((compile-pattern '(?:maybe-item (& b ?x) (& ?y [a c d])))
+         '[a b c d])))
+
+  (is (= '{:x a}
+        ((compile-pattern '(?:maybe-item (& a ?x)))
+         '[a b c d])))
+
+  (is (= '{:x nil}
+        ((compile-pattern '(?:maybe-item (& x ?x)))
+         '[a b c d]))))

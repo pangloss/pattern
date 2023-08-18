@@ -104,6 +104,8 @@
   [[t item remainder :as pattern] comp-env]
   (let [item-matcher (compile-pattern* item comp-env)
         literal (:literal (meta item-matcher))
+        maybe? ('#{?:maybe-set-item ?:maybe-item ??:maybe-item} t)
+        t ('{?:maybe-item ?:item ??:maybe-item ??:item ?:maybe-set-item ?:set-item} t)
         no-check-set? (or (#{'?:item '??:item} t) (= false (:check-set? comp-env)))
         closed? (:closed? comp-env)
         item-var (var-name item)
@@ -135,39 +137,41 @@
         (fn set-matcher [data dictionary ^Env env]
           (if (seq data)
             (letfn [(set-item-matcher [before after dictionary]
-                      (let [datum (if-let [bound (when item-var (get dictionary item-var))]
+                      (let [found (if-let [bound (when item-var (get dictionary item-var))]
                                     (find-item after (:value bound) ::not-found)
                                     (first after))]
-                        (if (= ::not-found datum)
+                        (if (and (= ::not-found found) (not maybe?))
                           (on-failure :not-found pattern dictionary env 1 (extract data)
                             (:value (get dictionary item-var)) :retry retry)
-                          (let [after (remove-item after datum)]
-                            (if-let [result
-                                     (item-matcher
-                                       [datum]
-                                       dictionary
-                                       (assoc env :succeed
-                                         (fn match-set-succeed [new-dictionary n]
-                                           (if remainder-matcher
-                                             (let [remaining-set (recombine data after before)]
-                                               (remainder-matcher [remaining-set] new-dictionary
-                                                 (if flat?
-                                                   (assoc env :succeed
-                                                     (fn flat-succeed [new-dictionary n]
-                                                       ((.succeed env) new-dictionary
-                                                        (count (extract data)))))
-                                                   env)))
-                                             (if (and closed? (or (seq before) (seq after)))
-                                               (on-failure :closed pattern new-dictionary env 1
-                                                 (extract data) datum :retry retry)
-                                               ((.succeed env) new-dictionary
-                                                (if flat? (count (extract data)) 1)))))))]
-                              result
-                              (retry (conj before datum) after))))))
+                          (let [datum (if (= ::not-found found) nil found)
+                                after (remove-item after found)
+                                succeed (fn match-set-succeed [new-dictionary n]
+                                          (if remainder-matcher
+                                            (let [remaining-set (recombine data after before)]
+                                              (remainder-matcher [remaining-set] new-dictionary
+                                                (if flat?
+                                                  (assoc env :succeed
+                                                    (fn flat-succeed [new-dictionary n]
+                                                      ((.succeed env) new-dictionary
+                                                       (count (extract data)))))
+                                                  env)))
+                                            (if (and closed? (or (seq before) (seq after)))
+                                              (on-failure :closed pattern new-dictionary env 1
+                                                (extract data) datum :retry retry)
+                                              ((.succeed env) new-dictionary
+                                               (if flat? (count (extract data)) 1)))))]
+                            (if (= ::not-found found)
+                              (succeed dictionary 0)
+                              (if-let [result (item-matcher [datum] dictionary (assoc env :succeed succeed))]
+                                result
+                                (retry (if (= ::not-found found) before (conj before found)) after)))))))
                     (retry [scanned-set remaining-set]
-                      (if (seq remaining-set)
-                        (bouncing (set-item-matcher scanned-set remaining-set dictionary))
-                        (on-failure :mismatch pattern dictionary env 1 data remaining-set :retry retry)))]
+                      (cond (seq remaining-set)
+                            (bouncing (set-item-matcher scanned-set remaining-set dictionary))
+                            maybe?
+                            (bouncing (set-item-matcher scanned-set [::not-found] dictionary))
+                            :else
+                            (on-failure :mismatch pattern dictionary env 1 data remaining-set :retry retry)))]
               (let [the-set (extract data)]
                 (if (or (set? the-set) no-check-set?)
                   (trampoline retry [] the-set)
@@ -175,7 +179,9 @@
             (on-failure :missing pattern dictionary env 0 data nil)))
         (merge (merge-meta (map meta [item-matcher remainder-matcher]))
           {;;:list-length list-length
-           :length (if flat? (var-len 1) (len 1))
+           :length (cond flat? (var-len 1)
+                         maybe? (var-len 0)
+                         :else (len 1))
            `spliceable-pattern (fn [_] `(~'?:1 ~@pattern))})))))
 
 (register-matcher '?:open #'match-open)
@@ -184,6 +190,6 @@
 (register-matcher ':set #'match-set-literal) ;; register handler for set literal
 (register-matcher '?:set #'match-set {:aliases '[??:set ?:set= ??:set=]})
 (register-matcher '?:set-has #'match-set-has)
-(register-matcher '?:set-item #'match-set-item {:aliases '[?:item ??:item]})
+(register-matcher '?:set-item #'match-set-item {:aliases '[?:item ??:item ?:maybe-item ??:maybe-item]})
 (register-matcher '?:set-intersection #'match-set-intersection)
 (register-matcher '?:*set #'match-*set {:aliases ['?:set*]})
