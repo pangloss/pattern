@@ -105,7 +105,7 @@
   (let [item-matcher (compile-pattern* item comp-env)
         literal (:literal (meta item-matcher))
         maybe? ('#{?:maybe-set-item ?:maybe-item ??:maybe-item} t)
-        t ('{?:maybe-item ?:item ??:maybe-item ??:item ?:maybe-set-item ?:set-item} t)
+        t ('{?:maybe-item ?:item ??:maybe-item ??:item ?:maybe-set-item ?:set-item} t t)
         no-check-set? (or (#{'?:item '??:item} t) (= false (:check-set? comp-env)))
         closed? (:closed? comp-env)
         item-var (var-name item)
