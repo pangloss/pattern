@@ -395,7 +395,7 @@
                       `(list (assoc (first ~remainder) (first ~k) (first ~v)))
                       `(list {(first ~k) (first ~v)})))
 
-                  (rule '((? t #{?:maybe-kv ?:maybe-key}) ?->k ?->v (?:? ?->remainder))
+                  (rule '((? t #{?:maybe-key}) ?->k ?->v (?:? ?->remainder))
                     `(list
                        (let [k# (first ~k)
                              v# (first ~v)

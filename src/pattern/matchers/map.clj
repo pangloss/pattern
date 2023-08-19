@@ -105,8 +105,7 @@
 (defn- match-map-kv
   "
   ?:map-kv will match if the key is present and matches and the value is also present and matches.
-  ?:maybe-key will match also if the key is not present, but if the key is present the value must match.
-  ?:maybe-kv will match also if the key and value are present and match, but will still match if they can't match for any reason."
+  ?:maybe-key will match also if the key is not present, but if the key is present the value must match."
   [[t key-pattern value-pattern remainder :as pattern] comp-env]
   (let [key-matcher (compile-pattern* key-pattern comp-env)
         key-var (var-name key-pattern)
@@ -114,8 +113,7 @@
         value-matcher (compile-pattern* value-pattern comp-env)
         literal-value (:literal (meta value-matcher))
         literal (when (and literal-key literal-value) (into literal-key literal-value))
-        maybe-val? (= '?:maybe-kv t)
-        maybe-key? ('#{?:maybe-key ?:maybe-kv} t)
+        maybe-key? (= '?:maybe-key t)
         closed? (:closed? comp-env)
         remainder-matcher (when remainder (compile-pattern* remainder comp-env))]
     (if (and literal closed? (or (not remainder) (:literal (meta remainder-matcher))))
@@ -142,10 +140,8 @@
                            (value-matcher [(val kv)] dictionary
                              (assoc env :succeed on-value-match))]
                     result
-                    (if maybe-val?
-                      (on-value-match dictionary nil)
-                      (on-failure :no-val-match pattern dictionary env 1
-                        the-map (or (first literal-key) (:value (get dictionary key-var))))))))
+                    (on-failure :no-val-match pattern dictionary env 1
+                      the-map (or (first literal-key) (:value (get dictionary key-var)))))))
 
               (scan-lookup-step [kv before after dictionary ^Env env matcher1 matcher2 retry key-has-matched?]
                 (let [on-val-match
@@ -166,7 +162,7 @@
                                           (matcher2 kv new-dictionary (assoc env :succeed on-val-match)))))]
                       result
                       (retry (conj before kv) (dissoc after (key kv))))
-                    (if (and maybe-key? (or maybe-val? (not @key-has-matched?)))
+                    (if (and maybe-key? (not @key-has-matched?))
                       (on-val-match dictionary nil) ;; skip over matching this key and val and continue.
                       (on-failure :not-found pattern dictionary env 1 (into after before) nil :retry retry)))))
 
@@ -298,7 +294,7 @@
                     comp-env))
 
 
-(register-matcher '?:map-kv #'match-map-kv {:aliases '[?:maybe-key ?:maybe-kv]})
+(register-matcher '?:map-kv #'match-map-kv {:aliases '[?:maybe-key]})
 (register-matcher '?:map-intersection #'match-map-intersection)
 (defgen= matcher-type [(every-pred map? (complement record?))] :map)
 (register-matcher :map #'match-map-literal)
