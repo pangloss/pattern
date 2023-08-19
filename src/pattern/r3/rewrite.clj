@@ -395,12 +395,14 @@
                       `(list (assoc (first ~remainder) (first ~k) (first ~v)))
                       `(list {(first ~k) (first ~v)})))
 
-                  (rule '((? _ #{?:maybe-kv ?:maybe-key}) ?->k ?->v (?:? ?->remainder))
+                  (rule '((? t #{?:maybe-kv ?:maybe-key}) ?->k ?->v (?:? ?->remainder))
                     `(list
                        (let [k# (first ~k)
+                             v# (first ~v)
                              r# ~(if remainder `(first ~remainder) {})]
-                         (if (some? k#)
-                           (assoc r# k# (first ~v))
+                         (if (and (some? k#)
+                               (or ~(not= t '?:maybe-key) (some? v#)))
+                           (assoc r# k# v#)
                            r#))))
 
                   ;; if
