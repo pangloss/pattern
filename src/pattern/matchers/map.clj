@@ -150,22 +150,22 @@
               (scan-lookup-step [kv before after dictionary ^Env env matcher1 matcher2 retry key-has-matched?]
                 (let [on-val-match
                       (fn match2-succeed [new-dictionary n]
-                        (if remainder-matcher
-                          (remainder-matcher [(into after before)] new-dictionary env)
-                          (if (and closed? (or (seq before) (seq after)))
-                            (on-failure :closed pattern new-dictionary env 1
-                              (into after before) kv :retry retry)
-                            ((.succeed env) new-dictionary 1))))]
+                        (let [after (cond-> after kv (dissoc (key kv)))]
+                          (if remainder-matcher
+                            (remainder-matcher [(into after before)] new-dictionary env)
+                            (if (and closed? (or (seq before) (seq after)))
+                              (on-failure :closed pattern new-dictionary env 1
+                                (into after before) kv :retry retry)
+                              ((.succeed env) new-dictionary 1)))))]
                   (if kv
-                    (let [after (dissoc after (key kv))]
-                      ;; if val is literal match it first, otherwise always match on key first
-                      (if-let [result (matcher1 kv dictionary
-                                        (assoc env :succeed
-                                          (fn match1-succeed [new-dictionary n]
-                                            (vreset! key-has-matched? true)
-                                            (matcher2 kv new-dictionary (assoc env :succeed on-val-match)))))]
-                        result
-                        (retry (conj before kv) after)))
+                    ;; if val is literal match it first, otherwise always match on key first
+                    (if-let [result (matcher1 kv dictionary
+                                      (assoc env :succeed
+                                        (fn match1-succeed [new-dictionary n]
+                                          (vreset! key-has-matched? true)
+                                          (matcher2 kv new-dictionary (assoc env :succeed on-val-match)))))]
+                      result
+                      (retry (conj before kv) (dissoc after (key kv))))
                     (if (and maybe-key? (or maybe-val? (not @key-has-matched?)))
                       (on-val-match dictionary nil) ;; skip over matching this key and val and continue.
                       (on-failure :not-found pattern dictionary env 1 (into after before) nil :retry retry)))))
