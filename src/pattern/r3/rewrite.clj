@@ -375,10 +375,33 @@
                       `(conj (first ~remainder) (first ~item))
                       item))
 
+                  (rule '((?:literal ?:maybe-item) ?->item (?:? ?->remainder))
+                    `(list
+                       (let [r# ~(if remainder `(first ~remainder) `(list))
+                             item# (first ~item)]
+                         (if (some? item#)
+                           (conj r# (first ~item))
+                           r#))))
+
+                  (rule '((?:literal ??:maybe-item) ?->item (?:? ?->remainder))
+                    `(let [r# ~(if remainder `(first ~remainder) `(list))
+                           item# (first ~item)]
+                       (if (some? item#)
+                         (conj r# (first ~item))
+                         r#)))
+
                   (rule '((?:literal ?:map-kv) ?->k ?->v (?:? ?->remainder))
                     (if remainder
                       `(list (assoc (first ~remainder) (first ~k) (first ~v)))
                       `(list {(first ~k) (first ~v)})))
+
+                  (rule '((?:literal ?:maybe-key) ?->k ?->v (?:? ?->remainder))
+                    `(list
+                       (let [k# (first ~k)
+                             r# ~(if remainder `(first ~remainder) {})]
+                         (if (some? k#)
+                           (assoc r# k# (first ~v))
+                           r#))))
 
                   ;; if
                   (rule '((?:literal ?:if) ?pred ?->then (?:? ?->else))

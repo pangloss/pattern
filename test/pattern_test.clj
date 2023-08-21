@@ -1285,3 +1285,49 @@
         (matcher
           [:a 'b {1 2 3 4 5 6} #{5 {[6 7] inc 7 8} 9 10}]
           [:a 'b {1 2 3 4}     #{5 {[6 7] inc}}]))))
+
+(deftest maybe-item
+  (is (= '(x [a b c d])
+        (matcher '(?:maybe-item (& x ?x) ?etc)
+          '[a b c x d])))
+
+  (is (= {:x nil :y '[a b c d]}
+        ((compile-pattern '(?:maybe-item (& b ?x) (& ?y [a b c d])))
+         '[a b c d])))
+
+  (is (= '{:x b :y [a c d]}
+        ((compile-pattern '(?:maybe-item (& b ?x) (& ?y [a c d])))
+         '[a b c d])))
+
+  (is (= '{:x a}
+        ((compile-pattern '(?:maybe-item (& a ?x)))
+         '[a b c d])))
+
+  (is (= '{:x nil}
+        ((compile-pattern '(?:maybe-item (& x ?x)))
+         '[a b c d]))))
+
+(deftest maybe-key
+  (is (= '(1)
+        (matcher '(?:map-kv :a (? i int?)) '{:a 1})))
+  (testing "literal key"
+    (is (= '(1)
+          (matcher '(?:maybe-key :a (? i int?)) '{:a 1})))
+    (is (= '(nil)
+          (matcher '(?:maybe-key :b (? i int?)) '{:a 1})))
+    (is (nil?
+          (matcher '(?:maybe-key :a (? i int?)) '{:a :a}))
+      "if the key matches, the value must match")
+    (is (= '(nil)
+          (matcher '(?:maybe-key :b (? i int?)) '{}))))
+
+  (testing "pattern key"
+    (is (= '(1)
+          (matcher '(?:maybe-key (? i int?) :a) '{1 :a})))
+    (is (nil?
+          (matcher '(?:maybe-key (? i int?) :b) '{1 :a}))
+      "if the key matches, the value must match")
+    (is (= '(nil)
+          (matcher '(?:maybe-key (? i int?) :a) '{:a :a})))
+    (is (= '(nil)
+          (matcher '(?:maybe-key (? i int?) :b) '{})))))

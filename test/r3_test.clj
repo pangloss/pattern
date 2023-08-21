@@ -600,25 +600,86 @@
   (testing "with pre-insertion transformation"
     (is (= '(+ 1 2 2 3 3 4)
            (let [a [1 2 3]]
-             (sub inc (+ (?:* ?a ?<-a))))))))
+             (sub inc (+ (?:* ?a ?<-a)))))))
 
+
+  (testing "item matcher"
+    (let [s #{:a}
+          v [:a]
+          l '(:a)
+          x :x
+          n nil]
+      (testing "no remainder"
+        (is (= '(:x) (sub (?:item ?x))))
+        (is (= '(nil) (sub (?:item ?n))))
+        (is (= '(:x) (sub (?:maybe-item ?x))))
+        (is (= nil (sub (?:maybe-item ?n)))))
+
+      (testing "nil remainder"
+        (is (= '(:x) (sub (?:item ?x ?n))))
+        (is (= '(nil) (sub (?:item ?n ?n))))
+        (is (= '(:x) (sub (?:maybe-item ?x ?n))))
+        (is (= nil (sub (?:maybe-item ?n ?n)))))
+
+      (testing "set remainder"
+        (is (= #{:a :x} (sub (?:item ?x ?s))))
+        (is (= #{:a nil} (sub (?:item ?n ?s))))
+        (is (= #{:a :x} (sub (?:maybe-item ?x ?s))))
+        (is (= #{:a} (sub (?:maybe-item ?n ?s)))))
+
+      (testing "vector remainder"
+        (is (= [:a :x] (sub (?:item ?x ?v))))
+        (is (= [:a nil] (sub (?:item ?n ?v))))
+        (is (= [:a :x] (sub (?:maybe-item ?x ?v))))
+        (is (= [:a] (sub (?:maybe-item ?n ?v)))))
+
+      (testing "list remainder"
+        (is (= '(:x :a) (sub (?:item ?x ?l))))
+        (is (= '(nil :a) (sub (?:item ?n ?l))))
+        (is (= '(:x :a) (sub (?:maybe-item ?x ?l))))
+        (is (= '(:a) (sub (?:maybe-item ?n ?l)))))))
+
+  (testing "map kv matcher"
+    (let [m {:a 1}
+          x :x
+          y :y
+          n nil]
+      (testing "no remainder"
+        (is (= {:x :y}  (sub (?:map-kv ?x ?y))))
+        (is (= {nil :y} (sub (?:map-kv ?n ?y))))
+        (is (= {:x :y}  (sub (?:maybe-key ?x ?y))))
+        (is (= {}       (sub (?:maybe-key ?n ?y)))))
+
+      (testing "nil remainder"
+        (is (= {:x :y}  (sub (?:map-kv ?x ?y ?n))))
+        (is (= {nil :y} (sub (?:map-kv ?n ?y ?n))))
+        (is (= {:x :y}  (sub (?:maybe-key ?x ?y ?n))))
+        (is (= nil      (sub (?:maybe-key ?n ?y ?n)))))
+
+      (testing "map remainder"
+        (is (= {:a 1 :x :y}  (sub (?:map-kv ?x ?y ?m))))
+        (is (= {:a 1 nil :y} (sub (?:map-kv ?n ?y ?m))))
+        (is (= {:a 1 :x :y}  (sub (?:maybe-key ?x ?y ?m))))
+        (is (= {:a 1}        (sub (?:maybe-key ?n ?y ?m))))
+        (is (= {:a 1 :x nil} (sub (?:maybe-key ?x ?n ?m))))
+        (is (= {:a 1}        (sub (?:maybe-key ?n ?n ?m))))))))
 
 (deftest test-identity-rules
   (let [r (directed
-           (rule-list [(rule '(down ?->x))
-                       (rule '(up   ?x))
-                       (rule '(add ??x) (apply + x))]))]
+            (rule-list [(rule '(down ?->x))
+                        (rule '(up   ?x))
+                        (rule '(add ??x) (apply + x))]))]
     (is (= 6 (r '(add 1 2 3))))
     (is (= '(down 6)
-           (r '(down (add 1 2 3)))))
+          (r '(down (add 1 2 3)))))
     (is (= '(up (add 1 2 3))
-           (r '(up (add 1 2 3)))))
+          (r '(up (add 1 2 3)))))
     (is (= '(down (down 6))
-           (r '(down (down (add 1 2 3))))))
+          (r '(down (down (add 1 2 3))))))
     (is (= '(up (down (add 1 2 3)))
-           (r '(up (down (add 1 2 3))))))
+          (r '(up (down (add 1 2 3))))))
     (is (= '(down (up (add 1 2 3)))
-           (r '(down (up (add 1 2 3))))))))
+          (r '(down (up (add 1 2 3))))))))
 
 
 
