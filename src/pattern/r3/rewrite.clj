@@ -365,17 +365,17 @@
                   (rule '((? _ #{??:set ??:set=}) ??->item*)
                     `(apply concat ~item*))
 
-                  (rule '((? _ #{?:item}) ?->item (?:? ?->remainder))
+                  (rule '((?:literal ?:item) ?->item (?:? ?->remainder))
                     (if remainder
                       `(list (conj (first ~remainder) (first ~item)))
                       `(list ~item)))
 
-                  (rule '((? _ #{??:item}) ?->item (?:? ?->remainder))
+                  (rule '((?:literal ??:item) ?->item (?:? ?->remainder))
                     (if remainder
                       `(conj (first ~remainder) (first ~item))
                       item))
 
-                  (rule '((? _ #{?:maybe-item}) ?->item (?:? ?->remainder))
+                  (rule '((?:literal ?:maybe-item) ?->item (?:? ?->remainder))
                     `(list
                        (let [r# ~(if remainder `(first ~remainder) `(list))
                              item# (first ~item)]
@@ -383,7 +383,7 @@
                            (conj r# (first ~item))
                            r#))))
 
-                  (rule '((? _ #{??:maybe-item}) ?->item (?:? ?->remainder))
+                  (rule '((?:literal ??:maybe-item) ?->item (?:? ?->remainder))
                     `(let [r# ~(if remainder `(first ~remainder) `(list))
                            item# (first ~item)]
                        (if (some? item#)
@@ -395,14 +395,12 @@
                       `(list (assoc (first ~remainder) (first ~k) (first ~v)))
                       `(list {(first ~k) (first ~v)})))
 
-                  (rule '((? t #{?:maybe-key}) ?->k ?->v (?:? ?->remainder))
+                  (rule '((?:literal ?:maybe-key) ?->k ?->v (?:? ?->remainder))
                     `(list
                        (let [k# (first ~k)
-                             v# (first ~v)
                              r# ~(if remainder `(first ~remainder) {})]
-                         (if (and (some? k#)
-                               (or ~(not= t '?:maybe-key) (some? v#)))
-                           (assoc r# k# v#)
+                         (if (some? k#)
+                           (assoc r# k# (first ~v))
                            r#))))
 
                   ;; if
