@@ -661,7 +661,7 @@
         (is (= {:a 1 nil :y} (sub (?:map-kv ?n ?y ?m))))
         (is (= {:a 1 :x :y}  (sub (?:maybe-key ?x ?y ?m))))
         (is (= {:a 1}        (sub (?:maybe-key ?n ?y ?m))))
-        (is (= {:a 1 :x nil} (sub (?:maybe-key ?x ?n ?m))))
+        (is (= {:a 1}        (sub (?:maybe-key ?x ?n ?m))))
         (is (= {:a 1}        (sub (?:maybe-key ?n ?n ?m))))))))
 
 (deftest test-identity-rules

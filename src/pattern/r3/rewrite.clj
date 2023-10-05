@@ -398,9 +398,10 @@
                   (rule '((?:literal ?:maybe-key) ?->k ?->v (?:? ?->remainder))
                     `(list
                        (let [k# (first ~k)
+                             v# (first ~v)
                              r# ~(if remainder `(first ~remainder) {})]
-                         (if (some? k#)
-                           (assoc r# k# (first ~v))
+                         (if (and (some? k#) (some? v#))
+                           (assoc r# k# v#)
                            r#))))
 
                   ;; if
