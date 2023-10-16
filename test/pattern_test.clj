@@ -756,6 +756,10 @@
         ((compile-pattern '(?:filter int? ?ints))
          [2 :a 1 2 'y 3 4 'x])))
 
+  (is (= {:ints []}
+        ((compile-pattern '(?:filter neg-int? ?ints))
+         [2 :a 1 2 'y 3 4 'x])))
+
   (is (= {:x 2, :ints [1 2 3 4]}
         ((compile-pattern '[?x (??:filter int? ?ints)])
          [2 :a 1 2 'y 3 4 'x])))

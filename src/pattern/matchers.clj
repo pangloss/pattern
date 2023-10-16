@@ -755,12 +755,10 @@
               (let [binding ((.lookup env) name dictionary env)
                     bound-value (:value binding)
                     matching (into [] (filter pred) datum)]
-                (if (seq matching)
-                  (result-matcher [matching] dictionary
-                    (assoc env :succeed
-                      (fn filter-succeed [dict n]
-                        ((.succeed env) dict match-len))))
-                  (on-failure :not-found pred-name dictionary env match-len data datum)))
+                (result-matcher [matching] dictionary
+                  (assoc env :succeed
+                    (fn filter-succeed [dict n]
+                      ((.succeed env) dict match-len)))))
               (on-failure :not-sequential name dictionary env 1 data datum)))
           (on-failure :missing name dictionary env 0 data nil)))
       (cond-> (meta result-matcher)
