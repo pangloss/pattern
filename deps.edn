@@ -1,12 +1,12 @@
 {:paths ["src" "resources"]
- :deps {org.clojure/clojure {:mvn/version "1.11.1"}
+ :deps {org.clojure/clojure {:mvn/version "1.11.2"}
         pangloss/pure-conditioning {:git/url "https://github.com/pangloss/pure-conditioning"
                                     :git/sha "2d84722845c9a3835fb50f6144049a530ac93686"}
         pangloss/fermor {:git/url "https://github.com/pangloss/fermor"
                          :git/sha "a297e2a8a0411f123142966e6ddc420c9b6c7932"}
         pangloss/genera {:git/url "https://github.com/pangloss/genera"
                          :git/sha "71c577971b1d23404171555d87613c41ace6bf4a"}
-        uncomplicate/fluokitten {:mvn/version "0.9.1"}
+        uncomplicate/fluokitten {:mvn/version "0.9.2"}
         potemkin/potemkin {:mvn/version "0.4.7"}}
  :aliases
  {:test {:extra-paths ["test"]
@@ -15,8 +15,8 @@
   :dev {:extra-paths ["dev"]
         :extra-deps {com.github.jpmonettas/flow-storm-debugger
                      {:git/url "https://github.com/jpmonettas/flow-storm-debugger"
-                      :git/sha "63a713e094ada5fe9bddd2d0a0cd6f39d091d4a2"}
-                     com.clojure-goes-fast/clj-async-profiler {:mvn/version "1.1.1"}}
+                      :git/sha "9e33b829ae5d0214543a940620507848689fa798"}
+                     com.clojure-goes-fast/clj-async-profiler {:mvn/version "1.2.0"}}
         :jvm-opts ["-XX:-OmitStackTraceInFastThrow"
                    ;; for async-profiler:
                    "-Djdk.attach.allowAttachSelf" "-XX:+UnlockDiagnosticVMOptions" "-XX:+DebugNonSafepoints"]}
