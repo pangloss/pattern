@@ -247,6 +247,28 @@
     (coll? form) (outer (with-meta (into (empty form) (map inner form)) (meta form)))
     :else (outer form)))
 
+(defn walk-unquoted
+  "Traverses form, an arbitrary data structure.  inner and outer are
+  functions.  Applies inner to each element of form, building up a
+  data structure of the same type, then applies outer to the result.
+  Recognizes all Clojure data structures. Consumes seqs as with doall.
+
+  Unlike clojure.walk/walk, does not traverse into quoted forms."
+  [inner outer form]
+  (if (and (listy? form) (= (first form) 'quote))
+    (outer form)
+    (walk-with-meta inner outer form)))
+
+(defn prewalk-unquoted
+  "Like postwalk, but does pre-order traversal."
+  [f form]
+  (walk-unquoted (partial prewalk-unquoted f) identity (f form)))
+
+(defn macroexpand-all
+  "Recursively performs all possible macroexpansions in form."
+  [form]
+  (prewalk-unquoted (fn [x] (if (seq? x) (macroexpand x) x)) form))
+
 (defmacro time->>
   "A simple macro for timing a sequence of operations to see where the time is going."
   [data & forms]
