@@ -100,9 +100,11 @@
                 [(symbol (name arg)) `(~'%env ~(keyword arg))])
         env-args))))
 
+(def ^:private success-calls
+  (into #{} ['(success) 'success:env `(success) `success:env]))
+
 (defn- may-call-success0? [body]
-  (boolean (some #{'(success) 'success:env
-                   `(success) `success:env}
+  (boolean (some success-calls
              (tree-seq list? seq body))))
 
 (defn rule-fn-args [args env-args]
