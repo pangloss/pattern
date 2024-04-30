@@ -10,6 +10,7 @@
             pattern.r3.rewrite
             pattern.matchers.set
             pattern.matchers.map
+            pattern.matchers.nth
             pattern.nanopass.dialect
             pattern.nanopass.pass
             pattern.match.predicator
