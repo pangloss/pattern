@@ -502,7 +502,7 @@
 
 (def qsub*
   (name-rule :qsub
-             (in-order [scheme-style
+             (in-order [#_scheme-style
                         expand-pattern
                         remove-symbol-namespaces
                         unwrap-list
@@ -513,7 +513,7 @@
 (def qsub+
   "Same as qsub* but keeps symbol namespaces"
   (name-rule :qsub+
-             (in-order [scheme-style
+             (in-order [#_scheme-style
                         expand-pattern
                         unwrap-list
                         simplify-expr

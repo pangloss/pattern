@@ -185,7 +185,7 @@
   ([pattern]
    (let [args (pattern-args pattern)
          matches (gensym 'matches)
-         p (@spliced (@scheme-style pattern))]
+         p (@spliced pattern)]
      `(let [p# ~p
             [fn-args# handler# dispatcher#]
             (rule-fn-body ~args ~(:env-args (meta pattern)) (sub ~(second pattern)))]
@@ -200,7 +200,7 @@
            :handler-fn handler#}))))
   ([pattern handler-body]
    (let [args (pattern-args pattern)]
-     `(let [p# ~(@spliced (@scheme-style pattern))
+     `(let [p# ~(@spliced pattern)
             [fn-args# handler# dispatcher#]
             (rule-fn-body ~args ~(:env-args (meta pattern)) ~handler-body)]
         (make-rule p#
@@ -218,7 +218,7 @@
          name (if (symbol? name) (list 'quote name) name)
          args (pattern-args pattern)]
      `(name-rule ~name
-        (let [p# ~(@spliced (@scheme-style pattern))
+        (let [p# ~(@spliced pattern)
               [fn-args# handler# dispatcher#]
               (rule-fn-body ~fname ~args ~(:env-args (meta pattern)) ~handler-body)]
           (make-rule p#
@@ -290,7 +290,7 @@
   `(let [raw-pattern# ~pattern
          args# (when ~(boolean pattern) (pattern-args raw-pattern#))
          p# ~(when pattern
-               (@spliced (@scheme-style pattern)))
+               (@spliced pattern))
          r# ~rule
          args# (or args# (get-in (meta r#) [:rule :pattern-args]))
          env-args# '~(:env-args (meta pattern))

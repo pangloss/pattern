@@ -951,11 +951,18 @@
            '(+ bound 1)
            {:a 'hi :x 'env})))))
 
+#_
 (deftest scheme-style-repeats
   (is (= 'matched
          ((rule '[1 2 ... n]
                 'matched)
           '[1 2 2 2 2 2 n]))))
+
+(deftest pattern-style-repeats
+  (is (= 'matched
+        ((rule '[1 (?:* 2) n]
+           'matched)
+         '[1 2 2 2 2 2 n]))))
 
 (deftest optional
   (is (= '(a b)
