@@ -2,7 +2,7 @@
  :deps {org.clojure/clojure {:mvn/version "1.11.3"}
         com.github.pangloss/pure-conditioning {:mvn/version "1.0.35"}
         com.github.pangloss/fermor {:mvn/version "1.0.199"}
-        com.github.pangloss/genera {:mvn/version "1.0.24"}
+        com.github.pangloss/genera {:mvn/version "1.0.28"}
         uncomplicate/fluokitten {:mvn/version "0.10.0"}
         potemkin/potemkin {:mvn/version "0.4.7"}}
  :aliases

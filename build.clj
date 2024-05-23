@@ -27,6 +27,9 @@
                    [:distribution "repo"]]]]})
   (b/copy-dir {:src-dirs ["src" "resources"]
                :target-dir class-dir})
+  (b/compile-clj {:basis @basis
+                  :src-dirs ["src"]
+                  :class-dir class-dir})
   (b/jar {:class-dir class-dir
           :jar-file jar-file})
   {:jar-file jar-file :version version})
