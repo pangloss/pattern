@@ -150,15 +150,15 @@ There are a lot more matchers and the list is gradually expanding with ever more
 
 Each matcher in the list has a matcher implementation function with detailed documentation in the pattern.matchers namespace.
 
-(better docs coming eventually!)
+(better docs coming eventually?!)
 
 | Matcher           | Implementation     | Notes                                                                    |
 |-------------------|--------------------|--------------------------------------------------------------------------|
 | `?`               | match-element      | Match a single element                                                   |
 | `??`              | match-segment      | Match 0 or more elements                                                 |
 | `??!`             |                    | Same as `??`, but greedy                                                 |
-| `?:map`           | match-map          | Match a map with specific keys                                           |
-| `?:set`           | match-*set         | Match items in a set                                                     |
+| `{}` `?:map`      | match-map          | Match a map with specific keys                                           |
+| `#{}` `?:set`     | match-*set         | Match items in a set                                                     |
 | `?:*map`/`?:map*` | match-*map         | Match each key-value pair in a map                                       |
 | `?:+map`/`?:map+` | match-+map         | Like `?:*map`, but require at least one match                            |
 | `?:as`            | match-as           | Capture an entire sub pattern if the contained pattern matches           |
@@ -167,6 +167,8 @@ Each matcher in the list has a matcher implementation function with detailed doc
 | `?:*`             | match-many         | Match any number of instances                                            |
 | `?:+`             | match-at-least-one | Match at least one instance                                              |
 | `?:n`             | match-n-times      | Match the given sequence exactly n times.                                |
+| `?:nth`           |                    |                                                                          |
+| `?:item`          |                    | Match the first matching item from a sequence                            |
 | `?:chain`         | match-chain        | Alternate between patterns and functions on the matched data             |
 | `??:chain`        |                    | Same as `?:chain` but capture sequence data                              |
 | `\|`              | match-or           | Match alternative patterns on the same data                              |
