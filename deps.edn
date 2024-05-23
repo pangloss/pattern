@@ -1,11 +1,8 @@
 {:paths ["src" "resources"]
  :deps {org.clojure/clojure {:mvn/version "1.11.3"}
-        pangloss/pure-conditioning {:git/url "https://github.com/pangloss/pure-conditioning"
-                                    :git/sha "2d84722845c9a3835fb50f6144049a530ac93686"}
-        pangloss/fermor {:git/url "https://github.com/pangloss/fermor"
-                         :git/sha "a297e2a8a0411f123142966e6ddc420c9b6c7932"}
-        pangloss/genera {:git/url "https://github.com/pangloss/genera"
-                         :git/sha "71c577971b1d23404171555d87613c41ace6bf4a"}
+        com.github.pangloss/pure-conditioning {:mvn/version "1.0.35"}
+        com.github.pangloss/fermor {:mvn/version "1.0.199"}
+        com.github.pangloss/genera {:mvn/version "1.0.24"}
         uncomplicate/fluokitten {:mvn/version "0.10.0"}
         potemkin/potemkin {:mvn/version "0.4.7"}}
  :aliases
@@ -26,15 +23,11 @@
                  :git/sha "7284cda41fb9edc0f3bc6b6185cfb7138fc8a023"}}
    :main-opts ["-m" "cognitect.test-runner"
                "-d" "test"]}
-  :jar {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.1.303"}}
-        :exec-fn hf.depstar/jar
-        :exec-args {:jar "pattern.jar" :sync-pom true}}
-  :install {:replace-deps {slipset/deps-deploy {:mvn/version "0.2.0"}}
-            :exec-fn deps-deploy.deps-deploy/deploy
-            :exec-args {:installer :local :artifact "pattern.jar"}}
-  :deploy {:replace-deps {slipset/deps-deploy {:mvn/version "0.2.0"}}
-           :exec-fn deps-deploy.deps-deploy/deploy
-           :exec-args {:installer :remote :artifact "pattern.jar"}}
   :dev/dw {:extra-paths ["dev"]
            :extra-deps {pangloss/genera {:local/root "../genera"}
-                        pangloss/fermor {:local/root "../fermor"}}}}}
+                        pangloss/fermor {:local/root "../fermor"}}}
+  :build
+  ;; build.clj tool.
+  {:deps {io.github.clojure/tools.build {:git/tag "v0.10.3" :git/sha "15ead66"}
+          slipset/deps-deploy {:mvn/version "0.2.0"}}
+   :ns-default build}}}
