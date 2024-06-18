@@ -53,7 +53,11 @@
                        (list '?:= literal-set)
                        (list '?:set-intersection literal-set))))
         patterns (when (seq patterns)
-                   (reduce (fn [m p] (list '?:set-item p m)) nil (reverse patterns)))]
+                   (reduce (fn [m p]
+                             (if m
+                               (list '?:set-item p m)
+                               (list '?:set-item p)))
+                     nil (reverse patterns)))]
     (compile-pattern*
       (if literals
         (if (seq patterns)
@@ -107,7 +111,7 @@
         maybe? ('#{?:maybe-set-item ?:maybe-item ??:maybe-item} t)
         t ('{?:maybe-item ?:item ??:maybe-item ??:item ?:maybe-set-item ?:set-item} t t)
         no-check-set? (or (#{'?:item '??:item} t) (= false (:check-set? comp-env)))
-        closed? (:closed? comp-env)
+        closed? (or (:closed? comp-env) (= [t item nil] pattern)) ;; close set if final arg is nil
         item-var (var-name item)
         remainder-matcher (when remainder (compile-pattern* remainder comp-env))
         remove-item (if no-check-set?
