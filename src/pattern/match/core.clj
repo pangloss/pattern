@@ -437,8 +437,9 @@
                       :force (fn force
                                ([] ((.succeed env) dictionary 1))
                                ([binding] (force binding 1))
-                               ([binding match-length] ((.succeed env) ((.store env) (var-name pattern) binding '? dictionary env) match-length)))
-                      :ignore (fn [] ((.succeed env) dictionary 0))
+                               ([binding match-length]
+                                ((.succeed env) ((.store env) (var-name pattern) binding nil '? dictionary env) match-length)))
+                      :ignore (fn [_] ((.succeed env) dictionary 1))
                       :fail false
                       more-restarts)
                (default false))))
