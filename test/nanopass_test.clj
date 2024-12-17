@@ -6,8 +6,7 @@
              [pattern.r3.combinators :refer [rule-simplifier directed rule-list]]
              [pattern.r3.core :refer [rule success]]
              [pattern.r3.rewrite :refer [sub]]
-             [pattern.match.core :refer [compile-pattern* matcher]]
-             [uncomplicate.fluokitten.core :as f]))
+             [pattern.match.core :refer [compile-pattern* matcher]]))
 
 (def-dialect Lssa
   (terminals [l symbol?]

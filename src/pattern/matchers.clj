@@ -28,7 +28,6 @@
   (:refer-clojure :exclude [trampoline])
   (:use pattern.match.core)
   (:require [genera :refer [trampoline trampolining bouncing defgen=]]
-            [uncomplicate.fluokitten.core :as f]
             [pattern.types :refer [spliceable-pattern]]
             [pattern.match.core :as m]
             [pattern.match.predicator :refer [var-abbr]])

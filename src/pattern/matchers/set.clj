@@ -4,7 +4,6 @@
   Because of that, they do have access to all of the features of the library."
   (:refer-clojure :exclude [trampoline])
   (:require [genera :refer [trampoline trampolining bouncing defgen=]]
-            [uncomplicate.fluokitten.core :as f]
             [pattern.types :refer [spliceable-pattern]]
             [pattern.match.core :as m :refer :all]
             [pattern.match.predicator :refer [var-abbr]]

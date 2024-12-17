@@ -3,7 +3,7 @@
   (:require [genera :refer [defgenera defgenera= defgen defgen* defgen= defmethod* defmethod!
                             trampoline trampolining bouncing]]
             [uncomplicate.fluokitten.core :as f]
-            [pattern.types :refer [->Length]]
+            [pattern.types :refer [->Length] :as t]
             [pattern.match.predicator :refer [*pattern-replace*]]
             [pattern.util :refer [listy?]]
             [pure-conditioning :as c :refer [condition restarts default manage restart-with handler-cond]]
