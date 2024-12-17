@@ -272,9 +272,6 @@ regen examples
 
 **Letrec and Ref:**
 
-(matcher '(?:letrec [A [?x ?y]] (a $A :b ?z)) '(:a [1 2] :b [1 2]))` => `[[1 2]]`
-(matcher '(?:letrec [A [?x ?y]] [$A ?z]) :b ?z) '(:a [1 2] :b [3 4]))` => `nil`
-
 59. `(matcher '(?:letrec [A [?x ?y]] (:a $A :b ?z)) '(:a [1 2] :b 2))` ;; => `(1 2 2)`
 59. `(matcher '(?:letrec [A [?x ?y]] (:a $A :b ?x)) '(:a [1 2] :b 2))` ;; => `nil`
 60. `(matcher '(?:letrec [A [?x ?y]] (:a $A :b ?y)) '(:a [1 2] :b 2))` ;; => `(1 2)`
