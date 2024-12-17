@@ -2,7 +2,7 @@
 
 Pattern lets you transform data structures in amazing ways.
 
-Start with [the intro][./INTRO.md]
+Start with [the intro](INTRO.md)
 
 The focus is on simplicity and expressivity.
 It works on immutable persistent data, greatly simplifying development and debugging of transformations.
