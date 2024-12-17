@@ -75,7 +75,7 @@ Pattern provides a rich set of matcher combinators for building complex patterns
 
 * `?:when`: Matches multiple patterns if a predicate is true. e.g., `(?:when pred? ?a ?b)`.
 
-* `?:letrec`: Defines named patterns for reuse within a pattern. e.g., `(?:letrec [A [?a ?b]] [$A ?c])`.
+* `?:letrec`: Defines named patterns for reuse within a pattern. e.g., `(?:letrec [pair [?a ?b]] $pair)`.
 
 * `?:ref`: References a named pattern defined with `?:letrec`. e.g., `$A`.
 
@@ -87,9 +87,11 @@ Pattern provides a rich set of matcher combinators for building complex patterns
 
 * `?:re-matches`, `?:re-seq`:  Match against regular expressions.
 
-* `?:set`, `?:set=`, `??:set`, `??:set=`: Match sets.  `?:set=` and `??:set=` match sets exactly.
+* `#{}`, `?:set`, `?:set=`, `??:set`, `??:set=`: Match sets.  `?:set=` and `??:set=` match sets exactly.
 
-* `?:map`, `?:map=`, `??:map`, `??:map=`: Match maps.  `?:map=` and `??:map=` match maps exactly.
+* `?:item`, `??:item`: Find the first matching item in a list. Optional second pattern is the remaining elements in the list. e.g. `(?:item ?x ?rest)`
+
+* `{}` `?:map`, `??:map`: Match maps or key value pairs.  `?:map=` and `??:map=` match maps exactly.
 
 * `?:nth`, `??:nth`:  Match the nth element of a sequence.
 
