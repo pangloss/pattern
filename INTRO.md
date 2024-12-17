@@ -99,7 +99,7 @@ Pattern provides a rich set of matcher combinators for building complex patterns
 Pattern's R3 system allows defining rewrite rules using the `rule` macro.
 
 ```clojure
-(rule '(+ ?a ?b) '(* ?a ?b))
+(rule '(+ ?a ?b) (sub (* ?a ?b)))
 ```
 
 ### Combinators
