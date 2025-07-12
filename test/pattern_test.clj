@@ -1335,3 +1335,10 @@
           (matcher '(?:maybe-key (? i int?) :a) '{:a :a})))
     (is (= '(nil)
           (matcher '(?:maybe-key (? i int?) :b) '{})))))
+
+
+(deftest zero-length-repeat
+  (is (= ()
+         (matcher '[(?:* (?:? [])) 1] [1])))
+  (is (= ()
+         (matcher '[(?:* (?:? [])) 1] [[] [] 1]))))

@@ -557,13 +557,21 @@
                           (assoc env
                             :succeed
                             (fn seq-succeed [dict n']
-                              (let [reps (inc (.repetition ^Env env))
-                                    dict (level-sequences reps dict)]
-                                (gather dict (+ n n') (drop n' data)
-                                  (assoc env :repetition reps)
-                                  (if (test-match reps dict)
-                                    (conj matches [dict (+ n n')])
-                                    matches))))))
+                              (if (zero? n')
+                                (if (>= (.repetition ^Env env) 1)
+                                  matches
+                                  (let [reps (inc (.repetition ^Env env))
+                                        dict (level-sequences reps dict)]
+                                    (if (test-match reps dict)
+                                      (conj matches [dict n])
+                                      matches)))
+                                (let [reps (inc (.repetition ^Env env))
+                                      dict (level-sequences reps dict)]
+                                  (gather dict (+ n n') (drop n' data)
+                                    (assoc env :repetition reps)
+                                    (if (test-match reps dict)
+                                      (conj matches [dict (+ n n')])
+                                      matches)))))))
                       matches))
                   matches))]
         (with-meta
